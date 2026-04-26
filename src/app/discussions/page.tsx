@@ -1,1 +1,1 @@
-import { Button } from '@/components/ui/button';
+import { Button, default } from '@/../components/ui';
