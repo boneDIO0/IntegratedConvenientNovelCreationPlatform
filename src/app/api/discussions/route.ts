@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     /* **尚未連接 DB，先假裝連接成功** */
     return NextResponse.json(
-      { status: "success", message: "太棒了！你的第一支 API 成功運作了！", data: body },
+      { status: "success", message: "成功送出留言(尚未連接資料庫)", data: body },
       { status: 201 }
     );
 
