@@ -1,11 +1,12 @@
-// 留言區 API (POST /api/discussions)
+// 留言板 API (GET 和 POST)
 import { handleApiError } from '@/lib/ErrorHandler';
 import { NextResponse } from 'next/server';
-import { mockDatabase } from '@/lib/mockDiscussionMessages';
+import { getAllMessages, addMessage } from '@/lib/mockDiscussionMessages';
 import { Message } from '@/types/message';
 
 export async function GET() {
-  return NextResponse.json(mockDatabase, { status: 200 });
+  const messages = getAllMessages();
+  return NextResponse.json(messages, { status: 200 });
 }
 
 export async function POST(request: Request) {
@@ -27,15 +28,15 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     };
 
-    mockDatabase.push(newMessage);
+    addMessage(newMessage);
 
     /* **尚未連接 DB，先假裝連接成功** */
     return NextResponse.json(
-      { status: "success", message: "成功留言!", data: newMessage },
+      { status: "success", message: "成功留言", data: newMessage },
       { status: 201 }
     );
 
   } catch (error) {
-    return handleApiError(error, "新增留言時發生異常！");
+    return handleApiError(error, "新增留言時發生錯誤");
   }
 }

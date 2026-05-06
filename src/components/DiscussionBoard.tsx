@@ -4,7 +4,7 @@
 useState and onClick are available */
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Message } from '@/types/message';
 
 export function DiscussionBoard() {
@@ -54,11 +54,25 @@ export function DiscussionBoard() {
 
     } catch (error: any) {
       // 捕捉錯誤並顯示給使用者看
-      alert('發布失敗' + error.message);
+      alert('留言發布失敗' + error.message);
     } finally {
       setIsLoading(false); // 解除按鈕鎖定
     }
   };
+
+  // 發送刪除指令給後端
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('確認要刪除這則留言嗎？這項操作將無法復原！')) return;
+
+    try{
+      const res = await fetch(`/api/discussions/${id}`, { method: 'DELETE'}, );
+      if (res.ok) {
+        setMessages((prevMessages) => prevMessages.filter((msg) => msg.id !== id));
+      }
+    } catch (error) {
+      alert('刪除過程發生錯誤')
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto mt-10 space-y-6">
@@ -91,6 +105,21 @@ export function DiscussionBoard() {
             <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
               <div className="flex justify-between items-center mb-2">
                 <span className="font-bold text-sm text-blue-600">{msg.authorName}</span>
+                
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">
+                    {new Date(msg.createdAt).toLocaleString()}
+                  </span>
+                  {/* 這裡使用危險按鈕！ */}
+                  <Button 
+                    variant="destructive" 
+                    size="xs" 
+                    onClick={() => handleDelete(msg.id)}
+                  >
+                    🗑️
+                  </Button>
+                </div>
+
                 <span className="text-xs text-gray-400">
                   {new Date(msg.createdAt).toLocaleString()}
                 </span>
