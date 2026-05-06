@@ -4,7 +4,7 @@
 useState and onClick are available */
 
 import { useState } from 'react';
-import { Button, buttonVariants } from '@/components/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 
 export function DiscussionBoard() {
 
@@ -27,8 +27,8 @@ export function DiscussionBoard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chapterId: 'demo-chapter-01', // Demo 先寫死
-          authorName: '初級寫手',     // Demo 先寫死
+          referenced_file: 'demo-chapter-01', // Demo 先寫死
+          author: '初級寫手',     // Demo 先寫死
           content: content              // 放入 textarea 取得的純文字
         }),
       });

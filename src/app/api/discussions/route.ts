@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     // check if any data absent
-    if (!body.chapterId || !body.authorName || !body.content) {
+    if (!body.referenced_file || !body.author || !body.content) {
       return NextResponse.json(
         { status: "error", message: "留言失敗：請提供章節ID、作者名稱與留言內容！" },
         { status: 400 }
