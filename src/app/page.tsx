@@ -21,7 +21,7 @@ export default function Home() {
           
           {/* 1. 文字編輯器 */}
           <Link
-            href="/editor"
+            href="/novel_list"
             className="group flex h-24 w-full flex-col items-center justify-center gap-1 rounded-2xl bg-blue-600 px-6 text-white shadow-lg transition-all hover:scale-105 hover:bg-blue-700 hover:shadow-xl"
           >
             <span className="text-3xl mb-1 transition-transform group-hover:-translate-y-1">✍️</span>
