@@ -4,7 +4,7 @@
 useState and onClick are available */
 
 import { useState } from 'react';
-import { Button, buttonVariants } from '@/components/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 
 export function DiscussionBoard() {
 
