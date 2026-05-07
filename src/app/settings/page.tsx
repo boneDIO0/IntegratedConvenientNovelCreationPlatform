@@ -1,12 +1,13 @@
 // src/app/settings/page.tsx
 "use client";
 
-import { useState } from "react";
+// 🌟 1. 記得從 react 引入 useEffect
+import { useState, useEffect } from "react";
 import SettingsSidebar from "@/components/SettingsSidebar";
 import CharacterForm from "@/components/CharacterForm";
 import RelationGraph from "@/components/RelationGraph"; 
 import { SettingItem } from "@/lib/mockSettings";
-import { PLATFORM_TEMPLATES, TemplateDef } from "@/lib/templates"; // 🌟 引入模板庫
+import { PLATFORM_TEMPLATES, TemplateDef } from "@/lib/templates"; 
 import FactionForm from "@/components/FactionForm";
 import ItemForm from "@/components/ItemForm";
 import EventForm from "@/components/EventForm";
@@ -14,22 +15,38 @@ import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 
 export default function SettingsPage() {
-  // 🌟 1. 系統初始化狀態管理
   const [isInitialized, setIsInitialized] = useState(false);
-  
-  // 🌟 2. 初始資料變成空陣列，等待模板載入
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
-  
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline'>('form');
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
 
-  // 🌟 3. 處理模板選擇的函式
+  // 🌟 2. 新增：監聽網址的 Hash 變化，來完美支援瀏覽器的「上一頁」
+  useEffect(() => {
+    const handleHashChange = () => {
+      // 如果網址後面有 #editor，就顯示編輯器；否則退回模板選擇畫面
+      setIsInitialized(window.location.hash === '#editor');
+    };
+
+    // 註冊監聽器：當使用者按瀏覽器的上一頁/下一頁時觸發
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // 元件剛載入時也檢查一次網址
+    handleHashChange();
+
+    // 清除監聽器
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // 🌟 3. 修改：處理模板選擇的函式
   const handleSelectTemplate = (template: TemplateDef) => {
-    setSettingsData(template.initialData); // 載入該模板的預設目錄
-    setIsInitialized(true);                // 切換到主系統畫面
+    setSettingsData(template.initialData); 
+    
+    // 拔掉原本的 setIsInitialized(true); 
+    // 改為在網址加上 #editor，這會自動觸發上面的 handleHashChange，並增加一筆歷史紀錄
+    window.location.hash = 'editor';
   };
-  
+
   const handleEventHighlight = (ids: string[]) => {
     setHighlightedIds(ids);
     setViewMode('graph'); // 自動把畫面切換到關係圖！

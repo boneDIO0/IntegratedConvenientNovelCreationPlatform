@@ -23,7 +23,7 @@ interface Document extends DocMetadata {
   updatedAt?: number;
 }
 
-export default function Home() {
+export default function VersionsPage() {
   const [docs, setDocs] = useState<DocMetadata[]>([]);
   const [currentDoc, setCurrentDoc] = useState<Document | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -67,8 +67,7 @@ export default function Home() {
       });
       const newDoc = await res.json();
       setDocs([...docs, { id: newDoc.id, title: newDoc.title }]);
-//if (newDoc.content.blocks.length==0) newDoc.content.blocks=[{ type: 'paragraph', data: { text: ''}}]
-console.log('create: ', newDoc);
+      console.log('create: ', newDoc);
       setCurrentDoc(newDoc);
     } catch (err) {
       console.error('Failed to create document', err);
@@ -94,15 +93,11 @@ console.log('create: ', newDoc);
     if (!currentDoc) return;
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/documents/${currentDoc.id}`, {
+      await fetch(`/api/documents/${currentDoc.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...currentDoc, content, saveVersion: false })
       });
-      const updatedDoc = await res.json();
-      // Keep versions and updatedAt in sync but content comes from editor
-      //setCurrentDoc(prev => prev ? { ...prev, versions: updatedDoc.versions, updatedAt: updatedDoc.updatedAt } : null);
-      //setCurrentDoc(updatedDoc);
     } catch (err) {
       console.error('Failed to save document', err);
     } finally {
@@ -140,7 +135,6 @@ console.log('create: ', newDoc);
       });
       const updatedDoc = await res.json();
       setCurrentDoc(updatedDoc);
-      // loadDoc(updatedDoc.id);
       setIsHistoryOpen(false);
     } catch (err) {
       console.error('Failed to restore version', err);
@@ -183,23 +177,31 @@ console.log('create: ', newDoc);
   };
 
   return (
-    <div className={`app-container ${isFocusMode ? 'focus-mode' : ''} ${isSidebarOpen ? '' : 'sidebar-closed'} ${isHistoryOpen ? 'history-open' : ''}`}>
-      <aside className="sidebar">
-        <header className="sidebar-header">
-          <h2>Writer'S Haven</h2>
-          <button onClick={createDoc} title="New Document">
-            <Plus size={20} />
+    <div className={`flex h-screen w-full bg-[#FAFAFA] font-sans text-slate-800 ${isFocusMode ? 'bg-white' : ''}`}>
+      
+      {/* 🌟 左側：文件列表 (還原米色背景質感) */}
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} transition-all duration-300 flex flex-col bg-[#F4F4F0] border-r border-slate-200 overflow-hidden`}>
+        <header className="flex items-center justify-between p-4 border-b border-slate-200/50">
+          <h2 className="font-bold text-slate-700 whitespace-nowrap">Writer's Haven</h2>
+          <button onClick={createDoc} className="p-1 text-slate-500 hover:bg-slate-200 rounded transition-colors" title="New Document">
+            <Plus size={18} />
           </button>
         </header>
-        <div className="doc-list">
+        
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {docs.map(doc => (
             <div 
               key={doc.id} 
-              className={`doc-item ${currentDoc?.id === doc.id ? 'active' : ''}`}
+              className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                currentDoc?.id === doc.id ? 'bg-white shadow-sm font-medium text-slate-900' : 'text-slate-600 hover:bg-slate-200/50'
+              }`}
               onClick={() => loadDoc(doc.id)}
             >
-              <span className="doc-title">{doc.title}</span>
-              <button onClick={(e) => deleteDoc(doc.id, e)} className="delete-btn">
+              <span className="truncate">{doc.title}</span>
+              <button 
+                onClick={(e) => deleteDoc(doc.id, e)} 
+                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
+              >
                 <Trash2 size={14} />
               </button>
             </div>
@@ -207,42 +209,48 @@ console.log('create: ', newDoc);
         </div>
       </aside>
 
-      <main className="main-content">
-        <nav className="toolbar">
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="toggle-sidebar">
-            <Menu size={20} />
-          </button>
-          
-          {currentDoc && (
-            <input 
-              className="title-input"
-              value={currentDoc.title}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Title..."
-            />
-          )}
+      {/* 🌟 中間：編輯器主要區域 */}
+      <main className="flex-1 flex flex-col relative min-w-0">
+        
+        {/* 頂部工具列 */}
+        <nav className={`flex items-center justify-between p-4 transition-opacity ${isFocusMode ? 'opacity-0 hover:opacity-100 absolute w-full top-0 z-10' : ''}`}>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors">
+              <Menu size={20} />
+            </button>
+            
+            {currentDoc && (
+              <input 
+                className="text-lg font-medium bg-transparent border-none outline-none text-slate-700 placeholder:text-slate-300"
+                value={currentDoc.title}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                placeholder="輸入標題..."
+              />
+            )}
+          </div>
 
-          <div className="toolbar-right">
-            <span className={`save-indicator ${isSaving ? 'saving' : ''}`}>
-              {isSaving ? 'Saving...' : 'Saved'}
+          <div className="flex items-center gap-2 text-slate-500">
+            <span className={`text-sm mr-2 transition-opacity ${isSaving ? 'opacity-100 text-emerald-500' : 'opacity-0'}`}>
+              儲存中...
             </span>
             {currentDoc && (
-              <button onClick={createManualVersion} title="Save Version">
-                <Save size={20} />
+              <button onClick={createManualVersion} className="p-2 hover:bg-slate-100 rounded-md transition-colors" title="儲存為新版本">
+                <Save size={18} />
               </button>
             )}
-            <button onClick={() => setIsFocusMode(!isFocusMode)} title="Toggle Focus Mode">
-              {isFocusMode ? <EyeOff size={20} /> : <Eye size={20} />}
+            <button onClick={() => setIsFocusMode(!isFocusMode)} className="p-2 hover:bg-slate-100 rounded-md transition-colors" title="切換專注模式">
+              {isFocusMode ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
             {currentDoc && (
-              <button onClick={() => setIsHistoryOpen(!isHistoryOpen)} title="Version History">
-                <History size={20} />
+              <button onClick={() => setIsHistoryOpen(!isHistoryOpen)} className={`p-2 rounded-md transition-colors ${isHistoryOpen ? 'bg-slate-200 text-slate-800' : 'hover:bg-slate-100'}`} title="版本歷史紀錄">
+                <History size={18} />
               </button>
             )}
           </div>
         </nav>
 
-        <section className="editor-wrapper">
+        {/* 編輯器容器 */}
+        <section className={`flex-1 overflow-y-auto px-8 py-10 transition-all ${isFocusMode ? 'max-w-3xl mx-auto w-full pt-20' : 'lg:px-24'}`}>
           {currentDoc ? (
             <Editor 
               key={`${currentDoc.id}-${currentDoc.updatedAt || 'initial'}`}
@@ -250,55 +258,64 @@ console.log('create: ', newDoc);
               onChange={saveDoc}
             />
           ) : (
-            <div className="no-doc">
-              <p>Select a document or create a new one to start writing.</p>
-              <button onClick={createDoc}>Create First Story</button>
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
+              <p>選擇一個文件，或建立新的故事來開始寫作。</p>
+              <button onClick={createDoc} className="px-4 py-2 bg-slate-800 text-white rounded-md hover:bg-slate-700 transition-colors">
+                建立新故事
+              </button>
             </div>
           )}
         </section>
       </main>
 
-      <aside className="history-sidebar">
-        <header className="sidebar-header">
-          <h3>History</h3>
-          <button onClick={() => setIsHistoryOpen(false)}>
-            <X size={20} />
+      {/* 🌟 右側：版本紀錄側邊欄 (還原原本的樣式與滑出動畫) */}
+      <aside className={`fixed right-0 top-0 h-full w-80 bg-[#FAFAFA] border-l border-slate-200 shadow-2xl transform transition-transform duration-300 z-50 flex flex-col ${
+        isHistoryOpen ? 'translate-x-0' : 'translate-x-full'
+      }`}>
+        <header className="flex items-center justify-between p-4 border-b border-slate-200 bg-white">
+          <h3 className="font-bold text-slate-700">歷史紀錄</h3>
+          <button onClick={() => setIsHistoryOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors">
+            <X size={18} />
           </button>
         </header>
-        <div className="history-list">
+        
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {!currentDoc?.versions?.length && (
-            <p className="no-versions">No previous versions available.</p>
+            <p className="text-sm text-slate-400 text-center mt-4">目前尚無歷史版本。</p>
           )}
           {currentDoc?.versions?.slice().reverse().map((version) => (
-            <div key={version.timestamp} className="history-item">
-              <div className="history-info">
-                <span className="history-date">
-                  {new Date(version.timestamp).toLocaleString()}
-                </span>
-                <span className="history-blocks">
-                  {version.content.blocks?.length || 0} blocks
-                </span>
-              </div>
-              <div className="history-actions">
-                <button 
-                  onClick={() => restoreVersion(version.timestamp)}
-                  className="restore-btn"
-                  title="Restore this version"
-                >
-                  <RotateCcw size={16} />
-                </button>
-                <button 
-                  onClick={() => deleteVersion(version.timestamp)}
-                  className="delete-version-btn"
-                  title="Delete this version"
-                >
-                  <Trash2 size={16} />
-                </button>
+            <div key={version.timestamp} className="bg-white border border-slate-200 p-3 rounded-lg shadow-sm group">
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-slate-700">
+                    {new Date(version.timestamp).toLocaleString()}
+                  </span>
+                  <span className="text-xs text-slate-400 mt-1">
+                    {version.content.blocks?.length || 0} 個區塊
+                  </span>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => restoreVersion(version.timestamp)}
+                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded"
+                    title="還原此版本"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                  <button 
+                    onClick={() => deleteVersion(version.timestamp)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    title="刪除此紀錄"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
       </aside>
+      
     </div>
   );
 }
