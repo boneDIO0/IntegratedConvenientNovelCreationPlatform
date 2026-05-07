@@ -4,12 +4,16 @@
 useState and onClick are available */
 
 import { useState, useEffect } from 'react';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
 
 export function DiscussionBoard() {
 
-  // 建立狀態儲存使用者的輸入和 API 的回應
+  /* 建立狀態儲存使用者的輸入和 API 的回應
+     記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // 記住編輯框裡面的文字
+  const [editContent, setEditContent] = useState('');
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -59,6 +63,24 @@ export function DiscussionBoard() {
       setIsLoading(false); // 解除按鈕鎖定
     }
   };
+
+  // 發送更新指令給後端
+  const handleUpdate = async (id: string) => {
+    if (!editContent.trim()) return;
+    try{
+      const res = await fetch(`/api/discussions/${id}`, {
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editContent }) 
+      });
+      if (res.ok) {
+        setEditingId(null); // 關閉留言編輯模式
+        fetchMessages();
+      }
+    } catch (error) {
+      alert ('編輯過程發生錯誤')
+    }
+  }
 
   // 發送刪除指令給後端
   const handleDelete = async (id: string) => {
@@ -110,7 +132,7 @@ export function DiscussionBoard() {
                   <span className="text-xs text-gray-400">
                     {new Date(msg.createdAt).toLocaleString()}
                   </span>
-                  {/* 這裡使用危險按鈕！ */}
+                  {/* 這裡使用危險按鈕*/}
                   <Button 
                     variant="destructive" 
                     size="xs" 
@@ -118,13 +140,37 @@ export function DiscussionBoard() {
                   >
                     🗑️
                   </Button>
+                  {/* 這裡使用隱形按鈕*/}
+                  <Button 
+                    variant="ghost" 
+                    size="xs" 
+                    onClick={() => { setEditingId(msg.id); setEditContent(msg.content); }}
+                  >
+                    🖋️
+                  </Button>
                 </div>
 
                 <span className="text-xs text-gray-400">
                   {new Date(msg.createdAt).toLocaleString()}
                 </span>
               </div>
-              <p className="text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+              {/* 如果這則留言的 ID 等於正在編輯的 ID，就顯示輸入框 */}
+                {editingId === msg.id ? (
+                  <div className="mt-2">
+                    <textarea
+                      className="w-full p-2 border rounded-md"
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                    />
+                    <div className="flex justify-end gap-2 mt-2">
+                      <Button size="xs" variant="ghost" onClick={() => setEditingId(null)}>取消</Button>
+                      <Button size="xs" onClick={() => handleUpdate(msg.id) } disabled={!editContent.trim()}>儲存</Button>
+                    </div>
+                  </div>
+                ) : (
+                  // 如果沒有在編輯，就正常顯示文字
+                  <p className="text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+                )}
             </div>
           ))
         )}

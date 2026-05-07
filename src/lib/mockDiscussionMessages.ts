@@ -1,7 +1,7 @@
 import { Message } from "@/types/message";
 
 export let mockDatabase: Message[] = [
-  { id: 'msg-002', authorName: '書格拉底', content: '如果寫文章是你的力量，沒有了它你又是什麼？', createdAt: new Date().toISOString() },
+  { id: 'msg-002', authorName: '書格拉底', content: '如果寫作是你的力量，沒了它你又算什麼？', createdAt: new Date().toISOString() },
   { id: 'msg-003', authorName: '筆卡兒', content: '我寫，故我在。', createdAt: new Date().toISOString() }
 ];
 
@@ -16,12 +16,22 @@ export function addMessage(newMessage: Message) {
   return newMessage;
 }
 
-// UPDATE
-/*
-export function updateMessage(id: string) {
-  const 
+// PUT
+
+export function updateMessage(id: string, newContent: string) {
+  const index = mockDatabase.findIndex(msg => msg.id === id);
+  
+  if (index === -1) {
+    return null; 
+  }
+
+  mockDatabase[index].content = newContent;
+/*mockDatabase[index].updatedAt = new Date().toISOString();
+  之後加上修改時間 */
+  
+  return mockDatabase[index];  
 }
-*/
+
 
 // DELETE
 export function deleteMessage(id: string) {

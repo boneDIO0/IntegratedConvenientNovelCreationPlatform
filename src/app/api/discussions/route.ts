@@ -37,6 +37,6 @@ export async function POST(request: Request) {
     );
 
   } catch (error) {
-    return handleApiError(error, "新增留言時發生錯誤");
+    return handleApiError(error, "新增留言過程發生錯誤");
   }
 }
