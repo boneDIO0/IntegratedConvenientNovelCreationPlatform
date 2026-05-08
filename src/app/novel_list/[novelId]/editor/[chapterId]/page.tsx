@@ -34,7 +34,7 @@ export default function ChapterEditorPage() {
   if (!initialData) return <div className="min-h-screen flex items-center justify-center">載入中...</div>
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] flex flex-col">
+    <div className="h-screen bg-[#f8f9fa] flex flex-col overflow-hidden">
       {/* 簡單的返回列 */}
       <div className="bg-white border-b px-6 py-2 flex items-center gap-4 shrink-0 z-50">
         <button 
@@ -45,14 +45,25 @@ export default function ChapterEditorPage() {
         </button>
       </div>
 
-      {/* 召喚你剛剛升級的編輯器，並把資料傳給它 */}
-      <div className="flex-1 relative">
-        <Editor 
-          novelId={novelId} 
-          chapterId={chapterId} 
-          initialTitle={initialData.title}
-          initialContent={initialData.content}
-        />
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 召喚你剛剛升級的編輯器，並把資料傳給它 */}
+        <div className="w-[50%] h-full flex flex-col border-r border-gray-300 relative bg-white">
+          <Editor 
+            novelId={novelId} 
+            chapterId={chapterId} 
+            initialTitle={initialData.title}
+            initialContent={initialData.content}
+          />
+        </div>
+
+        {/* 這是設定集 */}
+        <div className="w-[50%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">          
+          <div className="p-4 flex flex-col items-center justify-center h-full text-gray-400 border-2 border-dashed border-gray-300 m-4 rounded-lg">
+            <h3 className="text-2xl font-bold text-gray-800 mb-2">詳細設定區</h3>
+            <SettingsPanel/>
+          </div>
+        </div>
+
       </div>
     </div>
   )
