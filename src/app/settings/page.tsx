@@ -23,18 +23,29 @@ export default function SettingsPage() {
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline'>('form');
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
 
-  // 🌟 新增：網頁載入時，先去 localStorage 撈取舊資料
   useEffect(() => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData) {
-      setSettingsData(JSON.parse(savedData));
-      
-      // 如果有存檔，我們自動把網址掛上 #editor 並設為已初始化
-      if (window.location.hash !== '#editor') {
-        window.location.replace('#editor');
+    const fetchSettings = async () => {
+      try {
+        // 這裡替換成後端同學開給你的 API 端點
+        const res = await fetch('/api/settings'); 
+        if (!res.ok) throw new Error('讀取資料失敗');
+        
+        const data = await res.json();
+        
+        // 如果資料庫有東西，就載入並跳過模板選擇畫面
+        if (data && data.length > 0) {
+          setSettingsData(data);
+          if (window.location.hash !== '#editor') {
+            window.location.replace('#editor');
+          }
+          setIsInitialized(true);
+        }
+      } catch (error) {
+        console.error('無法連線到資料庫:', error);
       }
-      setIsInitialized(true);
-    }
+    };
+
+    fetchSettings();
   }, []);
 
   // 監聽網址的 Hash 變化，完美支援瀏覽器的「上一頁」
