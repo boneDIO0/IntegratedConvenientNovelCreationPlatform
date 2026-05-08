@@ -1,53 +1,119 @@
 // src/app/settings/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SettingsSidebar from "@/components/SettingsSidebar";
 import CharacterForm from "@/components/CharacterForm";
 import RelationGraph from "@/components/RelationGraph"; 
 import { SettingItem } from "@/lib/mockSettings";
-import { PLATFORM_TEMPLATES, TemplateDef } from "@/lib/templates"; // 🌟 引入模板庫
+import { PLATFORM_TEMPLATES, TemplateDef } from "@/lib/templates"; 
 import FactionForm from "@/components/FactionForm";
 import ItemForm from "@/components/ItemForm";
 import EventForm from "@/components/EventForm";
 import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 
+// 🌟 定義臨時資料庫的 Key
+const STORAGE_KEY = 'writer_haven_settings_db';
+
 export default function SettingsPage() {
-  // 🌟 1. 系統初始化狀態管理
   const [isInitialized, setIsInitialized] = useState(false);
-  
-  // 🌟 2. 初始資料變成空陣列，等待模板載入
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
-  
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline'>('form');
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
 
-  // 🌟 3. 處理模板選擇的函式
-  const handleSelectTemplate = (template: TemplateDef) => {
-    setSettingsData(template.initialData); // 載入該模板的預設目錄
-    setIsInitialized(true);                // 切換到主系統畫面
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        // 這裡替換成後端同學開給你的 API 端點
+        const res = await fetch('/api/settings'); 
+        if (!res.ok) throw new Error('讀取資料失敗');
+        
+        const data = await res.json();
+        
+        // 如果資料庫有東西，就載入並跳過模板選擇畫面
+        if (data && data.length > 0) {
+          setSettingsData(data);
+          if (window.location.hash !== '#editor') {
+            window.location.replace('#editor');
+          }
+          setIsInitialized(true);
+        }
+      } catch (error) {
+        console.error('無法連線到資料庫:', error);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
+  // 監聽網址的 Hash 變化，完美支援瀏覽器的「上一頁」
+  useEffect(() => {
+    const handleHashChange = () => {
+      // 只有在還沒初始化，或是網址沒有 #editor 時才切換狀態
+      // 如果 localStorage 已經有資料，我們盡量保持在編輯器畫面
+      const hasSavedData = !!localStorage.getItem(STORAGE_KEY);
+      
+      if (window.location.hash === '#editor') {
+        setIsInitialized(true);
+      } else if (!hasSavedData) {
+        setIsInitialized(false);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange();
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // 🌟 實作「更新與儲存項目」的函式 (給表單按鈕呼叫)
+  const handleUpdateItem = (updatedItem: SettingItem) => {
+    setSettingsData(prevData => {
+      const newData = prevData.map(group => {
+        // 找到這個項目所屬的目錄，並替換成更新後的項目
+        if (group.category === updatedItem.category || group.items.some(i => i.id === updatedItem.id)) {
+          return {
+            ...group,
+            items: group.items.map(item => item.id === updatedItem.id ? updatedItem : item)
+          };
+        }
+        return group;
+      });
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 寫入臨時資料庫
+      return newData;
+    });
+    
+    setSelectedItem(updatedItem); 
+    alert('儲存成功！(目前暫存於瀏覽器)');
   };
-  
+
+  // 處理模板選擇的函式
+  const handleSelectTemplate = (template: TemplateDef) => {
+    setSettingsData(template.initialData); 
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(template.initialData)); // 🌟 存檔
+    window.location.hash = 'editor';
+  };
+
   const handleEventHighlight = (ids: string[]) => {
     setHighlightedIds(ids);
-    setViewMode('graph'); // 自動把畫面切換到關係圖！
+    setViewMode('graph'); 
   };
 
   const handleNodeSelectFromGraph = (nodeId: string) => {
-    // 🌟 記得改成從狀態 settingsData 裡面撈資料，而不是原本寫死的 mockSettings
     for (const group of settingsData) {
       const found = group.items.find(item => item.id === nodeId);
       if (found) {
         setSelectedItem(found);
-        setViewMode('timeline'); // 瞬間切換到時間軸！
+        setViewMode('timeline');
         break;
       }
     }
   };
 
-  // 🌟 2. 實作「新增項目」函式
+  // 新增項目函式
   const handleAddItem = (categoryName: string, type: string) => {
     const newItem: SettingItem = {
       id: `new-${Date.now()}`,
@@ -55,54 +121,62 @@ export default function SettingsPage() {
       category: type,
     };
 
-    setSettingsData(prevData => 
-      prevData.map(group => {
+    setSettingsData(prevData => {
+      const newData = prevData.map(group => {
         if (group.category === categoryName) {
           return { ...group, items: [...group.items, newItem] };
         }
         return group;
-      })
-    );
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
+      return newData;
+    });
     
     setSelectedItem(newItem);
     setViewMode('form');
   };
 
-  // 🌟 3. 實作「刪除項目」函式
+  // 刪除項目函式
   const handleDeleteItem = (itemId: string) => {
-    setSettingsData(prevData => 
-      prevData.map(group => ({
+    setSettingsData(prevData => {
+      const newData = prevData.map(group => ({
         ...group,
         items: group.items.filter(item => item.id !== itemId)
-      }))
-    );
+      }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
+      return newData;
+    });
     
     if (selectedItem?.id === itemId) {
       setSelectedItem(null);
     }
   };
 
-  // 🌟 1. 新增：處理「新增目錄」的函式
+  // 新增目錄的函式
   const handleAddCategory = (newCategoryName: string) => {
     if (!newCategoryName.trim()) return;
     
-    // 防呆機制：避免建立同名目錄
     if (settingsData.some(g => g.category === newCategoryName)) {
       alert("此目錄名稱已存在！");
       return;
     }
 
-    // 在資料陣列的最後面，推入一個全新的空目錄
-    setSettingsData(prev => [...prev, { category: newCategoryName, items: [] }]);
+    setSettingsData(prev => {
+      const newData = [...prev, { category: newCategoryName, items: [] }];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
+      return newData;
+    });
   };
 
-  // 🌟 2. 新增：處理「刪除目錄」的函式
+  // 刪除目錄的函式
   const handleDeleteCategory = (categoryName: string) => {
-    // 加上確認視窗，因為這會刪除整個資料夾的內容
     if (confirm(`確定要刪除「${categoryName}」目錄嗎？裡面的所有設定將會一併消失！`)) {
-      setSettingsData(prev => prev.filter(g => g.category !== categoryName));
+      setSettingsData(prev => {
+        const newData = prev.filter(g => g.category !== categoryName);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
+        return newData;
+      });
       
-      // 如果目前選中的項目剛好在被刪除的目錄裡，就把畫面清空
       if (selectedItem?.category === categoryName || selectedItem?.category === 'custom') {
         setSelectedItem(null);
         setViewMode('form');
@@ -110,7 +184,6 @@ export default function SettingsPage() {
     }
   };
 
-  // 🌟 4. 如果尚未初始化，渲染「模板選擇畫面」
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -147,12 +220,11 @@ export default function SettingsPage() {
       <aside className="w-full md:w-80 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
         <h2 className="text-xl font-bold mb-4 text-slate-800">設定集目錄</h2>
         
-        {/* 🌟 4. 傳遞資料與新增/刪除函式給 Sidebar */}
         <SettingsSidebar 
           data={settingsData}
           onSelect={(item) => {
             setSelectedItem(item);
-            setViewMode('form'); // 點擊目錄時，自動切回表單模式
+            setViewMode('form'); 
           }} 
           selectedId={selectedItem?.id} 
           onAdd={handleAddItem}
@@ -169,7 +241,6 @@ export default function SettingsPage() {
               {viewMode === 'graph' ? '全域人物關係圖' : selectedItem ? `${selectedItem.name} (編輯中)` : "未選取項目"}
             </h1>
             
-            {/* 模式切換按鈕區 */}
             <div className="flex gap-2">
               <button 
                 onClick={() => { setViewMode('timeline'); setHighlightedIds(null); }}
@@ -213,19 +284,23 @@ export default function SettingsPage() {
                 />
              ) : selectedItem ? (
                 <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+                  {/* TRPG 特規表單 (尚未綁定儲存函式) */}
                   {selectedItem.category === 'character' && <CharacterForm key={selectedItem.id} item={selectedItem} />}
                   {selectedItem.category === 'faction' && <FactionForm key={selectedItem.id} item={selectedItem} />}
                   {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} />}
                   {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} />}
                   
-                  {/* 🌟 拔掉原本的 CharacterForm，換成專屬的 DynamicForm */}
+                  {/* 🌟 通用表單：已經綁定剛寫好的 onSave 儲存函式 */}
                   {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && (
-                    <DynamicForm key={selectedItem.id} item={selectedItem} />
+                    <DynamicForm 
+                      key={selectedItem.id} 
+                      item={selectedItem} 
+                      onSave={handleUpdateItem} 
+                    />
                   )}
                 </div>
              ) : (
                 <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
-                  {/* 🌟 確保這裡有完整的 <span> 標籤 */}
                   <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
                 </div>
              )}

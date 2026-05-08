@@ -134,7 +134,7 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
         <div className="grid gap-2 pt-4 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <Label className="text-slate-700 font-bold flex items-center gap-2">
-              ✨ 世界觀自訂屬性
+              ✨ 自訂屬性區塊
             </Label>
             <button 
               type="button" 

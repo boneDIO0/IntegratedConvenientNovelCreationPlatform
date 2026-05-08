@@ -3,15 +3,35 @@
 /* declare to be a client component
 useState and onClick are available */
 
-import { useState } from 'react';
-import { Button, buttonVariants } from '@/components/button';
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/types/message';
 
 export function DiscussionBoard() {
 
-  // 建立狀態儲存使用者的輸入和 API 的回應
+  /* 建立狀態儲存使用者的輸入和 API 的回應
+     記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // 記住編輯框裡面的文字
+  const [editContent, setEditContent] = useState('');
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  const fetchMessages = async () => {
+    try {
+      const res = await fetch('/api/discussions');
+      const data = await res.json();
+      setMessages(data);
+    } catch (error) {
+      console.error('抓取留言失敗', error);
+    }
+  };
+
+  // 網頁一載入時自動執行一次抓取
+  useEffect(() => {
+    fetchMessages();
+  }, []);
 
   // 將資料給後端 API
   const handleSubmit = async () => {
@@ -19,79 +39,142 @@ export function DiscussionBoard() {
     if (!content.trim()) return; 
 
     setIsLoading(true);
-    setFeedback(null);
 
     try {
-      // 呼叫 API
       const res = await fetch('/api/discussions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chapterId: 'demo-chapter-01', // Demo 先寫死
-          authorName: '初級寫手',     // Demo 先寫死
-          content: content              // 放入 textarea 取得的純文字
+          authorName: '初級寫手', // Demo 先寫死
+          content: content // 放入 textarea 取得的純文字
         }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || '發生未知錯誤');
-      }
-
       // API 回傳成功
-      setFeedback({ type: 'success', msg: '🎉 ' + data.message });
-      setContent(''); // 清空輸入框
+      if (res.ok) {
+        setContent(''); // 清空輸入框
+        fetchMessages(); // 重新抓取一次最新留言，畫面就會自動更新
+      }
 
     } catch (error: any) {
       // 捕捉錯誤並顯示給使用者看
-      setFeedback({ type: 'error', msg: '❌ ' + error.message });
+      alert('留言發布失敗' + error.message);
     } finally {
       setIsLoading(false); // 解除按鈕鎖定
     }
   };
 
+  // 發送更新指令給後端
+  const handleUpdate = async (id: string) => {
+    if (!editContent.trim()) return;
+    try{
+      const res = await fetch(`/api/discussions/${id}`, {
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editContent }) 
+      });
+      if (res.ok) {
+        setEditingId(null); // 關閉留言編輯模式
+        fetchMessages();
+      }
+    } catch (error) {
+      alert ('編輯過程發生錯誤')
+    }
+  }
+
+  // 發送刪除指令給後端
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('確認要刪除這則留言嗎？這項操作將無法復原！')) return;
+
+    try{
+      const res = await fetch(`/api/discussions/${id}`, { method: 'DELETE'}, );
+      if (res.ok) {
+        setMessages((prevMessages) => prevMessages.filter((msg) => msg.id !== id));
+      }
+    } catch (error) {
+      alert('刪除過程發生錯誤')
+    }
+  }
+
   return (
-
-    <div className="p-6 border rounded-lg shadow-sm bg-white max-w-2xl mx-auto mt-10">
-      <h2 className="text-xl font-bold mb-4 border-b pb-2">章節討論區 (Demo 版)</h2>
-      
-      {/* 基礎純文字輸入框 */}
-      <textarea
-        className="w-full h-32 p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-4"
-        placeholder="請輸入你的留言..."
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        disabled={isLoading}
-      />
-
-      {/* 回饋訊息顯示區 */}
-      {feedback && (
-        <div className={`mb-4 p-3 rounded-md text-sm ${feedback.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          {feedback.msg}
+    <div className="max-w-2xl mx-auto mt-10 space-y-6">
+      {/* --- 輸入區塊 --- */}
+      <div className="p-6 border rounded-lg shadow-sm bg-white">
+        <h2 className="text-xl font-bold mb-4">新增留言</h2>
+        <textarea
+          className="w-full h-24 p-3 border rounded-md focus:ring-2 focus:ring-blue-500 resize-none mb-4"
+          placeholder="在這裡暢所欲言..."
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          disabled={isLoading}
+        />
+        <div className="flex justify-end">
+          <Button onClick={handleSubmit} disabled={isLoading || !content.trim()}>
+            {isLoading ? '傳送中...' : '發布留言'}
+          </Button>
         </div>
-      )}
-
-      {/* 將按鈕綁定事件 */}
-      <div className="flex justify-end">
-        <Button 
-          variant="default" 
-          onClick={handleSubmit} 
-          disabled={isLoading || !content.trim()}
-        >
-          {isLoading ? '傳送中...' : '發布留言'}
-        </Button>
       </div>
 
-      <h2 className="text-xl font-bold mb-4">所有按鈕展示</h2>
-      {/* 所有按鈕展示 */}
-      <div className="flex gap-4">
-        <Button variant="default">一般</Button>
-        <Button variant="destructive">危險</Button>
-        <Button variant="outline">外框</Button>
-        <Button variant="ghost">隱形</Button>
+      {/* --- 留言列表區塊 --- */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-bold text-gray-700">留言列表 ({messages.length})</h2>
+        
+        {messages.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">目前還沒有討論</p>
+        ) : (
+          // 以 map 迴圈將陣列裡的每一筆資料變成一個 UI 卡片
+          messages.map((msg) => (
+            <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-bold text-sm text-blue-600">{msg.authorName}</span>
+                
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">
+                    {new Date(msg.createdAt).toLocaleString()}
+                  </span>
+                  {/* 這裡使用危險按鈕*/}
+                  <Button 
+                    variant="destructive" 
+                    size="xs" 
+                    onClick={() => handleDelete(msg.id)}
+                  >
+                    🗑️
+                  </Button>
+                  {/* 這裡使用隱形按鈕*/}
+                  <Button 
+                    variant="ghost" 
+                    size="xs" 
+                    onClick={() => { setEditingId(msg.id); setEditContent(msg.content); }}
+                  >
+                    🖋️
+                  </Button>
+                </div>
+
+                <span className="text-xs text-gray-400">
+                  {new Date(msg.createdAt).toLocaleString()}
+                </span>
+              </div>
+              {/* 如果這則留言的 ID 等於正在編輯的 ID，就顯示輸入框 */}
+                {editingId === msg.id ? (
+                  <div className="mt-2">
+                    <textarea
+                      className="w-full p-2 border rounded-md"
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                    />
+                    <div className="flex justify-end gap-2 mt-2">
+                      <Button size="xs" variant="ghost" onClick={() => setEditingId(null)}>取消</Button>
+                      <Button size="xs" onClick={() => handleUpdate(msg.id) } disabled={!editContent.trim()}>儲存</Button>
+                    </div>
+                  </div>
+                ) : (
+                  // 如果沒有在編輯，就正常顯示文字
+                  <p className="text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+                )}
+            </div>
+          ))
+        )}
       </div>
     </div>
-
   );
 }

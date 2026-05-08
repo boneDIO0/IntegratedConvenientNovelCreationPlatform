@@ -7,7 +7,17 @@ import { SettingItem } from "@/lib/mockSettings"
 import { useState } from "react";
 import FormActionButtons from "@/components/FormActionButtons"
 
-export default function DynamicForm({ item }: { item: SettingItem }) {
+export default function DynamicForm({ 
+  item, 
+  onSave 
+}: { 
+  item: SettingItem; 
+  onSave?: (updatedItem: SettingItem) => void; // 🌟 告訴 TypeScript 我們會接收這個屬性
+}) {
+  
+  // 🌟 記得在這裡加入 itemName 的 state，才能讓使用者改名
+  const [itemName, setItemName] = useState(item.name || "");
+
   // 🌟 只保留世界觀自訂欄位的狀態引擎
   const [customFields, setCustomFields] = useState<{label: string, value: string}[]>(
     item.customFields || []
@@ -25,6 +35,16 @@ export default function DynamicForm({ item }: { item: SettingItem }) {
     const newFields = [...customFields];
     newFields[index][fieldKey] = newValue;
     setCustomFields(newFields);
+  };
+
+  const handleSaveClick = () => {
+    if (onSave) {
+      onSave({
+        ...item,
+        name: itemName,
+        // customFields: customFields (如果有自訂欄位記得一起包進去)
+      });
+    }
   };
 
   return (
@@ -45,7 +65,12 @@ export default function DynamicForm({ item }: { item: SettingItem }) {
         {/* 🌟 基本資訊：只有名稱 */}
         <div className="grid gap-2">
           <Label htmlFor="name">項目名稱</Label>
-          <Input id="name" defaultValue={item.name} placeholder="輸入項目名稱..." /> 
+          <Input 
+            id="name" 
+            value={itemName} 
+            onChange={(e) => setItemName(e.target.value)}
+            placeholder="輸入項目名稱..." 
+          /> 
         </div>
 
         {/* 🌟 核心引擎：無限自訂欄位 */}
@@ -116,7 +141,14 @@ export default function DynamicForm({ item }: { item: SettingItem }) {
       </div>
 
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-        <FormActionButtons saveText="儲存設定" />
+        {/* 🌟 5. 將儲存函式綁定到按鈕上 (這取決於你的 FormActionButtons 怎麼寫的) */}
+        {/* 如果 FormActionButtons 沒寫 onClick 支援，你可以先直接用一個原生的 button 代替測試： */}
+        <button 
+          onClick={handleSaveClick}
+          className="px-4 py-2 bg-slate-900 text-white rounded-md hover:bg-slate-800"
+        >
+          儲存設定
+        </button>
       </div>
     </div>
   )
