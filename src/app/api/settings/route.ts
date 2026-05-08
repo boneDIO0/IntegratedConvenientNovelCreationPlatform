@@ -1,33 +1,101 @@
-import { NextResponse } from 'next/server';
+// src/app/api/settings/route.ts
 
-// 1. GET 請求：讀取所有設定集資料
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma'; // 🌟 我們專案是用 prisma，不是 db！
+
+// 🌟 GET: 讀取所有目錄與設定項目
 export async function GET() {
   try {
-    // 🚀 [這裡交給後端同學]：從資料庫撈出所有的目錄與設定項目
-    const data = await db.settings.findMany(); 
+    const categories = await prisma.settingCategory.findMany({
+      where: { deletedAt: null }, // 過濾掉被軟刪除的目錄
+      include: {
+        entities: {
+          where: { deletedAt: null }, // 過濾掉被軟刪除的實體
+          orderBy: { orderIndex: 'asc' } 
+        }, 
+      },
+      orderBy: { orderIndex: 'asc' }
+    });
+
+    // 🌟 轉換成前端熟悉的格式
+    const formattedData = categories.map(cat => ({
+      category: cat.name,
+      items: cat.entities.map(entity => {
+        // 將 JSON 內容取出，如果是 null 則給空物件
+        const contentObj = (entity.content as object) || {}; 
+        
+        return {
+          id: entity.id,
+          name: entity.title, 
+          category: cat.type || 'custom', 
+          ...contentObj // 把 faction, description 等屬性直接展開
+        };
+      })
+    }));
     
-    // 假裝我們從資料庫撈到了資料，回傳給前端
-    const data: any[] = []; // 替換成真實資料
-    
-    return NextResponse.json(data, { status: 200 });
+    return NextResponse.json(formattedData, { status: 200 });
   } catch (error) {
-    console.error("GET /api/settings 錯誤:", error);
+    console.error("讀取設定資料失敗:", error);
     return NextResponse.json({ error: '無法讀取設定資料' }, { status: 500 });
   }
 }
 
-// 2. POST 請求：新增一個設定項目或目錄
+// 🌟 POST: 新增一個目錄 或 新增一個項目
 export async function POST(request: Request) {
   try {
-    // 取得前端傳過來的資料 (也就是你在 frontend fetch 裡寫的 body)
     const body = await request.json();
     
-    // 🚀 [這裡交給後端同學]：將 body 的內容寫入資料庫
-    // const newSetting = await db.settings.create({ data: body });
+    const firstProject = await prisma.project.findFirst();
+    if (!firstProject) {
+      return NextResponse.json({ error: '資料庫中尚未建立任何 Project，無法新增設定！請先去建立專案。' }, { status: 400 });
+    }
+    
+    // 狀況 A：新增獨立目錄
+    if (body.type === 'new_category') {
+      const newCat = await prisma.settingCategory.create({
+        data: { 
+          name: body.name,
+          projectId: firstProject.id,
+          type: body.type || 'custom' // 儲存目錄的預設類型
+        }
+      });
+      return NextResponse.json(newCat, { status: 201 });
+    }
+    
+    // 狀況 B：新增項目
+    let parentCategory = await prisma.settingCategory.findFirst({
+      where: { name: body.categoryName, projectId: firstProject.id, deletedAt: null }
+    });
 
-    return NextResponse.json({ message: '新增成功', data: body }, { status: 201 });
+    // 懶漢式載入：如果資料庫裡找不到這個目錄，直接幫他建一個！
+    if (!parentCategory) {
+      parentCategory = await prisma.settingCategory.create({
+        data: {
+          name: body.categoryName,
+          projectId: firstProject.id,
+          type: body.type || 'custom', // 確保將傳過來的 character 等類型存入
+        }
+      });
+    }
+
+    const newEntity = await prisma.settingEntity.create({
+      data: {
+        title: body.item.name, 
+        categoryId: parentCategory.id,
+        projectId: firstProject.id, 
+      }
+    });
+
+    // 回傳前端需要的格式
+    const formattedEntity = {
+      id: newEntity.id,
+      name: newEntity.title,
+      category: parentCategory.type || body.type || 'custom',
+    };
+
+    return NextResponse.json(formattedEntity, { status: 201 });
   } catch (error) {
-    console.error("POST /api/settings 錯誤:", error);
-    return NextResponse.json({ error: '無法新增設定' }, { status: 500 });
+    console.error("新增失敗:", error);
+    return NextResponse.json({ error: '無法新增資料' }, { status: 500 });
   }
 }
