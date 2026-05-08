@@ -1,13 +1,9 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-//這邊只會處理表格與表格間的關係，FUNCTION TRIGGER RLS POLICY等問題要寫SQL腳本
-//TODO:之後需要補RLS跟Policy
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions", "multiSchema"]
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
@@ -17,146 +13,147 @@ datasource db {
   extensions = [pgvector(map: "vector")] // 啟用向量擴充功能
   schemas    = ["public", "audit"]
 }
+
 // --- [Public Schema] ---
 
 /// 使用者 Profile (承接 Auth 資訊)
-// (前段 generator 與 datasource 保持不變)
-
 model Profile {
-  id             String           @id @db.Uuid
-  username       String?          @unique // 增加唯一索引，方便按用戶名查找
-  tier           String?          @default("free")
-  deleted_at     DateTime?        @db.Timestamptz(6)
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  id          String          @id @db.Uuid
+  username    String?         @unique // 增加唯一索引，方便按用戶名查找
+  tier        String?         @default("free")
+  deletedAt   DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime?       @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  projects       Project[]        @relation("ProjectOwner")
-  memberships    ProjectMember[]
-  checkpoints    Checkpoint[]
+  projects    Project[]       @relation("ProjectOwner")
+  memberships ProjectMember[]
+  checkpoints Checkpoint[]
+  liveDrafts  LiveDraft[]
 
   @@map("profiles")
   @@schema("public")
 }
 
 model Project {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id       String           @db.Uuid
-  title          String
-  deleted_at     DateTime?        @db.Timestamptz(6)
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId     String            @map("owner_id") @db.Uuid
+  title       String
+  deletedAt   DateTime?         @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime?         @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  owner          Profile          @relation("ProjectOwner", fields: [owner_id], references: [id])
-  members        ProjectMember[]
-  categories     SettingCategory[]
-  entities       SettingEntity[]
-  checkpoints    Checkpoint[]
-  live_drafts    LiveDraft[]
+  owner       Profile           @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members     ProjectMember[]
+  categories  SettingCategory[]
+  entities    SettingEntity[]
+  checkpoints Checkpoint[]
+  liveDrafts  LiveDraft[]
 
-  @@index([owner_id]) // 加速查找某人的所有專案
+  @@index([ownerId]) // 加速查找某人的所有專案
   @@map("projects")
   @@schema("public")
 }
 
 model ProjectMember {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  project_id     String           @db.Uuid
-  user_id        String           @db.Uuid
-  role           String?
-  deleted_at     DateTime?        @db.Timestamptz(6)
-  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String    @map("project_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  role      String?
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  project        Project          @relation(fields: [project_id], references: [id])
-  user           Profile          @relation(fields: [user_id], references: [id])
+  project   Project   @relation(fields: [projectId], references: [id])
+  user      Profile   @relation(fields: [userId], references: [id])
 
-  @@unique([project_id, user_id]) // 重要：防止同一個用戶重複加入同一個專案
-  @@index([user_id])              // 加速查找「我參與的所有專案」
+  @@unique([projectId, userId]) // 重要：防止同一個用戶重複加入同一個專案
+  @@index([userId])               // 加速查找「我參與的所有專案」
   @@map("project_members")
   @@schema("public")
 }
 
 model SettingCategory {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  project_id     String           @db.Uuid
-  name           String
-  type           String?          @default("custom")
-  order_index    Float?           @default(0)
-  is_preset      Boolean?         @default(false)
-  deleted_at     DateTime?        @db.Timestamptz(6)
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId  String          @map("project_id") @db.Uuid
+  name       String
+  type       String?         @default("custom")
+  orderIndex Float?          @default(0) @map("order_index")
+  isPreset   Boolean?        @default(false) @map("is_preset")
+  deletedAt  DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt  DateTime?       @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  project        Project          @relation(fields: [project_id], references: [id])
-  entities       SettingEntity[]
+  project    Project         @relation(fields: [projectId], references: [id])
+  entities   SettingEntity[]
 
-  @@index([project_id, order_index]) // 複合索引：加速按順序抓取專案下的分類
+  @@index([projectId, orderIndex]) // 複合索引：加速按順序抓取專案下的分類
   @@map("setting_categories")
   @@schema("public")
 }
 
 model SettingEntity {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  project_id     String           @db.Uuid
-  category_id    String           @db.Uuid
-  title          String
-  content        Json?            @default("{}")
-  order_index    Float?           @default(0)
-  deleted_at     DateTime?        @db.Timestamptz(6)
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId  String          @map("project_id") @db.Uuid
+  categoryId String          @map("category_id") @db.Uuid
+  title      String
+  content    Json?           @default("{}")
+  orderIndex Float?          @default(0) @map("order_index")
+  deletedAt  DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt  DateTime?       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime?       @default(now()) @map("updated_at") @db.Timestamptz(6)
 
-  project        Project          @relation(fields: [project_id], references: [id])
-  category       SettingCategory  @relation(fields: [category_id], references: [id])
+  project    Project         @relation(fields: [projectId], references: [id])
+  category   SettingCategory @relation(fields: [categoryId], references: [id])
 
-  @@index([category_id, order_index]) // 複合索引：加速顯示分類下的實體列表
-  @@index([project_id])               // 全域搜尋專案內實體時有用
+  @@index([categoryId, orderIndex]) // 複合索引：加速顯示分類下的實體列表
+  @@index([projectId])                // 全域搜尋專案內實體時有用
   @@map("setting_entities")
   @@schema("public")
 }
 
 model Checkpoint {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  project_id     String?          @db.Uuid
-  author_id      String?          @db.Uuid
-  parent_id      String?          @db.Uuid
-  commit_msg     String?
-  target_type    String
-  target_id      String?          @db.Uuid
-  delta_content  Json
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId    String?          @map("project_id") @db.Uuid
+  authorId     String?          @map("author_id") @db.Uuid
+  parentId     String?          @map("parent_id") @db.Uuid
+  commitMsg    String?          @map("commit_msg")
+  targetType   String           @map("target_type")
+  targetId     String?          @map("target_id") @db.Uuid
+  deltaContent Json             @map("delta_content")
+  createdAt    DateTime?        @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  project        Project?         @relation(fields: [project_id], references: [id])
-  author         Profile?         @relation(fields: [author_id], references: [id])
-  parent         Checkpoint?      @relation("CheckpointHistory", fields: [parent_id], references: [id])
-  children       Checkpoint[]     @relation("CheckpointHistory")
-  analysis       AnalysisResult[]
+  project      Project?         @relation(fields: [projectId], references: [id])
+  author       Profile?         @relation(fields: [authorId], references: [id])
+  parent       Checkpoint?      @relation("CheckpointHistory", fields: [parentId], references: [id])
+  children     Checkpoint[]     @relation("CheckpointHistory")
+  analysis     AnalysisResult[]
 
-  @@index([project_id, created_at]) // 加速查看專案的歷史變更線
-  @@index([target_id])               // 快速找回特定章節/設定的歷史紀錄
+  @@index([projectId, createdAt]) // 加速查看專案的歷史變更線
+  @@index([targetId])               // 快速找回特定章節/設定的歷史紀錄
   @@map("checkpoints")
   @@schema("public")
 }
 
 model AnalysisResult {
-  id             BigInt           @id @default(autoincrement())
-  checkpoint_id  String?          @db.Uuid
-  embedding      Unsupported("vector(768)")? 
-  logic_payload  Json?            @default("{}")
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  id           BigInt      @id @default(autoincrement())
+  checkpointId String?     @map("checkpoint_id") @db.Uuid
+  embedding    Unsupported("vector(768)")? 
+  logicPayload Json?       @default("{}") @map("logic_payload")
+  createdAt    DateTime?   @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  checkpoint     Checkpoint?      @relation(fields: [checkpoint_id], references: [id])
+  checkpoint   Checkpoint? @relation(fields: [checkpointId], references: [id])
 
-  @@index([checkpoint_id]) // 查找特定版本的分析結果
+  @@index([checkpointId]) // 查找特定版本的分析結果
   @@map("analysis_results")
   @@schema("public")
 }
 
 model LiveDraft {
-  project_id     String           @db.Uuid
-  user_id        String           @db.Uuid
-  raw_content    Json
-  updated_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  projectId  String    @map("project_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  rawContent Json      @map("raw_content")
+  updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
-  project        Project          @relation(fields: [project_id], references: [id])
+  project    Project   @relation(fields: [projectId], references: [id])
+  user       Profile   @relation(fields: [userId], references: [id])
 
-  @@id([project_id, user_id])
+  @@id([projectId, userId])
   @@map("live_drafts")
   @@schema("public")
 }
@@ -164,17 +161,17 @@ model LiveDraft {
 // --- [Audit Schema] ---
 
 model OperationLog {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  table_name     String
-  record_id      String?          @db.Uuid
-  op_type        String
-  old_data       Json?
-  new_data       Json?
-  user_id        String?          @db.Uuid
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tableName String    @map("table_name")
+  recordId  String?   @map("record_id") @db.Uuid
+  opType    String    @map("op_type")
+  oldData   Json?     @map("old_data")
+  newData   Json?     @map("new_data")
+  userId    String?   @map("user_id") @db.Uuid
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  @@index([table_name, record_id]) // 加速追蹤特定資料的變更歷史
-  @@index([created_at])            // 用於按時間排序日誌
+  @@index([tableName, recordId]) // 加速追蹤特定資料的變更歷史
+  @@index([createdAt])             // 用於按時間排序日誌
   @@map("operation_logs")
   @@schema("audit")
 }
