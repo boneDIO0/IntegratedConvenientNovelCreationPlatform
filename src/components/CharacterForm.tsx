@@ -7,14 +7,26 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { SettingItem } from "@/lib/mockSettings"
 import { useState } from "react";
-import FormActionButtons from "@/components/FormActionButtons"
+// 把這個獨立元件拿掉，我們直接在表單內寫按鈕，這樣接資料比較直覺
+// import FormActionButtons from "@/components/FormActionButtons"
 
-export default function CharacterForm({ item }: { item: SettingItem }) {
+// 🌟 1. 新增 Interface，並接收 onSave 函式
+interface CharacterFormProps {
+  item: SettingItem;
+  onSave: (updatedItem: SettingItem) => void;
+}
 
-  // 原本的動態稱號狀態
+export default function CharacterForm({ item, onSave }: CharacterFormProps) {
+
+  // 🌟 2. 新增基本欄位的狀態 (這樣修改後才能存檔)
+  const [name, setName] = useState(item.name || "");
+  const [faction, setFaction] = useState(item.faction || "independent");
+  const [description, setDescription] = useState(item.description || "");
+
+  // 稱號狀態
   const [titles, setTitles] = useState<string[]>(item.title ? [item.title] : []);
 
-  // 🌟 新增：管理世界觀自訂欄位的狀態
+  // 自訂欄位狀態
   const [customFields, setCustomFields] = useState<{label: string, value: string}[]>(
     item.customFields || []
   );
@@ -27,7 +39,6 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
     setTitles(newTitles);
   };
 
-  // 🌟 自訂欄位的操作函式
   const handleAddCustomField = () => {
     setCustomFields([...customFields, { label: "新屬性 (點擊修改)", value: "" }]);
   };
@@ -42,7 +53,22 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
     setCustomFields(newFields);
   };
 
-  const fallbackChar = item.name.charAt(0);
+  // 🌟 3. 實作點擊儲存按鈕的邏輯
+  const handleSaveClick = () => {
+    const updatedItem: SettingItem = {
+      ...item,
+      name: name,
+      faction: faction,
+      description: description,
+      title: titles[0] || "", // 取第一個稱號當主稱號
+      customFields: customFields
+    };
+    
+    // 呼叫外部傳進來的 onSave
+    onSave(updatedItem);
+  };
+
+  const fallbackChar = name.charAt(0) || "?";
 
   return (
     <div className="w-full h-full flex flex-col space-y-8">
@@ -50,15 +76,15 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
       {/* 頂部：人物卡片視覺區 */}
       <div className="flex items-center gap-6 rounded-xl bg-slate-100/50 p-6 border border-slate-100">
         <Avatar className="h-20 w-20 border-2 border-white shadow-sm">
-          <AvatarImage src="" alt={item.name} />
+          <AvatarImage src="" alt={name} />
           <AvatarFallback className="text-2xl bg-slate-200 text-slate-700">{fallbackChar}</AvatarFallback>
         </Avatar>
         
         <div className="space-y-2">
-          <h2 className="text-2xl font-bold text-slate-900">{item.name}</h2>
+          <h2 className="text-2xl font-bold text-slate-900">{name || "未命名人物"}</h2>
           <div className="flex gap-2">
             <Badge variant="default" className="bg-amber-600 hover:bg-amber-700">
-              {item.faction === 'golden-horde' ? '金帳汗國' : item.faction === 'observers' ? '觀測者' : '無所屬'}
+              {faction === 'golden-horde' ? '金帳汗國' : faction === 'observers' ? '觀測者' : '無所屬'}
             </Badge>
             {titles.length > 0 && titles[0] !== "" && (
               <Badge variant="outline">{titles[0]}</Badge>
@@ -71,13 +97,15 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
       <div className="space-y-5 flex-1">
         <div className="grid gap-2">
           <Label htmlFor="name">角色姓名</Label>
-          <Input id="name" defaultValue={item.name} /> 
+          {/* 🌟 綁定 value 和 onChange */}
+          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} /> 
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="grid gap-2">
             <Label htmlFor="faction">所屬陣營</Label>
-            <Select defaultValue={item.faction || "independent"}>
+            {/* 🌟 綁定 value 和 onValueChange */}
+            <Select value={faction} onValueChange={setFaction}>
               <SelectTrigger id="faction">
                 <SelectValue placeholder="選擇陣營" />
               </SelectTrigger>
@@ -123,14 +151,16 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
 
         <div className="grid gap-2">
           <Label htmlFor="description">詳細背景設定</Label>
+          {/* 🌟 綁定 value 和 onChange */}
           <Textarea
             id="description"
             className="min-h-[160px] resize-none leading-relaxed"
-            defaultValue={item.description || ""}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
         </div>
 
-        {/* 🌟 核心升級：世界觀自訂欄位引擎 */}
+        {/* 核心升級：世界觀自訂欄位引擎 */}
         <div className="grid gap-2 pt-4 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <Label className="text-slate-700 font-bold flex items-center gap-2">
@@ -152,14 +182,12 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
             {customFields.map((field, index) => (
               <div key={index} className="flex gap-3 items-start p-4 bg-slate-50 border border-slate-100 rounded-lg group">
                 <div className="flex-1 space-y-3">
-                  {/* 讓作者自訂「欄位名稱」 */}
                   <Input 
                     value={field.label} 
                     onChange={(e) => handleCustomFieldChange(index, 'label', e.target.value)}
                     className="font-bold text-slate-700 bg-white border-slate-200 h-9"
                     placeholder="自訂欄位名稱 (例如：魔法屬性、替身能力)"
                   />
-                  {/* 讓作者填寫「欄位內容」 */}
                   <Textarea
                     value={field.value}
                     onChange={(e) => handleCustomFieldChange(index, 'value', e.target.value)}
@@ -167,7 +195,6 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
                     placeholder="輸入該屬性的詳細內容..."
                   />
                 </div>
-                {/* 刪除按鈕 */}
                 <button 
                   type="button" 
                   onClick={() => handleRemoveCustomField(index)}
@@ -198,8 +225,14 @@ export default function CharacterForm({ item }: { item: SettingItem }) {
         </div>
       </div>
 
+      {/* 🌟 4. 放上真正的儲存按鈕 */}
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-        <FormActionButtons saveText="儲存人物設定" />
+        <button 
+          onClick={handleSaveClick}
+          className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2 rounded-md font-medium transition-colors"
+        >
+          儲存人物設定
+        </button>
       </div>
     </div>
   )

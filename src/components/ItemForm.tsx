@@ -5,12 +5,33 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SettingItem } from "@/lib/mockSettings"
-import FormActionButtons from "@/components/FormActionButtons"
-import { useState } from "react" // 🌟 1. 引入 useState
+import { useState } from "react" 
 
-export default function ItemForm({ item }: { item: SettingItem }) {
-  // 🌟 2. 使用狀態來管理物品類型，讓頂部標籤與 UI 可以即時連動變更
+// 🌟 1. 新增 Interface，並接收 onSave 函式
+interface ItemFormProps {
+  item: SettingItem;
+  onSave: (updatedItem: SettingItem) => void;
+}
+
+export default function ItemForm({ item, onSave }: ItemFormProps) {
+  
+  // 🌟 2. 使用狀態來管理表單欄位
+  const [name, setName] = useState(item.name || "");
   const [itemType, setItemType] = useState(item.itemType || "artifact");
+  const [resonanceEffect, setResonanceEffect] = useState(item.resonanceEffect || "");
+  const [description, setDescription] = useState(item.description || "");
+
+  // 🌟 3. 實作存檔邏輯
+  const handleSaveClick = () => {
+    const updatedItem: SettingItem = {
+      ...item,
+      name,
+      itemType: itemType as "weapon" | "artifact" | "consumable" | "skill", // 確保型別正確
+      resonanceEffect,
+      description
+    };
+    onSave(updatedItem);
+  };
 
   // 根據類型動態決定標籤的顏色與文字
   const getTypeInfo = (type: string) => {
@@ -29,10 +50,9 @@ export default function ItemForm({ item }: { item: SettingItem }) {
     <div className="w-full h-full flex flex-col space-y-6">
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">{item.name}</h2>
+          <h2 className="text-2xl font-bold text-slate-900">{name || "未命名物品"}</h2>
           <p className="text-sm text-slate-500 mt-1">特殊物品與技能設定</p>
         </div>
-        {/* 🌟 3. 套用動態變化的標籤樣式 */}
         <Badge variant="outline" className={`${typeInfo.color} transition-colors`}>
           {typeInfo.text}
         </Badge>
@@ -42,11 +62,11 @@ export default function ItemForm({ item }: { item: SettingItem }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="grid gap-2">
             <Label htmlFor="name">物品/技能名稱</Label>
-            <Input id="name" defaultValue={item.name} /> 
+            {/* 🌟 綁定 value 與 onChange */}
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} /> 
           </div>
           <div className="grid gap-2">
             <Label htmlFor="itemType">類型</Label>
-            {/* 🌟 加上 as 進行型別斷言，告訴 TS 這個 value 絕對安全 */}
             <Select 
               value={itemType} 
               onValueChange={(value) => setItemType(value as "weapon" | "artifact" | "consumable" | "skill")}
@@ -64,19 +84,19 @@ export default function ItemForm({ item }: { item: SettingItem }) {
           </div>
         </div>
 
-        {/* 🌟 核心機制：共鳴效果 */}
+        {/* 核心機制：共鳴效果 */}
         <div className="grid gap-2 p-4 bg-amber-50 rounded-lg border border-amber-200">
           <Label htmlFor="resonance" className="text-amber-900 font-bold flex items-center gap-2">
             ✨ 共鳴效果 (Resonance Effect)
           </Label>
           <p className="text-xs text-amber-700 mb-2">
-            {/* 根據類型動態改變提示文案 */}
             請避免填寫絕對數值。描述此{itemType === 'skill' ? '技能' : '物品'}如何與環境、物理法則或使用者精神產生互動。
           </p>
           <Textarea
             id="resonance"
             className="min-h-[100px] resize-none border-amber-300 focus-visible:ring-amber-500"
-            defaultValue={item.resonanceEffect || ""}
+            value={resonanceEffect}
+            onChange={(e) => setResonanceEffect(e.target.value)}
           />
         </div>
 
@@ -85,11 +105,12 @@ export default function ItemForm({ item }: { item: SettingItem }) {
           <Textarea
             id="description"
             className="min-h-[100px] resize-none"
-            defaultValue={item.description || ""}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
         </div>
 
-        {/* 🌟 5. 新增：牽涉對象顯示區塊 (比照人物卡與事件卡設計) */}
+        {/* 牽涉對象顯示區塊 */}
         <div className="grid gap-2">
           <Label>擁有者與關聯對象</Label>
           <div className="flex flex-wrap gap-2 p-3 rounded-md border border-slate-200 bg-slate-50">
@@ -108,7 +129,13 @@ export default function ItemForm({ item }: { item: SettingItem }) {
       </div>
 
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-        <FormActionButtons saveText="儲存設定" />
+        {/* 🌟 4. 放上真正的儲存按鈕 */}
+        <button 
+          onClick={handleSaveClick}
+          className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2 rounded-md font-medium transition-colors"
+        >
+          儲存物品設定
+        </button>
       </div>
     </div>
   )
