@@ -13,9 +13,10 @@ import EventForm from "@/components/EventForm";
 import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 
+// 🌟 定義臨時資料庫的 Key
 const STORAGE_KEY = 'writer_haven_settings_db';
 
-export default function SettingsPage() {
+export function SettingsPanel() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
@@ -25,11 +26,13 @@ export default function SettingsPage() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
+        // 這裡替換成後端同學開給你的 API 端點
         const res = await fetch('/api/settings'); 
         if (!res.ok) throw new Error('讀取資料失敗');
         
         const data = await res.json();
         
+        // 如果資料庫有東西，就載入並跳過模板選擇畫面
         if (data && data.length > 0) {
           setSettingsData(data);
           if (window.location.hash !== '#editor') {
@@ -45,8 +48,11 @@ export default function SettingsPage() {
     fetchSettings();
   }, []);
 
+  // 監聽網址的 Hash 變化，完美支援瀏覽器的「上一頁」
   useEffect(() => {
     const handleHashChange = () => {
+      // 只有在還沒初始化，或是網址沒有 #editor 時才切換狀態
+      // 如果 localStorage 已經有資料，我們盡量保持在編輯器畫面
       const hasSavedData = !!localStorage.getItem(STORAGE_KEY);
       
       if (window.location.hash === '#editor') {
@@ -62,10 +68,11 @@ export default function SettingsPage() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // 🌟 實作「更新與儲存項目」的函式
-  const handleUpdateItem = async (updatedItem: SettingItem) => {
+  // 🌟 實作「更新與儲存項目」的函式 (給表單按鈕呼叫)
+  const handleUpdateItem = (updatedItem: SettingItem) => {
     setSettingsData(prevData => {
       const newData = prevData.map(group => {
+        // 找到這個項目所屬的目錄，並替換成更新後的項目
         if (group.category === updatedItem.category || group.items.some(i => i.id === updatedItem.id)) {
           return {
             ...group,
@@ -74,34 +81,19 @@ export default function SettingsPage() {
         }
         return group;
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); 
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 寫入臨時資料庫
       return newData;
     });
     
     setSelectedItem(updatedItem); 
-
-    try {
-      const res = await fetch(`/api/settings/${updatedItem.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedItem)
-      });
-
-      if (!res.ok) {
-        throw new Error('伺服器回應錯誤');
-      }
-
-      alert('🎉 儲存成功！已安全寫入雲端資料庫。');
-      
-    } catch (error) {
-      console.error('儲存至資料庫失敗:', error);
-      alert('⚠️ 儲存至雲端失敗，但已暫存於您的瀏覽器中。');
-    }
+    alert('儲存成功！(目前暫存於瀏覽器)');
   };
 
+  // 處理模板選擇的函式
   const handleSelectTemplate = (template: TemplateDef) => {
     setSettingsData(template.initialData); 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(template.initialData)); 
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(template.initialData)); // 🌟 存檔
     window.location.hash = 'editor';
   };
 
@@ -121,48 +113,37 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAddItem = async (categoryName: string, type: string) => {
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          categoryName: categoryName,
-          type: type, 
-          item: { name: "未命名新項目" } 
-        })
-      });
+  // 新增項目函式
+  const handleAddItem = (categoryName: string, type: string) => {
+    const newItem: SettingItem = {
+      id: `new-${Date.now()}`,
+      name: "未命名新項目",
+      category: type,
+    };
 
-      if (!res.ok) throw new Error('新增至資料庫失敗');
-      
-      const realItem = await res.json(); 
-
-      setSettingsData(prevData => {
-        const newData = prevData.map(group => {
-          if (group.category === categoryName) {
-            return { ...group, items: [...group.items, realItem] };
-          }
-          return group;
-        });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); 
-        return newData;
+    setSettingsData(prevData => {
+      const newData = prevData.map(group => {
+        if (group.category === categoryName) {
+          return { ...group, items: [...group.items, newItem] };
+        }
+        return group;
       });
-      
-      setSelectedItem(realItem);
-      setViewMode('form');
-    } catch (error) {
-      console.error(error);
-      alert('新增失敗！請確認資料庫狀態。');
-    }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
+      return newData;
+    });
+    
+    setSelectedItem(newItem);
+    setViewMode('form');
   };
 
+  // 刪除項目函式
   const handleDeleteItem = (itemId: string) => {
     setSettingsData(prevData => {
       const newData = prevData.map(group => ({
         ...group,
         items: group.items.filter(item => item.id !== itemId)
       }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); 
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
       return newData;
     });
     
@@ -171,21 +152,28 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAddCategory = async (newCategoryName: string) => {
-    setSettingsData(prev => [...prev, { category: newCategoryName, items: [] }]);
+  // 新增目錄的函式
+  const handleAddCategory = (newCategoryName: string) => {
+    if (!newCategoryName.trim()) return;
     
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'new_category', name: newCategoryName })
+    if (settingsData.some(g => g.category === newCategoryName)) {
+      alert("此目錄名稱已存在！");
+      return;
+    }
+
+    setSettingsData(prev => {
+      const newData = [...prev, { category: newCategoryName, items: [] }];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
+      return newData;
     });
   };
 
-  const handleDeleteCategory = async (categoryName: string) => {
+  // 刪除目錄的函式
+  const handleDeleteCategory = (categoryName: string) => {
     if (confirm(`確定要刪除「${categoryName}」目錄嗎？裡面的所有設定將會一併消失！`)) {
       setSettingsData(prev => {
         const newData = prev.filter(g => g.category !== categoryName);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); 
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
         return newData;
       });
       
@@ -193,29 +181,6 @@ export default function SettingsPage() {
         setSelectedItem(null);
         setViewMode('form');
       }
-    }
-  };
-
-  const handleRenameCategory = async (oldName: string, newName: string) => {
-    if (!newName.trim() || oldName === newName) return;
-
-    setSettingsData(prev => {
-      const newData = prev.map(group => {
-        if (group.category === oldName) {
-          return {
-            ...group,
-            category: newName,
-            items: group.items.map(item => ({ ...item, category: newName }))
-          };
-        }
-        return group;
-      });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-      return newData;
-    });
-
-    if (selectedItem?.category === oldName) {
-      setSelectedItem({ ...selectedItem, category: newName });
     }
   };
 
@@ -266,7 +231,6 @@ export default function SettingsPage() {
           onDelete={handleDeleteItem}
           onAddCategory={handleAddCategory}
           onDeleteCategory={handleDeleteCategory}
-          onRenameCategory={handleRenameCategory} 
         />
       </aside>
 
@@ -320,11 +284,13 @@ export default function SettingsPage() {
                 />
              ) : selectedItem ? (
                 <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-                  {selectedItem.category === 'character' && <CharacterForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
-                  {selectedItem.category === 'faction' && <FactionForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
-                  {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
-                  {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                  {/* TRPG 特規表單 (尚未綁定儲存函式) */}
+                  {selectedItem.category === 'character' && <CharacterForm key={selectedItem.id} item={selectedItem} />}
+                  {selectedItem.category === 'faction' && <FactionForm key={selectedItem.id} item={selectedItem} />}
+                  {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} />}
+                  {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} />}
                   
+                  {/* 🌟 通用表單：已經綁定剛寫好的 onSave 儲存函式 */}
                   {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && (
                     <DynamicForm 
                       key={selectedItem.id} 
