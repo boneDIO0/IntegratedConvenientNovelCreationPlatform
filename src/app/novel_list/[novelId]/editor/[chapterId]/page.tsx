@@ -4,6 +4,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Editor from '@/components/Editor'
 
+import { SettingsPanel } from '@/components/SettingsPanel'
+
 export default function ChapterEditorPage() {
   const params = useParams()
   const router = useRouter()
