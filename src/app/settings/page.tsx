@@ -4,5 +4,9 @@
 import { SettingsPanel } from "@/components/SettingsPanel";
 
 export default function SettingsPage() {
-  SettingsPanel();
+    return (
+      <main>
+        <SettingsPanel />       
+      </main>
+    );
 }

@@ -58,8 +58,8 @@ export default function ChapterEditorPage() {
 
         {/* 這是設定集 */}
         <div className="w-[50%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">          
-          <div className="p-4 flex flex-col items-center justify-center h-full text-gray-400 border-2 border-dashed border-gray-300 m-4 rounded-lg">
-            <h3 className="text-2xl font-bold text-gray-800 mb-2">詳細設定區</h3>
+          <div className="flex flex-col items-center ">
+            <h3 className="text-2xl font-bold text-gray-800 mb-2 ">詳細設定區</h3>
             <SettingsPanel/>
           </div>
         </div>
