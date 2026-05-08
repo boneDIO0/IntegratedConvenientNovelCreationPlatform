@@ -1,7 +1,7 @@
 // src/app/api/settings/route.ts
 
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma from '@/lib/prisma'; // 🌟 我們專案是用 prisma，不是 db！
 
 // 🌟 GET: 讀取所有目錄與設定項目
 export async function GET() {
@@ -28,7 +28,7 @@ export async function GET() {
           id: entity.id,
           name: entity.title, 
           category: cat.type || 'custom', 
-          ...contentObj // 🌟 關鍵修改：把 faction, description 等屬性直接展開
+          ...contentObj // 把 faction, description 等屬性直接展開
         };
       })
     }));
@@ -50,28 +50,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '資料庫中尚未建立任何 Project，無法新增設定！請先去建立專案。' }, { status: 400 });
     }
     
+    // 狀況 A：新增獨立目錄
     if (body.type === 'new_category') {
       const newCat = await prisma.settingCategory.create({
         data: { 
           name: body.name,
-          projectId: firstProject.id 
+          projectId: firstProject.id,
+          type: body.type || 'custom' // 儲存目錄的預設類型
         }
       });
       return NextResponse.json(newCat, { status: 201 });
     }
     
-    // 🌟 修正：把 const 改成 let，因為如果找不到，我們需要重新賦值
+    // 狀況 B：新增項目
     let parentCategory = await prisma.settingCategory.findFirst({
       where: { name: body.categoryName, projectId: firstProject.id, deletedAt: null }
     });
 
-    // 🌟 核心修正：如果資料庫裡找不到這個目錄，不要回傳 404，直接幫他建一個！
+    // 懶漢式載入：如果資料庫裡找不到這個目錄，直接幫他建一個！
     if (!parentCategory) {
       parentCategory = await prisma.settingCategory.create({
         data: {
           name: body.categoryName,
           projectId: firstProject.id,
-          type: body.type || 'custom',
+          type: body.type || 'custom', // 確保將傳過來的 character 等類型存入
         }
       });
     }
