@@ -22,13 +22,13 @@ export async function GET() {
       category: cat.name,
       items: cat.entities.map(entity => {
         // 將 JSON 內容取出，如果是 null 則給空物件
-        const contentObj = (entity.content as object) || {}; 
+        const contentObj = (entity.content as any) || {}; 
         
         return {
           id: entity.id,
           name: entity.title, 
-          category: cat.type || 'custom', 
-          ...contentObj // 把 faction, description 等屬性直接展開
+          category: contentObj.formType || cat.type || 'custom', 
+          ...contentObj
         };
       })
     }));
@@ -52,11 +52,22 @@ export async function POST(request: Request) {
     
     // 狀況 A：新增獨立目錄
     if (body.type === 'new_category') {
+      // 🌟 護城河：先去資料庫查看看，是不是已經有這個名字的目錄了？
+      let existingCat = await prisma.settingCategory.findFirst({
+        where: { name: body.name, projectId: firstProject.id, deletedAt: null }
+      });
+
+      // 如果已經有了，就直接回傳現有的，不要重複建立！
+      if (existingCat) {
+        return NextResponse.json(existingCat, { status: 200 });
+      }
+
+      // 如果真的沒有，才建立新的
       const newCat = await prisma.settingCategory.create({
         data: { 
           name: body.name,
           projectId: firstProject.id,
-          type: body.type || 'custom' // 儲存目錄的預設類型
+          type: body.categoryType || 'custom' 
         }
       });
       return NextResponse.json(newCat, { status: 201 });
@@ -97,5 +108,77 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("新增失敗:", error);
     return NextResponse.json({ error: '無法新增資料' }, { status: 500 });
+  }
+}
+
+// 🌟 PUT: 更新目錄名稱
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+
+    // 如果前端傳來的動作是「重新命名目錄」
+    if (body.action === 'rename_category') {
+      const firstProject = await prisma.project.findFirst();
+      if (!firstProject) return NextResponse.json({ error: '找不到專案' }, { status: 400 });
+
+      // 去資料庫找出那個舊名字的目錄
+      const targetCategory = await prisma.settingCategory.findFirst({
+        where: { name: body.oldName, projectId: firstProject.id, deletedAt: null }
+      });
+
+      if (!targetCategory) return NextResponse.json({ error: '找不到該目錄' }, { status: 404 });
+
+      // 把資料庫裡的名字更新成新名字
+      await prisma.settingCategory.update({
+        where: { id: targetCategory.id },
+        data: { name: body.newName }
+      });
+
+      return NextResponse.json({ message: '重新命名成功' }, { status: 200 });
+    }
+
+    return NextResponse.json({ error: '未知的操作' }, { status: 400 });
+  } catch (error) {
+    console.error("更新失敗:", error);
+    return NextResponse.json({ error: '無法更新資料' }, { status: 500 });
+  }
+}
+
+// 🌟 DELETE: 刪除整個目錄
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json();
+
+    // 如果前端傳來的動作是「刪除目錄」
+    if (body.action === 'delete_category') {
+      const firstProject = await prisma.project.findFirst();
+      if (!firstProject) return NextResponse.json({ error: '找不到專案' }, { status: 400 });
+
+      // 去資料庫找出這個目錄
+      const targetCategory = await prisma.settingCategory.findFirst({
+        where: { name: body.categoryName, projectId: firstProject.id, deletedAt: null }
+      });
+
+      if (!targetCategory) return NextResponse.json({ error: '找不到該目錄' }, { status: 404 });
+
+      // 1. 軟刪除這個目錄
+      await prisma.settingCategory.update({
+        where: { id: targetCategory.id },
+        data: { deletedAt: new Date() }
+      });
+
+      // 2. 順便把這個目錄底下的所有項目 (Entities) 也一起軟刪除，避免產生孤兒資料
+      await prisma.settingEntity.updateMany({
+        where: { categoryId: targetCategory.id },
+        data: { deletedAt: new Date() }
+      });
+
+      return NextResponse.json({ message: '刪除目錄成功' }, { status: 200 });
+    }
+
+    return NextResponse.json({ error: '未知的操作' }, { status: 400 });
+  } catch (error) {
+    console.error("刪除失敗:", error);
+    return NextResponse.json({ error: '無法刪除資料' }, { status: 500 });
   }
 }

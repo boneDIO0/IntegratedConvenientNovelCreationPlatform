@@ -1,4 +1,4 @@
-// src/app/settings/page.tsx
+// src/components/SettingsPanel.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -13,9 +13,6 @@ import EventForm from "@/components/EventForm";
 import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 
-// 🌟 定義臨時資料庫的 Key
-const STORAGE_KEY = 'writer_haven_settings_db';
-
 export function SettingsPanel() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
@@ -26,13 +23,11 @@ export function SettingsPanel() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        // 這裡替換成後端同學開給你的 API 端點
         const res = await fetch('/api/settings'); 
         if (!res.ok) throw new Error('讀取資料失敗');
         
         const data = await res.json();
         
-        // 如果資料庫有東西，就載入並跳過模板選擇畫面
         if (data && data.length > 0) {
           setSettingsData(data);
           if (window.location.hash !== '#editor') {
@@ -48,16 +43,11 @@ export function SettingsPanel() {
     fetchSettings();
   }, []);
 
-  // 監聽網址的 Hash 變化，完美支援瀏覽器的「上一頁」
   useEffect(() => {
     const handleHashChange = () => {
-      // 只有在還沒初始化，或是網址沒有 #editor 時才切換狀態
-      // 如果 localStorage 已經有資料，我們盡量保持在編輯器畫面
-      const hasSavedData = !!localStorage.getItem(STORAGE_KEY);
-      
       if (window.location.hash === '#editor') {
         setIsInitialized(true);
-      } else if (!hasSavedData) {
+      } else if (settingsData.length === 0) {
         setIsInitialized(false);
       }
     };
@@ -66,13 +56,12 @@ export function SettingsPanel() {
     handleHashChange();
 
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [settingsData.length]);
 
-  // 🌟 實作「更新與儲存項目」的函式 (給表單按鈕呼叫)
-  const handleUpdateItem = (updatedItem: SettingItem) => {
+  // 更新與儲存項目
+  const handleUpdateItem = async (updatedItem: SettingItem) => {
     setSettingsData(prevData => {
-      const newData = prevData.map(group => {
-        // 找到這個項目所屬的目錄，並替換成更新後的項目
+      return prevData.map(group => {
         if (group.category === updatedItem.category || group.items.some(i => i.id === updatedItem.id)) {
           return {
             ...group,
@@ -81,20 +70,57 @@ export function SettingsPanel() {
         }
         return group;
       });
-      
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 寫入臨時資料庫
-      return newData;
     });
     
     setSelectedItem(updatedItem); 
-    alert('儲存成功！(目前暫存於瀏覽器)');
+
+    try {
+      const res = await fetch(`/api/settings/${updatedItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedItem)
+      });
+
+      if (!res.ok) throw new Error('伺服器回應錯誤');
+      console.log('🎉 儲存成功！已安全寫入雲端資料庫。');
+    } catch (error) {
+      console.error('儲存至資料庫失敗:', error);
+      alert('⚠️ 儲存至雲端失敗。');
+    }
   };
 
-  // 處理模板選擇的函式
-  const handleSelectTemplate = (template: TemplateDef) => {
+  // 🌟 升級：處理模板選擇 (自動同步空目錄到資料庫，並加上正確的類型標籤)
+  const handleSelectTemplate = async (template: TemplateDef) => {
     setSettingsData(template.initialData); 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(template.initialData)); // 🌟 存檔
     window.location.hash = 'editor';
+    setIsInitialized(true);
+
+    // 🕵️‍♂️ 建立一個小幫手：根據目錄名稱猜測它是什麼類型
+    const getCategoryType = (name: string) => {
+      if (name.includes('人物')) return 'character';
+      if (name.includes('組織')) return 'faction';
+      if (name.includes('物品')) return 'item';
+      if (name.includes('事件')) return 'event';
+      return 'custom';
+    };
+
+    try {
+      await Promise.all(
+        template.initialData.map(group => 
+          fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              type: 'new_category', 
+              name: group.category,
+              categoryType: getCategoryType(group.category) // 🌟 把這行加上！傳遞正確的類型
+            })
+          })
+        )
+      );
+    } catch (error) {
+      console.error('同步模板目錄至資料庫失敗:', error);
+    }
   };
 
   const handleEventHighlight = (ids: string[]) => {
@@ -113,74 +139,144 @@ export function SettingsPanel() {
     }
   };
 
-  // 新增項目函式
-  const handleAddItem = (categoryName: string, type: string) => {
-    const newItem: SettingItem = {
-      id: `new-${Date.now()}`,
-      name: "未命名新項目",
-      category: type,
-    };
-
-    setSettingsData(prevData => {
-      const newData = prevData.map(group => {
-        if (group.category === categoryName) {
-          return { ...group, items: [...group.items, newItem] };
-        }
-        return group;
+  // 🌟 升級：新增項目 (直接打 API 要 UUID)
+  const handleAddItem = async (categoryName: string, type: string) => {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryName: categoryName,
+          type: type, 
+          item: { name: "未命名新項目" } 
+        })
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
-      return newData;
-    });
-    
-    setSelectedItem(newItem);
-    setViewMode('form');
+
+      if (!res.ok) throw new Error('新增至資料庫失敗');
+      const realItem = await res.json(); 
+
+      setSettingsData(prevData => {
+        return prevData.map(group => {
+          if (group.category === categoryName) {
+            return { ...group, items: [...group.items, realItem] };
+          }
+          return group;
+        });
+      });
+      
+      setSelectedItem(realItem);
+      setViewMode('form');
+    } catch (error) {
+      console.error(error);
+      alert('新增失敗！請確認資料庫狀態。');
+    }
   };
 
-  // 刪除項目函式
-  const handleDeleteItem = (itemId: string) => {
+  const handleDeleteItem = async (itemId: string) => {
     setSettingsData(prevData => {
-      const newData = prevData.map(group => ({
+      return prevData.map(group => ({
         ...group,
         items: group.items.filter(item => item.id !== itemId)
       }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
-      return newData;
     });
     
     if (selectedItem?.id === itemId) {
       setSelectedItem(null);
     }
+
+    // 呼叫刪除 API
+    try {
+      await fetch(`/api/settings/${itemId}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error("刪除項目失敗", error);
+    }
   };
 
-  // 新增目錄的函式
-  const handleAddCategory = (newCategoryName: string) => {
+  // 🌟 升級：新增目錄 (寫入資料庫)
+  const handleAddCategory = async (newCategoryName: string) => {
     if (!newCategoryName.trim()) return;
-    
     if (settingsData.some(g => g.category === newCategoryName)) {
       alert("此目錄名稱已存在！");
       return;
     }
 
-    setSettingsData(prev => {
-      const newData = [...prev, { category: newCategoryName, items: [] }];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
-      return newData;
-    });
+    setSettingsData(prev => [...prev, { category: newCategoryName, items: [] }]);
+    
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'new_category', name: newCategoryName })
+      });
+    } catch (error) {
+      console.error("新增目錄失敗", error);
+    }
   };
 
-  // 刪除目錄的函式
-  const handleDeleteCategory = (categoryName: string) => {
+  const handleDeleteCategory = async (categoryName: string) => {
     if (confirm(`確定要刪除「${categoryName}」目錄嗎？裡面的所有設定將會一併消失！`)) {
-      setSettingsData(prev => {
-        const newData = prev.filter(g => g.category !== categoryName);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData)); // 🌟 存檔
-        return newData;
-      });
+      
+      // 1. 樂觀更新：立刻讓前端畫面上的目錄消失
+      setSettingsData(prev => prev.filter(g => g.category !== categoryName));
       
       if (selectedItem?.category === categoryName || selectedItem?.category === 'custom') {
         setSelectedItem(null);
         setViewMode('form');
       }
+
+      // 2. 打 API 叫資料庫斬草除根
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'delete_category', 
+            categoryName: categoryName 
+          })
+        });
+
+        if (!res.ok) throw new Error('伺服器回應錯誤');
+      } catch (error) {
+        console.error('刪除目錄失敗:', error);
+        alert('⚠️ 目錄刪除失敗，請確認網路或資料庫狀態。');
+      }
+    }
+  };
+
+  // 🌟 修正：重新命名目錄 (只改目錄名稱，絕不動項目的型別基因，並存入資料庫)
+  const handleRenameCategory = async (oldName: string, newName: string) => {
+    if (!newName.trim() || oldName === newName) return;
+
+    // 1. 樂觀更新：只修改外層 group 的 category 名稱
+    setSettingsData(prev => {
+      return prev.map(group => {
+        if (group.category === oldName) {
+          return {
+            ...group,
+            category: newName,
+            // 🚨 修正：不要去動 group.items 裡面的 item.category，因為那是型別基因！
+          };
+        }
+        return group;
+      });
+    });
+
+    // 2. 打 API 存進 Neon 資料庫
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'rename_category', 
+          oldName: oldName, 
+          newName: newName 
+        })
+      });
+      
+      if (!res.ok) throw new Error('伺服器回應錯誤');
+    } catch (error) {
+      console.error('更新目錄名稱失敗:', error);
+      alert('⚠️ 目錄名稱修改失敗，請確認網路或資料庫狀態。');
     }
   };
 
@@ -231,15 +327,39 @@ export function SettingsPanel() {
           onDelete={handleDeleteItem}
           onAddCategory={handleAddCategory}
           onDeleteCategory={handleDeleteCategory}
+          onRenameCategory={handleRenameCategory} // 🌟 補上這條線，解決 TS 報錯！
         />
       </aside>
 
       <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
         <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col">
           <div className="mb-6 flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-slate-800">
-              {viewMode === 'graph' ? '全域人物關係圖' : selectedItem ? `${selectedItem.name} (編輯中)` : "未選取項目"}
-            </h1>
+            {/* 🌟 左側：標題 + 表單切換器 */}
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold text-slate-800">
+                {viewMode === 'graph' ? '全域人物關係圖' : selectedItem ? `${selectedItem.name} (編輯中)` : "未選取項目"}
+              </h1>
+              
+              {/* 🌟 隨心所欲的表單切換下拉選單 */}
+              {selectedItem && viewMode === 'form' && (
+                <select
+                  value={selectedItem.category}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    const updated = { ...selectedItem, category: newType };
+                    setSelectedItem(updated);
+                    handleUpdateItem(updated); // 切換瞬間直接存檔！
+                  }}
+                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm"
+                >
+                  <option value="character">👤 人物表單</option>
+                  <option value="faction">🏛️ 組織表單</option>
+                  <option value="item">⚔️ 物品表單</option>
+                  <option value="event">📜 事件表單</option>
+                  <option value="custom">⚙️ 通用表單</option>
+                </select>
+              )}
+            </div>
             
             <div className="flex gap-2">
               <button 
@@ -284,13 +404,20 @@ export function SettingsPanel() {
                 />
              ) : selectedItem ? (
                 <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-                  {/* TRPG 特規表單 (尚未綁定儲存函式) */}
-                  {selectedItem.category === 'character' && <CharacterForm key={selectedItem.id} item={selectedItem} />}
-                  {selectedItem.category === 'faction' && <FactionForm key={selectedItem.id} item={selectedItem} />}
-                  {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} />}
-                  {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} />}
-                  
-                  {/* 🌟 通用表單：已經綁定剛寫好的 onSave 儲存函式 */}
+                  {/* 🌟 確定 onSave 有正確接上 */}
+                  {/* 🌟 補上 allSettings={settingsData}，把全世界的資料餵給它！ */}
+                  {selectedItem.category === 'character' && (
+                    <CharacterForm 
+                      key={selectedItem.id} 
+                      item={selectedItem} 
+                      onSave={handleUpdateItem} 
+                      allSettings={settingsData} 
+                    />
+                  )}
+                  {selectedItem.category === 'faction' && <FactionForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                  {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                  {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+
                   {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && (
                     <DynamicForm 
                       key={selectedItem.id} 

@@ -17,11 +17,16 @@ export async function PUT(request: Request, { params }: RouteParams) {
 
     const { id: _frontendId, name, category, ...contentData } = body;
 
+    const finalContent = {
+      ...contentData,
+      formType: category 
+    };
+
     const updatedEntity = await prisma.settingEntity.update({
       where: { id },
       data: {
         title: name,
-        content: contentData,
+        content: finalContent,
         updatedAt: new Date(),
       }
     });

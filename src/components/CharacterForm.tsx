@@ -2,21 +2,20 @@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { SettingItem } from "@/lib/mockSettings"
 import { useState } from "react";
-// 把這個獨立元件拿掉，我們直接在表單內寫按鈕，這樣接資料比較直覺
-// import FormActionButtons from "@/components/FormActionButtons"
 
-// 🌟 1. 新增 Interface，並接收 onSave 函式
+// 🌟 1. 新增 Interface，並接收 onSave 函式與 allSettings
 interface CharacterFormProps {
   item: SettingItem;
   onSave: (updatedItem: SettingItem) => void;
+  allSettings?: { category: string; items: SettingItem[] }[]; // 接收全世界的資料
 }
 
-export default function CharacterForm({ item, onSave }: CharacterFormProps) {
+export default function CharacterForm({ item, onSave, allSettings = [] }: CharacterFormProps) { // 預設給空陣列防呆
 
   // 🌟 2. 新增基本欄位的狀態 (這樣修改後才能存檔)
   const [name, setName] = useState(item.name || "");
@@ -29,6 +28,11 @@ export default function CharacterForm({ item, onSave }: CharacterFormProps) {
   // 自訂欄位狀態
   const [customFields, setCustomFields] = useState<{label: string, value: string}[]>(
     item.customFields || []
+  );
+
+  // 🌟 動態抓取全世界的所有組織 (Faction)
+  const availableFactions = allSettings.flatMap(group => 
+    group.items.filter(i => i.category === 'faction')
   );
 
   const handleAddTitle = () => setTitles([...titles, ""]);
@@ -84,7 +88,8 @@ export default function CharacterForm({ item, onSave }: CharacterFormProps) {
           <h2 className="text-2xl font-bold text-slate-900">{name || "未命名人物"}</h2>
           <div className="flex gap-2">
             <Badge variant="default" className="bg-amber-600 hover:bg-amber-700">
-              {faction === 'golden-horde' ? '金帳汗國' : faction === 'observers' ? '觀測者' : '無所屬'}
+              {/* 如果選到的組織在清單裡，就顯示該組織的名字，否則顯示無所屬 */}
+              {availableFactions.find(f => f.id === faction)?.name || '無所屬'}
             </Badge>
             {titles.length > 0 && titles[0] !== "" && (
               <Badge variant="outline">{titles[0]}</Badge>
@@ -97,61 +102,59 @@ export default function CharacterForm({ item, onSave }: CharacterFormProps) {
       <div className="space-y-5 flex-1">
         <div className="grid gap-2">
           <Label htmlFor="name">角色姓名</Label>
-          {/* 🌟 綁定 value 和 onChange */}
           <Input id="name" value={name} onChange={(e) => setName(e.target.value)} /> 
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="faction">所屬陣營</Label>
-            {/* 🌟 綁定 value 和 onValueChange */}
-            <Select value={faction} onValueChange={setFaction}>
-              <SelectTrigger id="faction">
-                <SelectValue placeholder="選擇陣營" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="observers">觀測者</SelectItem>
-                <SelectItem value="golden-horde">金帳汗國</SelectItem>
-                <SelectItem value="independent">無所屬</SelectItem>
-              </SelectContent>
-            </Select>
+        {/* 🌟 替換為動態產生的下拉選單 */}
+        <div className="space-y-2">
+          <label className="text-sm font-semibold text-slate-700">所屬陣營</label>
+          <select
+            value={faction}
+            onChange={(e) => setFaction(e.target.value)}
+            className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="independent">無所屬</option>
+            {availableFactions.map(f => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </div>
+          
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between">
+            <Label>職位/稱號</Label>
+            <button type="button" onClick={handleAddTitle} className="text-xs text-blue-600 hover:underline font-medium">
+              + 新增稱號
+            </button>
           </div>
           
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label>職位/稱號</Label>
-              <button type="button" onClick={handleAddTitle} className="text-xs text-blue-600 hover:underline font-medium">
-                + 新增稱號
-              </button>
-            </div>
-            
-            <div className="space-y-2">
-              {titles.length === 0 && (
-                <div className="text-sm text-slate-400 py-2">目前無設定稱號</div>
-              )}
-              {titles.map((title, index) => (
-                <div key={index} className="flex gap-2">
-                  <Input 
-                    value={title} 
-                    onChange={(e) => handleTitleChange(index, e.target.value)} 
-                    placeholder="例如：千戶長" 
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => handleRemoveTitle(index)}
-                    className="text-red-500 hover:bg-red-50 px-3 rounded-md transition-colors"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
+          <div className="space-y-2">
+            {titles.length === 0 && (
+              <div className="text-sm text-slate-400 py-2">目前無設定稱號</div>
+            )}
+            {titles.map((title, index) => (
+              <div key={index} className="flex gap-2">
+                <Input 
+                  value={title} 
+                  onChange={(e) => handleTitleChange(index, e.target.value)} 
+                  placeholder="例如：千戶長" 
+                />
+                <button 
+                  type="button" 
+                  onClick={() => handleRemoveTitle(index)}
+                  className="text-red-500 hover:bg-red-50 px-3 rounded-md transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="grid gap-2">
           <Label htmlFor="description">詳細背景設定</Label>
-          {/* 🌟 綁定 value 和 onChange */}
           <Textarea
             id="description"
             className="min-h-[160px] resize-none leading-relaxed"
@@ -225,7 +228,6 @@ export default function CharacterForm({ item, onSave }: CharacterFormProps) {
         </div>
       </div>
 
-      {/* 🌟 4. 放上真正的儲存按鈕 */}
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
         <button 
           onClick={handleSaveClick}
