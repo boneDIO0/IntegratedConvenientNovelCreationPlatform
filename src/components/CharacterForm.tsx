@@ -10,9 +10,9 @@ import { useState } from "react";
 
 // 🌟 1. 新增 Interface，並接收 onSave 函式與 allSettings
 interface CharacterFormProps {
-  item: SettingItem;
-  onSave: (updatedItem: SettingItem) => void;
-  allSettings?: { category: string; items: SettingItem[] }[]; // 接收全世界的資料
+  item: SettingItem & { titles?: string[] }; // 🌟 告訴 TS 我們可能會有多個稱號
+  onSave: (updatedItem: SettingItem) => void | Promise<void>; // 🌟 允許非同步
+  allSettings?: { category: string; items: SettingItem[] }[]; 
 }
 
 export default function CharacterForm({ item, onSave, allSettings = [] }: CharacterFormProps) { // 預設給空陣列防呆
@@ -23,12 +23,16 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
   const [description, setDescription] = useState(item.description || "");
 
   // 稱號狀態
-  const [titles, setTitles] = useState<string[]>(item.title ? [item.title] : []);
+  const [titles, setTitles] = useState<string[]>(
+    item.titles || (item.title ? [item.title] : [])
+  );
 
   // 自訂欄位狀態
   const [customFields, setCustomFields] = useState<{label: string, value: string}[]>(
     item.customFields || []
   );
+
+  const [saveStatus, setSaveStatus] = useState("儲存人物設定");
 
   // 🌟 動態抓取全世界的所有組織 (Faction)
   const availableFactions = allSettings.flatMap(group => 
@@ -58,18 +62,30 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
   };
 
   // 🌟 3. 實作點擊儲存按鈕的邏輯
-  const handleSaveClick = () => {
-    const updatedItem: SettingItem = {
+  const handleSaveClick = async () => {
+    const updatedItem = {
       ...item,
       name: name,
       faction: faction,
       description: description,
-      title: titles[0] || "", // 取第一個稱號當主稱號
+      title: titles[0] || "", // 保留舊屬性相容性
+      titles: titles,         // 🌟 關鍵：把整個稱號陣列打包塞進 JSON 裡！
       customFields: customFields
     };
     
-    // 呼叫外部傳進來的 onSave
-    onSave(updatedItem);
+    setSaveStatus("儲存中..."); // 按下瞬間改變文字
+    
+    try {
+      await onSave(updatedItem); // 等待 SettingsPanel 把資料打給後端
+      setSaveStatus("✅ 儲存成功！");
+    } catch (error) {
+      setSaveStatus("❌ 儲存失敗");
+    }
+
+    // 兩秒後把按鈕文字變回原樣
+    setTimeout(() => {
+      setSaveStatus("儲存人物設定");
+    }, 2000);
   };
 
   const fallbackChar = name.charAt(0) || "?";
@@ -86,14 +102,16 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
         
         <div className="space-y-2">
           <h2 className="text-2xl font-bold text-slate-900">{name || "未命名人物"}</h2>
-          <div className="flex gap-2">
+          {/* 🌟 加上 flex-wrap 避免稱號太多超出邊界 */}
+          <div className="flex gap-2 flex-wrap"> 
             <Badge variant="default" className="bg-amber-600 hover:bg-amber-700">
-              {/* 如果選到的組織在清單裡，就顯示該組織的名字，否則顯示無所屬 */}
               {availableFactions.find(f => f.id === faction)?.name || '無所屬'}
             </Badge>
-            {titles.length > 0 && titles[0] !== "" && (
-              <Badge variant="outline">{titles[0]}</Badge>
-            )}
+
+            {/* 🌟 修正：過濾掉空字串，並把所有稱號都 map 出來！ */}
+            {titles.filter(t => t.trim() !== "").map((title, index) => (
+              <Badge key={index} variant="outline">{title}</Badge>
+            ))}
           </div>
         </div>
       </div>
@@ -231,9 +249,10 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
         <button 
           onClick={handleSaveClick}
-          className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2 rounded-md font-medium transition-colors"
+          disabled={saveStatus !== "儲存人物設定"} // 儲存期間暫時禁用按鈕防連點
+          className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white px-6 py-2 rounded-md font-medium transition-colors"
         >
-          儲存人物設定
+          {saveStatus} {/* 🌟 顯示動態文字 */}
         </button>
       </div>
     </div>
