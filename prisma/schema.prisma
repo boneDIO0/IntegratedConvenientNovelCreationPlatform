@@ -9,6 +9,12 @@ generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions", "multiSchema"]
 }
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "./ERD.svg"
+  // 如果你想要更詳細的資訊，可以開啟這項
+  includeRelationFromFields = true
+}
 
 datasource db {
   provider   = "postgresql"
@@ -28,10 +34,11 @@ model Profile {
   tier           String?          @default("free")
   deleted_at     DateTime?        @db.Timestamptz(6)
   created_at     DateTime?        @default(now()) @db.Timestamptz(6)
-
-  projects       Project[]        @relation("ProjectOwner")
   memberships    ProjectMember[]
   checkpoints    Checkpoint[]
+  messages    ProjectMessage[]
+  projects       Project[]        @relation("ProjectOwner")
+  
 
   @@map("profiles")
   @@schema("public")
@@ -43,14 +50,13 @@ model Project {
   title          String
   deleted_at     DateTime?        @db.Timestamptz(6)
   created_at     DateTime?        @default(now()) @db.Timestamptz(6)
-
-  owner          Profile          @relation("ProjectOwner", fields: [owner_id], references: [id])
   members        ProjectMember[]
   categories     SettingCategory[]
   entities       SettingEntity[]
   checkpoints    Checkpoint[]
   live_drafts    LiveDraft[]
-
+  messages    ProjectMessage[]
+  owner          Profile          @relation("ProjectOwner", fields: [owner_id], references: [id])
   @@index([owner_id]) // 加速查找某人的所有專案
   @@map("projects")
   @@schema("public")
@@ -82,9 +88,9 @@ model SettingCategory {
   is_preset      Boolean?         @default(false)
   deleted_at     DateTime?        @db.Timestamptz(6)
   created_at     DateTime?        @default(now()) @db.Timestamptz(6)
-
-  project        Project          @relation(fields: [project_id], references: [id])
   entities       SettingEntity[]
+  project        Project          @relation(fields: [project_id], references: [id])
+  
 
   @@index([project_id, order_index]) // 複合索引：加速按順序抓取專案下的分類
   @@map("setting_categories")
@@ -121,12 +127,12 @@ model Checkpoint {
   target_id      String?          @db.Uuid
   delta_content  Json
   created_at     DateTime?        @default(now()) @db.Timestamptz(6)
-
+  analysis       AnalysisResult[]
   project        Project?         @relation(fields: [project_id], references: [id])
   author         Profile?         @relation(fields: [author_id], references: [id])
   parent         Checkpoint?      @relation("CheckpointHistory", fields: [parent_id], references: [id])
   children       Checkpoint[]     @relation("CheckpointHistory")
-  analysis       AnalysisResult[]
+  
 
   @@index([project_id, created_at]) // 加速查看專案的歷史變更線
   @@index([target_id])               // 快速找回特定章節/設定的歷史紀錄
@@ -158,6 +164,28 @@ model LiveDraft {
 
   @@id([project_id, user_id])
   @@map("live_drafts")
+  @@schema("public")
+}
+model ProjectMessage {
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content               String
+  author_id             String           @db.Uuid
+  project_id            String           @db.Uuid
+  mentions              String[]         @db.Uuid
+  referenced_file       String?          @db.Uuid
+  channel_id            String
+  referenced_message_id String?          @db.Uuid
+  created_at            DateTime         @default(now()) @db.Timestamptz(6)
+  author                Profile          @relation(fields: [author_id], references: [id], onDelete: SetNull)
+  project               Project          @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  parent_message        ProjectMessage?  @relation("MessageThreads", fields: [referenced_message_id], references: [id], onDelete: Cascade)
+  
+  
+  replies               ProjectMessage[] @relation("MessageThreads")
+
+  
+
+  @@map("project_messages")
   @@schema("public")
 }
 
