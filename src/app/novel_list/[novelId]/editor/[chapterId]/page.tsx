@@ -10,6 +10,9 @@ import { VersionsPanel } from '@/components/VersionsPanel'
 
 export default function ChapterEditorPage() {
   
+  // 設定集開關狀態
+  const [isSettingsOpen, setIsSettingsOpen] = useState(true);  
+
   // 建立要記住全螢幕顯示什麼的狀態，'none' 代表沒開，'discussion' 代表開討論區，'version' 代表開版本控制
   const [activeOverlay, setActiveOverlay] = useState<'none' | 'discussion' | 'version'>('none');
 
@@ -54,6 +57,12 @@ export default function ChapterEditorPage() {
           {/* 按下按鈕，切換全螢幕狀態 */}
           <button onClick={() => setActiveOverlay('discussion')} className="px-3 py-1 bg-blue-100 rounded">💬</button>
           <button onClick={() => setActiveOverlay('version')} className="px-3 py-1 bg-purple-100 rounded">🕰️</button>
+          <button 
+            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+            className="ml-4 px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
+          >
+            {isSettingsOpen ? '✕ 關閉設定集' : '打開設定集'}
+          </button>
         </div>
 
       </div>
@@ -61,7 +70,7 @@ export default function ChapterEditorPage() {
       {/* --- 左右分屏工作區 --- */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* 召喚你剛剛升級的編輯器，並把資料傳給它 */}
-        <div className="w-[50%] h-full flex flex-col border-r border-gray-300 relative bg-white">
+        <div className="`${isSettingsOpen ? 'w-[50%]' : 'w-full'} h-full flex flex-col border-r border-gray-300 relative bg-white">
           <Editor 
             novelId={novelId} 
             chapterId={chapterId} 
@@ -71,12 +80,14 @@ export default function ChapterEditorPage() {
         </div>
 
         {/* 這是設定集 */}
-        <div className="w-[50%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">          
-          <div className="flex flex-col items-center ">
-            <h3 className="text-2xl font-bold text-gray-800 mb-2 ">詳細設定區</h3>
-            <SettingsPanel/>
+        {isSettingsOpen && (
+          <div className="w-[50%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">          
+            <div className="flex flex-col items-center ">
+              <h3 className="text-2xl font-bold text-gray-800 mb-2 ">詳細設定區</h3>
+              <SettingsPanel/>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 只有當 activeOverlay 不是 'none' 的時候，才會渲染這塊佔滿全螢幕的 div */}
