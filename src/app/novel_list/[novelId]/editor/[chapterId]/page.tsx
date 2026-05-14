@@ -61,7 +61,7 @@ export default function ChapterEditorPage() {
             onClick={() => setIsSettingsOpen(!isSettingsOpen)}
             className="ml-4 px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
           >
-            {isSettingsOpen ? '✕ 關閉設定集' : '打開設定集'}
+            {isSettingsOpen ? '✕ 關閉設定集' : '◀ 打開設定集'}
           </button>
         </div>
 
@@ -70,7 +70,7 @@ export default function ChapterEditorPage() {
       {/* --- 左右分屏工作區 --- */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* 召喚你剛剛升級的編輯器，並把資料傳給它 */}
-        <div className="`${isSettingsOpen ? 'w-[50%]' : 'w-full'} h-full flex flex-col border-r border-gray-300 relative bg-white">
+        <div className={`${isSettingsOpen ? 'w-[50%]' : 'w-full'} h-full flex flex-col border-r transition-all duration-300`}>
           <Editor 
             novelId={novelId} 
             chapterId={chapterId} 
