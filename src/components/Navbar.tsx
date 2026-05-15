@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { ChevronDown, Sparkles } from "lucide-react"
+import { ChevronDown, BookOpenCheck } from "lucide-react"
+import { signIn, signOut, useSession } from "next-auth/react"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -14,13 +15,10 @@ type NavbarProps = {
   onLogout?: () => void
 }
 
-export default function Navbar({
-  onLogin,
-  onLogout,
-}: NavbarProps) {
-  const [isLoggedIn, setIsLoggedIn] = React.useState(false)
+export default function Navbar() {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
+  const { data: session, status } = useSession()
 
   const { isDiscussionOpen, toggleDiscussion } = useOverlay()
 
@@ -44,24 +42,15 @@ export default function Navbar({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [menuOpen])
 
-  const handleLogin = () => {
-    setIsLoggedIn(true)
-    setMenuOpen(false)
-    onLogin?.()
-  }
 
-  const handleLogout = () => {
-    setIsLoggedIn(false)
-    setMenuOpen(false)
-    onLogout?.()
-  }
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/70 bg-white/95 shadow-sm shadow-slate-200/40 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-slate-50 text-slate-900 shadow-sm">
-            <Sparkles className="h-5 w-5" />
+            {/* 書本圖示 logo */}
+            <BookOpenCheck className="h-5 w-5" />
           </div>
           <div>
             <p className="text-base font-semibold text-slate-950">Writer's Haven</p>
@@ -69,8 +58,8 @@ export default function Navbar({
         </div>
 
         <div className="flex items-center gap-3">
-          {!isLoggedIn ? (
-            <Button onClick={handleLogin} variant="default" size="default">
+          {status !== "authenticated" ? (
+            <Button onClick={() => signIn('google')} variant="default">
               登入
             </Button>
           ) : (
@@ -90,13 +79,14 @@ export default function Navbar({
               <div ref={menuRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => setMenuOpen((current) => !current)}
+                  onClick={() => setMenuOpen(!menuOpen)}
                   className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-3 py-2 text-sm font-medium text-slate-950 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300"
                 >
                   <Avatar size="sm">
-                    <AvatarFallback>你</AvatarFallback>
+                    <AvatarImage src={session?.user?.image || ""} />
+                    <AvatarFallback>{session?.user?.name?.charAt(0) || "你"}</AvatarFallback>
                   </Avatar>
-                  <span className="hidden sm:inline">使用者</span>
+                  <span className="hidden sm:inline">{session?.user?.name || "使用者"}</span>
                   <ChevronDown
                     className={cn(
                       "h-4 w-4 text-slate-600 transition-transform",
@@ -109,14 +99,14 @@ export default function Navbar({
                   <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-2xl border border-border/80 bg-white shadow-lg shadow-slate-200/50">
                     <div className="px-4 py-3">
                       <p className="text-sm font-semibold text-slate-950">
-                        使用者姓名
+                        {session?.user?.name}
                       </p>
                       <p className="text-xs text-slate-500">user@example.com</p>
                     </div>
                     <div className="border-t border-border/70" />
                     <button
                       type="button"
-                      onClick={handleLogout}
+                      onClick={() => signOut()}
                       className="w-full px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
                     >
                       登出

@@ -34,14 +34,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased` } suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <OverlayProvider>
-          <Providers>    
+        <Providers>
+          <OverlayProvider>    
             <Navbar />
             <main className="flex-grow">
               {children}
             </main>
-            </Providers>
-        </OverlayProvider>
+            </OverlayProvider>
+        </Providers>
       </body>      
     </html>
    
