@@ -47,28 +47,24 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     const currentContent = editor.getJSON()
 
     try {
-      const rawData = localStorage.getItem(`novel_${novelId}`)
-      if (!rawData) throw new Error("找不到小說資料")
-      
-      const novel = JSON.parse(rawData)
-
-      // 找到那個章節，並更新它的標題和內容
-      novel.chapters = novel.chapters.map((c: any) => {
-        if (c.id === chapterId) {
-          return { ...c, title: currentTitle, content: currentContent, updatedAt: new Date().toISOString() }
-        }
-        return c
+      // 呼叫我們剛剛寫好的 PATCH API
+      const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: currentTitle,
+          content: currentContent
+        })
       })
 
-      // 存回資料庫 (localStorage)
-      localStorage.setItem(`novel_${novelId}`, JSON.stringify(novel))
+      if (!res.ok) throw new Error("儲存失敗")
+
       setSaveStatus('● 已儲存')
     } catch (error) {
       console.error(error)
       setSaveStatus('❌ 儲存失敗')
     }
   }
-
   if (!editor) {
     return null
   }

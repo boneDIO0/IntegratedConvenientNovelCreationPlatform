@@ -3,104 +3,89 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
-interface NovelIndexItem {
+interface ProjectIndexItem {
   id: string;
   title: string;
-  updatedAt: string;
+  createdAt: string; 
 }
 
 export default function NovelListPage() {
   const router = useRouter()
-  const [novels, setNovels] = useState<NovelIndexItem[]>([])
+  const [projects, setProjects] = useState<ProjectIndexItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  // 🌟 新增：控制右鍵選單的狀態
-  const [contextMenu, setContextMenu] = useState({
-    visible: false,
-    x: 0,
-    y: 0,
-    novelId: null as string | null
-  })
+  // 狀態管理：右鍵選單、刪除彈窗、編輯彈窗
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, projectId: null as string | null })
+  const [deleteModal, setDeleteModal] = useState({ visible: false, projectId: null as string | null })
+  const [editModal, setEditModal] = useState({ visible: false, projectId: null as string | null, newTitle: '' })
 
-  // 🌟 新增：控制刪除彈窗與編輯彈窗的狀態
-  const [deleteModal, setDeleteModal] = useState({ visible: false, novelId: null as string | null })
-  const [editModal, setEditModal] = useState({ visible: false, novelId: null as string | null, newTitle: '' })
-
-  // 網頁載入時，從 localStorage 抓取「小說目錄」
-  useEffect(() => {
-    const storedNovels = localStorage.getItem('novels_index')
-    if (storedNovels) {
-      setNovels(JSON.parse(storedNovels))
+  const fetchProjects = async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/projects')
+      if (res.status === 401) {
+        alert("請先登入！")
+        return
+      }
+      const data = await res.json()
+      setProjects(data)
+    } catch (error) {
+      console.error("載入失敗", error)
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    // 🌟 全域點擊監聽：點擊畫面任何地方，就關閉右鍵選單
-    const handleClickOutside = () => setContextMenu({ visible: false, x: 0, y: 0, novelId: null })
+  useEffect(() => {
+    fetchProjects()
+    const handleClickOutside = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null })
     window.addEventListener('click', handleClickOutside)
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
-  const handleCreateNovel = () => {
-    const newId = crypto.randomUUID()
-    const newIndexItem: NovelIndexItem = { id: newId, title: '未命名的作品', updatedAt: new Date().toISOString() }
-    const updatedNovels = [newIndexItem, ...novels]
-    setNovels(updatedNovels)
-    localStorage.setItem('novels_index', JSON.stringify(updatedNovels))
-
-    const fullNovelData = { id: newId, title: '未命名的作品', authorId: 'guest_user', chapters: [], savedAt: new Date().toISOString() }
-    localStorage.setItem(`novel_${newId}`, JSON.stringify(fullNovelData))
-
-    router.push(`/novel_list/${newId}`)
-  }
-
-  // 🌟 處理右鍵點擊事件
-  const handleContextMenu = (e: React.MouseEvent, novelId: string) => {
-    e.preventDefault() // 阻止瀏覽器預設的右鍵選單
-    setContextMenu({
-      visible: true,
-      x: e.pageX, // 滑鼠 X 座標
-      y: e.pageY, // 滑鼠 Y 座標
-      novelId: novelId
-    })
-  }
-
-  // 🌟 確認刪除的處理邏輯
-  const handleDeleteConfirm = () => {
-    if (!deleteModal.novelId) return
-
-    // 1. 更新目錄 (拔掉這本書)
-    const updatedNovels = novels.filter(n => n.id !== deleteModal.novelId)
-    setNovels(updatedNovels)
-    localStorage.setItem('novels_index', JSON.stringify(updatedNovels))
-
-    // 2. 徹底銷毀實體資料
-    localStorage.removeItem(`novel_${deleteModal.novelId}`)
-
-    // 關閉彈窗
-    setDeleteModal({ visible: false, novelId: null })
-  }
-
-  // 🌟 確認編輯的處理邏輯
-  const handleEditConfirm = () => {
-    if (!editModal.novelId || !editModal.newTitle.trim()) return
-
-    // 1. 更新目錄的書名
-    const updatedNovels = novels.map(n => 
-      n.id === editModal.novelId 
-        ? { ...n, title: editModal.newTitle, updatedAt: new Date().toISOString() } 
-        : n
-    )
-    setNovels(updatedNovels)
-    localStorage.setItem('novels_index', JSON.stringify(updatedNovels))
-
-    // 2. 更新實體資料的書名
-    const fullDataStr = localStorage.getItem(`novel_${editModal.novelId}`)
-    if (fullDataStr) {
-      const fullData = JSON.parse(fullDataStr)
-      fullData.title = editModal.newTitle // 把裡面的書名也改掉
-      localStorage.setItem(`novel_${editModal.novelId}`, JSON.stringify(fullData))
+  const handleCreateProject = async () => {
+    try {
+      const res = await fetch('/api/projects', { method: 'POST' })
+      if (!res.ok) throw new Error('新增失敗')
+      const newProject = await res.json()
+      router.push(`/novel_list/${newProject.id}`)
+    } catch (error) {
+      alert("新增作品失敗")
     }
+  }
 
-    // 關閉彈窗
-    setEditModal({ visible: false, novelId: null, newTitle: '' })
+  // 🌟 觸發右鍵選單
+  const handleContextMenu = (e: React.MouseEvent, projectId: string) => {
+    e.preventDefault() 
+    setContextMenu({ visible: true, x: e.pageX, y: e.pageY, projectId: projectId })
+  }
+
+  // 🌟 呼叫刪除 API
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.projectId) return
+    try {
+      await fetch(`/api/projects/${deleteModal.projectId}`, { method: 'DELETE' })
+      setDeleteModal({ visible: false, projectId: null })
+      fetchProjects() // 重新拉取資料
+    } catch (error) {
+      alert("刪除失敗")
+    }
+  }
+
+  // 🌟 呼叫修改 API
+  const handleEditConfirm = async () => {
+    if (!editModal.projectId || !editModal.newTitle.trim()) return
+    try {
+      await fetch(`/api/projects/${editModal.projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editModal.newTitle })
+      })
+      setEditModal({ visible: false, projectId: null, newTitle: '' })
+      fetchProjects() // 重新拉取資料
+    } catch (error) {
+      alert("修改失敗")
+    }
   }
 
   const formatDate = (isoString: string) => {
@@ -108,16 +93,19 @@ export default function NovelListPage() {
     return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
   }
 
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">載入中...</div>
+  }
+
   return (
     <div className="min-h-screen bg-[#f8f9fa] text-gray-800 font-sans p-10 relative">
-      
       <div className="max-w-6xl mx-auto flex justify-between items-center mb-10">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">我的作品庫</h1>
           <p className="text-gray-500 mt-2">選擇一本小說開始撰寫，或點擊右鍵進行管理。</p>
         </div>
         <button 
-          onClick={handleCreateNovel}
+          onClick={handleCreateProject}
           className="bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95 flex items-center gap-2"
         >
           <span className="text-xl leading-none">+</span> 新增小說
@@ -125,126 +113,94 @@ export default function NovelListPage() {
       </div>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {novels.length === 0 ? (
+        {projects.length === 0 ? (
           <div className="col-span-full py-20 text-center text-gray-400 border-2 border-dashed border-gray-300 rounded-xl">
             目前還沒有作品，點擊右上角開始你的第一本小說吧！
           </div>
         ) : (
-          novels.map((novel) => (
+          projects.map((project) => (
             <div 
-              key={novel.id}
-              onClick={() => router.push(`/novel_list/${novel.id}`)}
-              onContextMenu={(e) => handleContextMenu(e, novel.id)} // 🌟 綁定右鍵事件
+              key={project.id}
+              onClick={() => router.push(`/novel_list/${project.id}`)}
+              onContextMenu={(e) => handleContextMenu(e, project.id)}
               className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group flex flex-col h-48"
             >
               <div className="flex-1">
                 <h2 className="text-xl font-bold text-gray-800 group-hover:text-blue-600 transition-colors line-clamp-2">
-                  {novel.title}
+                  {project.title}
                 </h2>
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="text-xs font-medium px-2 py-1 bg-gray-100 text-gray-600 rounded">連載中</span>
-                </div>
               </div>
-              
               <div className="border-t border-gray-100 pt-3 flex justify-between items-center mt-4">
-                <span className="text-xs text-gray-400">
-                  最後更新：{formatDate(novel.updatedAt)}
-                </span>
+                <span className="text-xs text-gray-400">建立於：{formatDate(project.createdAt)}</span>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* 🌟 1. 自訂右鍵選單 */}
+      {/* 🌟 裝回右鍵選單 */}
       {contextMenu.visible && (
         <div 
+          className="absolute bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50 w-32"
           style={{ top: contextMenu.y, left: contextMenu.x }}
-          className="absolute z-50 w-32 bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-sm overflow-hidden"
-          onClick={(e) => e.stopPropagation()} // 防止點擊選單時觸發背景的點擊事件
         >
           <button 
-            onClick={() => {
-              setContextMenu({ ...contextMenu, visible: false })
-              const novelToEdit = novels.find(n => n.id === contextMenu.novelId)
-              setEditModal({ visible: true, novelId: contextMenu.novelId, newTitle: novelToEdit?.title || '' })
+            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600"
+            onClick={(e) => {
+              e.stopPropagation()
+              const targetNovel = projects.find(n => n.id === contextMenu.projectId)
+              setEditModal({ visible: true, projectId: contextMenu.projectId, newTitle: targetNovel?.title || '' })
+              setContextMenu({ visible: false, x: 0, y: 0, projectId: null })
             }}
-            className="w-full text-left px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
           >
-            編輯書名
+            ✏️ 修改標題
           </button>
           <button 
-            onClick={() => {
-              setContextMenu({ ...contextMenu, visible: false })
-              setDeleteModal({ visible: true, novelId: contextMenu.novelId })
+            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+            onClick={(e) => {
+              e.stopPropagation()
+              setDeleteModal({ visible: true, projectId: contextMenu.projectId })
+              setContextMenu({ visible: false, x: 0, y: 0, projectId: null })
             }}
-            className="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 transition-colors"
           >
-            刪除小說
+            🗑️ 刪除作品
           </button>
         </div>
       )}
 
-      {/* 🌟 2. 編輯彈跳視窗 (Modal) */}
+      {/* 🌟 裝回編輯彈窗 */}
       {editModal.visible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 transform transition-all">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">重新命名小說</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setEditModal({...editModal, visible: false})}>
+          <div className="bg-white p-6 rounded-xl w-96 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-xl font-bold mb-4">修改小說標題</h2>
             <input 
               type="text" 
               value={editModal.newTitle}
               onChange={(e) => setEditModal({...editModal, newTitle: e.target.value})}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-6 text-gray-800"
-              placeholder="輸入新的書名..."
+              className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-blue-500 mb-6"
               autoFocus
             />
             <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setEditModal({ visible: false, novelId: null, newTitle: '' })}
-                className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-              >
-                取消
-              </button>
-              <button 
-                onClick={handleEditConfirm}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-              >
-                儲存變更
-              </button>
+              <button onClick={() => setEditModal({...editModal, visible: false})} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded">取消</button>
+              <button onClick={handleEditConfirm} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">儲存修改</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🌟 3. 刪除確認彈跳視窗 (Modal) */}
+      {/* 🌟 裝回刪除彈窗 */}
       {deleteModal.visible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center transform transition-all">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-red-500 text-3xl">⚠️</span>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">確定要刪除嗎？</h3>
-            <p className="text-gray-500 mb-6 text-sm">
-              刪除後將無法復原，這本小說的所有章節都會被永遠清除。
-            </p>
-            <div className="flex flex-col gap-2">
-              <button 
-                onClick={handleDeleteConfirm}
-                className="w-full py-2.5 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors"
-              >
-                是的，永久刪除
-              </button>
-              <button 
-                onClick={() => setDeleteModal({ visible: false, novelId: null })}
-                className="w-full py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg font-bold transition-colors"
-              >
-                取消
-              </button>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setDeleteModal({...deleteModal, visible: false})}>
+          <div className="bg-white p-6 rounded-xl w-96 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-xl font-bold mb-2 text-red-600">確定要刪除嗎？</h2>
+            <p className="text-gray-600 mb-6">此動作將把作品移至垃圾桶，確定要繼續嗎？</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteModal({...deleteModal, visible: false})} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded">取消</button>
+              <button onClick={handleDeleteConfirm} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-medium">確認刪除</button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   )
 }
