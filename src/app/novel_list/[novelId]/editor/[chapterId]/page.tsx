@@ -1,23 +1,20 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Editor from '@/components/Editor'
+import { useEditorUI } from '@/contexts/EditorUIContext'
 
 import { SettingsPanel } from '@/components/SettingsPanel'
-import { DiscussionBoard } from '@/components/DiscussionBoard'
 import { VersionsPanel } from '@/components/VersionsPanel'
 
 export default function ChapterEditorPage() {
   
-  // 設定集開關狀態
-  const [isSettingsOpen, setIsSettingsOpen] = useState(true);  
-
-  // 建立要記住全螢幕顯示什麼的狀態，'none' 代表沒開，'discussion' 代表開討論區，'version' 代表開版本控制
-  const [activeOverlay, setActiveOverlay] = useState<'none' | 'discussion' | 'version'>('none');
+  // 設定集 和 版本管理 開關狀態 ()
+  const { isSettingsOpen, activeOverlay, setActiveOverlay } = useEditorUI();  
 
   const params = useParams()
-  const router = useRouter()
+
   // 從網址列抓取小說 ID 和章節 ID
   const novelId = params.novelId as string
   const chapterId = params.chapterId as string
@@ -43,34 +40,13 @@ export default function ChapterEditorPage() {
   if (!initialData) return <div className="min-h-screen flex items-center justify-center">載入中...</div>
 
   return (
-    <div className="h-screen bg-[#f8f9fa] flex flex-col overflow-hidden">
+    <div className="h-[calc(100vh-3.5rem)] bg-[#f8f9fa] flex flex-col overflow-hidden relative">
       {/* 簡單的返回列 */}
-      <div className="bg-white border-b px-6 py-2 flex items-center justify-between gap-4 shrink-0 z-50">
-        <button 
-          onClick={() => router.push(`/novel_list/${novelId}`)}
-          className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors"
-        >
-          ← 返回章節列表
-        </button>
-
-        <div className="flex gap-2">
-          {/* 按下按鈕，切換全螢幕狀態 */}
-          <button onClick={() => setActiveOverlay('discussion')} className="px-3 py-1 bg-blue-100 rounded">💬</button>
-          <button onClick={() => setActiveOverlay('version')} className="px-3 py-1 bg-purple-100 rounded">🕰️</button>
-          <button 
-            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-            className="ml-4 px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
-          >
-            {isSettingsOpen ? '✕ 關閉設定集' : '◀ 打開設定集'}
-          </button>
-        </div>
-
-      </div>
 
       {/* --- 左右分屏工作區 --- */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* 召喚你剛剛升級的編輯器，並把資料傳給它 */}
-        <div className={`${isSettingsOpen ? 'w-[50%]' : 'w-full'} h-full flex flex-col border-r transition-all duration-300`}>
+        <div className={`${isSettingsOpen ? 'w-[55%]' : 'w-full'} h-full flex flex-col border-r transition-all duration-300`}>
           <Editor 
             novelId={novelId} 
             chapterId={chapterId} 
@@ -81,7 +57,7 @@ export default function ChapterEditorPage() {
 
         {/* 這是設定集 */}
         {isSettingsOpen && (
-          <div className="w-[50%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">          
+          <div className="w-[45%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">          
             <div className="flex flex-col items-center ">
               <h3 className="text-2xl font-bold text-gray-800 mb-2 ">詳細設定區</h3>
               <SettingsPanel/>
@@ -97,7 +73,7 @@ export default function ChapterEditorPage() {
           {/* 全螢幕的頂部：標題與叉叉按鈕 */}
           <div className="flex justify-between items-center p-4 border-b bg-gray-50 shadow-sm">
             <h2 className="text-xl font-bold">
-              {activeOverlay === 'discussion' ? '討論區' : '版本控制'}
+              版本控制
             </h2>
             {/* 按下叉叉使狀態設回 'none'，畫面會切換回編輯器 */}
             <button 
@@ -108,9 +84,8 @@ export default function ChapterEditorPage() {
             </button>
           </div>
 
-          {/* 全螢幕的內容區：把你的 Component 塞進來 */}
+          {/* 全螢幕內容區：版本 Component*/}
           <div className="flex-1 overflow-y-auto p-6 bg-gray-100">
-            {activeOverlay === 'discussion' && <DiscussionBoard />}
             {activeOverlay === 'version' && <VersionsPanel />}
           </div>
 

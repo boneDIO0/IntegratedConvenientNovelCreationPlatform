@@ -3,9 +3,13 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
+/* Providers */
 import { Providers } from "@/components/providers/Provider";
-import Navbar from "@/components/Navbar";
+import { EditorUIProvider } from '@/contexts/EditorUIContext';
 import { OverlayProvider } from "@/contexts/OverlayContext";
+
+import Navbar from "@/components/Navbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,12 +39,14 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <Providers>
-          <OverlayProvider>    
-            <Navbar />
-            <main className="flex-grow">
-              {children}
-            </main>
+          <EditorUIProvider>
+            <OverlayProvider>    
+              <Navbar />
+              <main className="flex-grow">
+                {children}
+              </main>
             </OverlayProvider>
+          </EditorUIProvider>
         </Providers>
       </body>      
     </html>

@@ -10,10 +10,18 @@ import { cn } from "@/lib/utils"
 
 import { useOverlay } from "@/contexts/OverlayContext"
 import { useRouter, usePathname } from "next/navigation"
+import { useEditorUI } from "@/contexts/EditorUIContext"
 
 export default function Navbar() {
   const router = useRouter()
   const pathname = usePathname()
+
+  const { isSettingsOpen, toggleSettings, setActiveOverlay } = useEditorUI()
+
+  // 偵測是否在編輯器頁面 (網址是否包含 /editor)
+  const isEditorPage = pathname?.includes('/editor');
+  // 從 /novel_list/novelId/editor/chapterId 中抓出 novelId
+  const novelId = isEditorPage ? pathname.split('/')[2] : '';
   
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
@@ -54,6 +62,16 @@ export default function Navbar() {
           <div>
             <p className="text-base font-semibold text-slate-950">Writer's Haven</p>
           </div>
+          <div className="ml-6">
+            {isEditorPage && (
+              <button 
+                onClick={() => router.push(`/novel_list/${novelId}`)}
+                className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors"
+              >
+                ← 返回章節列表
+              </button>
+            )}
+          </div>   
         </div>
 
         <div className="flex items-center gap-3">
@@ -76,7 +94,14 @@ export default function Navbar() {
               >
                 {isDiscussionOpen ? "👁️‍🗨️" : "🗨️"}
               </button>
-
+              {isEditorPage && (
+                <div className="flex gap-2 mr-4 border-r pr-4">
+                  <button onClick={() => setActiveOverlay('version')} className="px-3 py-1 bg-purple-100 rounded">🕰️</button>
+                  <button onClick={toggleSettings} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm">
+                    {isSettingsOpen ? '✕ 關閉設定集' : '◀ 打開設定集'}
+                  </button>
+                </div>
+              )}
               <div ref={menuRef} className="relative">
                 <button
                   type="button"
