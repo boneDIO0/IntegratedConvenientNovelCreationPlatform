@@ -89,6 +89,7 @@ model Project {
   liveDrafts      LiveDraft[]
   members         ProjectMember[]
   projectMessages ProjectMessages[]
+  chapters        Chapter[]
   owner           User           @relation("ProjectOwner", fields: [ownerId], references: [id])
   categories      SettingCategory[]
   entities        SettingEntity[]
@@ -229,5 +230,27 @@ model ProjectMessages {
   otherProjectMessages ProjectMessages[] @relation("RecursiveMessages")
 
   @@map("project_messages")
+  @@schema("public")
+}
+
+model Chapter {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId   String    @map("project_id") @db.Uuid
+  title       String    // 章節標題
+  content     Json?     @default("{}") //  Tiptap 的內容存成 JSON 格式最完美
+  orderIndex  Float     @default(0) @map("order_index") //  章節排序用
+  wordCount   Int       @default(0) @map("word_count") // 字數統計
+  status      String    @default("draft") // 狀態：例如 draft (草稿), published (發布)
+
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6) // 記錄最後編輯時間
+
+  // 關聯設定：這個章節屬於哪一本小說 (Project)
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // 建立索引：加快「讀取特定小說的章節列表」並按順序排列的速度
+  @@index([projectId, orderIndex])
+  @@map("chapters")
   @@schema("public")
 }

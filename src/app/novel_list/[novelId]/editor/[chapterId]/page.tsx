@@ -22,18 +22,29 @@ export default function ChapterEditorPage() {
   const [initialData, setInitialData] = useState<{title: string, content: any} | null>(null)
 
   useEffect(() => {
-    // 進入網頁時，去 localStorage 找到這本書的這個章節
-    const rawData = localStorage.getItem(`novel_${novelId}`)
-    if (rawData) {
-      const novel = JSON.parse(rawData)
-      const chapter = novel.chapters.find((c: any) => c.id === chapterId)
-      
-      if (chapter) {
+    // 🌟 核心修改：改為向雲端 API 請求這一個章節的資料
+    const fetchChapterData = async () => {
+      try {
+        const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`)
+        if (!res.ok) throw new Error("讀取章節失敗")
+        
+        const chapter = await res.json()
+        
+        // 判斷雲端傳回來的內容是不是空的 (因為我們一開始建立時塞了空物件 {})
+        const isEmptyContent = !chapter.content || Object.keys(chapter.content).length === 0
+        
         setInitialData({
           title: chapter.title,
-          content: chapter.content || '<p>開始你的創作...</p>'
+          content: isEmptyContent ? '<p>開始你的創作...</p>' : chapter.content
         })
+      } catch (error) {
+        console.error(error)
+        alert("無法載入章節資料，請回上一頁重試！")
       }
+    }
+
+    if (novelId && chapterId) {
+      fetchChapterData()
     }
   }, [novelId, chapterId])
 
@@ -105,7 +116,6 @@ export default function ChapterEditorPage() {
 
         </div>
       )}
-
 
     </div>
   )
