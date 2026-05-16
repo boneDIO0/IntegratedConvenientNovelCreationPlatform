@@ -9,13 +9,12 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 import { useOverlay } from "@/contexts/OverlayContext"
-
-type NavbarProps = {
-  onLogin?: () => void
-  onLogout?: () => void
-}
+import { useRouter, usePathname } from "next/navigation"
 
 export default function Navbar() {
+  const router = useRouter()
+  const pathname = usePathname()
+  
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const { data: session, status } = useSession()
@@ -59,9 +58,11 @@ export default function Navbar() {
 
         <div className="flex items-center gap-3">
           {status !== "authenticated" ? (
-            <Button onClick={() => signIn('google')} variant="default">
-              登入
-            </Button>
+            pathname !== '/login' && (
+              <Button onClick={() => router.push('/login')} variant="default">
+                登入
+              </Button>
+            )
           ) : (
             <div className="flex items-center gap-3">
               <button 
