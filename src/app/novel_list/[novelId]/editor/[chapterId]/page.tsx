@@ -22,7 +22,7 @@ export default function ChapterEditorPage() {
   const [initialData, setInitialData] = useState<{title: string, content: any} | null>(null)
 
   useEffect(() => {
-    // 🌟 核心修改：改為向雲端 API 請求這一個章節的資料
+    // 核心修改：改為向雲端 API 請求這一個章節的資料
     const fetchChapterData = async () => {
       try {
         const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`)
@@ -52,7 +52,6 @@ export default function ChapterEditorPage() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] bg-[#f8f9fa] flex flex-col overflow-hidden relative">
-      {/* 簡單的返回列 */}
 
       {/* --- 左右分屏工作區 --- */}
       <div className="flex-1 flex overflow-hidden relative">

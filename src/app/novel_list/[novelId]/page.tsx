@@ -18,7 +18,7 @@ export default function ChapterListPage() {
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // 🌟 從 API 獲取資料
+  // 從 API 獲取資料
   const fetchData = async () => {
     try {
       const res = await fetch(`/api/projects/${novelId}/chapters`)
@@ -37,7 +37,7 @@ export default function ChapterListPage() {
     if (novelId) fetchData()
   }, [novelId])
 
-  // 🌟 新增章節的邏輯
+  // 新增章節的邏輯
   const handleCreateChapter = async () => {
     try {
       const res = await fetch(`/api/projects/${novelId}/chapters`, { method: 'POST' })
@@ -61,13 +61,6 @@ export default function ChapterListPage() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-10">
       <div className="max-w-4xl mx-auto">
-        
-        <button 
-          onClick={() => router.push('/novel_list')}
-          className="text-blue-500 hover:underline mb-6 flex items-center gap-1"
-        >
-          ← 回到作品庫
-        </button>
 
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">{novelTitle}</h1>

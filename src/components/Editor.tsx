@@ -99,6 +99,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                   type="text" 
                   defaultValue={initialTitle} // 🌟 預設值改成傳進來的標題
                   onChange={() => setSaveStatus('編輯中...')}
+                  autoComplete="off"
                   className="text-left text-lg font-semibold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent px-2 py-0.5 transition-all w-64"
                 />
                 <span className={`text-xs font-medium transition-colors ${saveStatus.includes('已儲存') ? 'text-green-600' : 'text-gray-400'}`}>

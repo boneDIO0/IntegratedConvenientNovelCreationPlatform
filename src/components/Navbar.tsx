@@ -18,10 +18,10 @@ export default function Navbar() {
 
   const { isSettingsOpen, toggleSettings, setActiveOverlay } = useEditorUI()
 
-  // 偵測是否在編輯器頁面 (網址是否包含 /editor)
+  // 🌟 1. 偵測目前在哪個頁面
   const isEditorPage = pathname?.includes('/editor');
-  // 從 /novel_list/novelId/editor/chapterId 中抓出 novelId
-  const novelId = isEditorPage ? pathname.split('/')[2] : '';
+  // 如果網址包含 /novel_list/ 且不是編輯器，且不是首頁(/novel_list)，那就是章節列表頁
+  const isChapterListPage = pathname?.startsWith('/novel_list/') && !isEditorPage && pathname !== '/novel_list';
   
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
@@ -49,31 +49,43 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [menuOpen])
 
-
-
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/70 bg-white/95 shadow-sm shadow-slate-200/40 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+      {/* 🌟 2. 移除原先的 mx-auto 和 max-w-7xl，加入 w-full 讓內容往左右兩側靠 */}
+      <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+        
+        {/* 左側區塊：Logo + 標題 + 返回按鈕 */}
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-slate-50 text-slate-900 shadow-sm">
-            {/* 書本圖示 logo */}
             <BookOpenCheck className="h-5 w-5" />
           </div>
           <div>
             <p className="text-base font-semibold text-slate-950">Writer's Haven</p>
           </div>
-          <div className="ml-6">
+          
+          <div className="ml-6 flex items-center">
+            {/* 編輯器頁面的返回按鈕 */}
             {isEditorPage && (
               <button 
-                onClick={() => router.push(`/novel_list/${novelId}`)}
+                onClick={() => router.back()}
                 className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors"
               >
                 ← 返回章節列表
               </button>
             )}
+            {/* 章節列表頁面的返回按鈕 */}
+            {isChapterListPage && (
+              <button 
+                onClick={() => router.back()}
+                className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors"
+              >
+                ← 返回作品庫
+              </button>
+            )}
           </div>   
         </div>
 
+        {/* 右側區塊：使用者選單與工具列 */}
         <div className="flex items-center gap-3">
           {status !== "authenticated" ? (
             pathname !== '/login' && (
@@ -88,8 +100,8 @@ export default function Navbar() {
                 className={cn(
                   "px-3 py-1 rounded transition-colors duration-200",
                   isDiscussionOpen 
-                    ? "bg-slate-700 hover:bg-slate-800 text-white" // 打開時變深色
-                    : "bg-blue-100 hover:bg-blue-200 text-blue-700" // 關閉時是亮色
+                    ? "bg-slate-700 hover:bg-slate-800 text-white" 
+                    : "bg-blue-100 hover:bg-blue-200 text-blue-700" 
                 )}
               >
                 {isDiscussionOpen ? "👁️‍🗨️" : "🗨️"}
@@ -147,4 +159,3 @@ export default function Navbar() {
     </nav>
   )
 }
-
