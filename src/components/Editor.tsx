@@ -26,7 +26,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     content: initialContent || '<p>開始撰寫你的偉大故事...</p>', // 🌟 讀取傳進來的內容
     editorProps: {
       attributes: {
-        class: 'prose max-w-none focus:outline-none min-h-[800px]',
+        class: 'prose max-w-none focus:outline-none min-h-[800px] text-[20px] leading-relaxed',
       },
     },
     onTransaction: () => {
