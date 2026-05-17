@@ -3,7 +3,14 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
+/* Providers */
 import { Providers } from "@/components/providers/Provider";
+import { EditorUIProvider } from '@/contexts/EditorUIContext';
+import { OverlayProvider } from "@/contexts/OverlayContext";
+
+import Navbar from "@/components/Navbar";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -26,16 +33,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased` } suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-          <Providers>
-          {children}
-          </Providers>
-        </body>
+        <Providers>
+          <EditorUIProvider>
+            <OverlayProvider>    
+              <Navbar />
+              <main className="flex-grow">
+                {children}
+              </main>
+            </OverlayProvider>
+          </EditorUIProvider>
+        </Providers>
+      </body>      
     </html>
    
   );
