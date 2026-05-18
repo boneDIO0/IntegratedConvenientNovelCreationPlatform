@@ -86,7 +86,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
   return (
     <div className="flex flex-col w-full h-screen overflow-y-auto bg-[#f8f9fa]">
-      <div className="sticky top-0 z-50 flex flex-col bg-[#f8f9fa]/95 backdrop-blur-sm border-b border-gray-300 shadow-sm">
+      <div className="sticky top-0  flex flex-col bg-[#f8f9fa]/95 backdrop-blur-sm border-b border-gray-300 shadow-sm">
         <div className="flex justify-between items-center px-6 py-3">
           <div className="flex items-center gap-4">
             <div className="w-16 h-8 bg-blue-600 rounded text-white flex items-center justify-center font-bold text-sm shadow-sm">

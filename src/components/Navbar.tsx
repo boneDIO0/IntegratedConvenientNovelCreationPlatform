@@ -134,7 +134,7 @@ export default function Navbar() {
                 </button>
 
                 {menuOpen ? (
-                  <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-2xl border border-border/80 bg-white shadow-lg shadow-slate-200/50">
+                  <div className="absolute right-0 z-[1000] mt-2 w-44 overflow-hidden rounded-2xl border border-border/80 bg-white shadow-lg shadow-slate-200/50">
                     <div className="px-4 py-3">
                       <p className="text-sm font-semibold text-slate-950">
                         {session?.user?.name}
