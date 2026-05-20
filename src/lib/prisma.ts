@@ -1,4 +1,3 @@
-// src/lib/prisma.ts
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
@@ -19,6 +18,7 @@ const prismaClientSingleton = () => {
   });
 };
 
+<<<<<<< Updated upstream
 type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
 
 const globalForPrisma = globalThis as unknown as {
@@ -29,4 +29,16 @@ export const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
+=======
+declare global {
+  var prismaGlobal: ReturnType<typeof prismaClientSingleton> | undefined;
+}
+
+// 🌟 標準寫法：先確保 global 變數被賦值，再統一匯出
+if (!globalThis.prismaGlobal) {
+  globalThis.prismaGlobal = prismaClientSingleton();
+}
+
+export const prisma = globalThis.prismaGlobal;
+>>>>>>> Stashed changes
 export default prisma;

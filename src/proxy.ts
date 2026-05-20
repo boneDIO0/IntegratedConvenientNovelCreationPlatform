@@ -1,6 +1,6 @@
 ﻿import { NextResponse, type NextRequest } from 'next/server';
 import { getToken } from "next-auth/jwt";
-import { authConfig } from "@/lib/auth/config";
+
 
 
 export async function proxy(request: NextRequest) {
