@@ -7,7 +7,11 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
 
-export function DiscussionBoard() {
+import { useSession } from 'next-auth/react';
+
+export function DiscussionBoard({ novelId }: { novelId: string }) {
+
+  const { data: session } = useSession();
 
   /* 建立狀態儲存使用者的輸入和 API 的回應
      記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
@@ -20,9 +24,9 @@ export function DiscussionBoard() {
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch('/api/discussions');
+      const res = await fetch(`/api/discussions?projectId=${novelId}`);
       const data = await res.json();
-      setMessages(data);
+      setMessages(data.data);
     } catch (error) {
       console.error('抓取留言失敗', error);
     }
@@ -38,6 +42,11 @@ export function DiscussionBoard() {
     // 防呆: 如果什麼都沒打就不理他
     if (!content.trim()) return; 
 
+    if (!session?.user?.id) {
+      alert("請先登入才能留言！");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -45,7 +54,8 @@ export function DiscussionBoard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          authorName: '初級寫手', // Demo 先寫死
+          projectId: novelId,
+          authorId: session.user.id,
           content: content // 放入 textarea 取得的純文字
         }),
       });
@@ -126,7 +136,7 @@ export function DiscussionBoard() {
           messages.map((msg) => (
             <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
               <div className="flex justify-between items-center mb-2">
-                <span className="font-bold text-sm text-blue-600">{msg.authorName}</span>
+                <span className="font-bold text-sm text-blue-600">{msg.users?.name || '未知使用者'}</span>
                 
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-400">

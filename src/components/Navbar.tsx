@@ -30,6 +30,8 @@ export default function Navbar() {
   // 如果網址包含 /novel_list/ 且不是編輯器，且不是首頁(/novel_list)，那就是章節列表頁
   const isChapterListPage = pathname?.startsWith('/novel_list/') && !isEditorPage && pathname !== '/novel_list';
   
+  const currentNovelId = (isEditorPage || isChapterListPage) ? pathname.split('/')[2] : null;
+
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const { data: session, status } = useSession()
@@ -102,17 +104,19 @@ export default function Navbar() {
             )
           ) : (
             <div className="flex items-center gap-3">
+              {currentNovelId && (
               <button 
-                onClick={handleDiscussionClick} 
-                className={cn(
-                  "px-3 py-1 rounded transition-colors duration-200",
-                  isDiscussionOpen 
-                    ? "bg-slate-700 hover:bg-slate-800 text-white" 
-                    : "bg-blue-100 hover:bg-blue-200 text-blue-700" 
-                )}
-              >
-                {isDiscussionOpen ? "👁️‍🗨️" : "🗨️"}
-              </button>
+                  onClick={handleDiscussionClick} 
+                  className={cn(
+                    "px-3 py-1 rounded transition-colors duration-200",
+                    isDiscussionOpen 
+                      ? "bg-slate-700 hover:bg-slate-800 text-white" 
+                      : "bg-blue-100 hover:bg-blue-200 text-blue-700" 
+                  )}
+                >
+                  {isDiscussionOpen ? "👁️‍🗨️" : "🗨️"}
+                </button>
+              )}
               {isEditorPage && (
                   <div className="flex items-center gap-2 mr-4 border-r pr-4">
                     {/* 修改後的歷史紀錄按鈕 */}
