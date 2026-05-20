@@ -51,7 +51,7 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/70 bg-white/95 shadow-sm shadow-slate-200/40 backdrop-blur">
-      {/* 🌟 2. 移除原先的 mx-auto 和 max-w-7xl，加入 w-full 讓內容往左右兩側靠 */}
+      {/* 2. 移除原先的 mx-auto 和 max-w-7xl，加入 w-full 讓內容往左右兩側靠 */}
       <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         
         {/* 左側區塊：Logo + 標題 + 返回按鈕 */}

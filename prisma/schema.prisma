@@ -163,7 +163,7 @@ model Checkpoint {
   commitMsg    String?          @map("commit_msg")
   targetType   String           @map("target_type")
   targetId     String?          @map("target_id") @db.Uuid
-  deltaContent Json             @map("delta_content")
+  content      Json             
   createdAt    DateTime?        @default(now()) @map("created_at") @db.Timestamptz(6)
   analysis     AnalysisResult[]
   author       User?         @relation(fields: [authorId], references: [id])
