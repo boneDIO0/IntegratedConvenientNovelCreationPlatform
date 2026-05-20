@@ -1,23 +1,25 @@
-// src/components/CharacterForm.tsx
+'use client'
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { SettingItem } from "@/lib/mockSettings"
 import { useState } from "react";
 
-// 🌟 1. 新增 Interface，並接收 onSave 函式與 allSettings
 interface CharacterFormProps {
-  item: SettingItem & { titles?: string[] }; // 🌟 告訴 TS 我們可能會有多個稱號
-  onSave: (updatedItem: SettingItem) => void | Promise<void>; // 🌟 允許非同步
+  item: SettingItem & { 
+    titles?: string[];
+    relations?: { targetId: string; type: string }[]; // 確保介面定義完整
+  };
+  onSave: (updatedItem: SettingItem) => void | Promise<void>;
   allSettings?: { category: string; items: SettingItem[] }[]; 
 }
 
-export default function CharacterForm({ item, onSave, allSettings = [] }: CharacterFormProps) { // 預設給空陣列防呆
+export default function CharacterForm({ item, onSave, allSettings = [] }: CharacterFormProps) {
 
-  // 🌟 2. 新增基本欄位的狀態 (這樣修改後才能存檔)
+  // 基本欄位狀態
   const [name, setName] = useState(item.name || "");
   const [faction, setFaction] = useState(item.faction || "independent");
   const [description, setDescription] = useState(item.description || "");
@@ -32,12 +34,26 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
     item.customFields || []
   );
 
+  // 🌟 1. 關聯人物狀態：初始化當前角色的關聯
+  const [relations, setRelations] = useState<{ targetId: string; type: string }[]>(
+    item.relations || []
+  );
+  
+  // 🌟 臨時狀態：暫存目前畫面上選擇的關聯對象與關係類型
+  const [selectedTargetId, setSelectedTargetId] = useState("");
+  const [relationType, setRelationType] = useState("好友");
+
   const [saveStatus, setSaveStatus] = useState("儲存人物設定");
 
-  // 🌟 動態抓取全世界的所有組織 (Faction)
+  // 動態抓取全世界的所有組織 (Faction)
   const availableFactions = allSettings.flatMap(group => 
     group.items.filter(i => i.category === 'faction')
   );
+
+  // 🌟 2. 用你提議的方法，動態抓取全作品的所有「其他角色」作為可關聯候選人
+  const availableCharacters = allSettings
+    .flatMap(group => group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-'))) // 相容可能的人物分類標記
+    .filter(char => char.id !== item.id && char.name !== name); // 排除自己
 
   const handleAddTitle = () => setTitles([...titles, ""]);
   const handleRemoveTitle = (indexToRemove: number) => setTitles(titles.filter((_, index) => index !== indexToRemove));
@@ -61,28 +77,45 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
     setCustomFields(newFields);
   };
 
-  // 🌟 3. 實作點擊儲存按鈕的邏輯
+  // 🌟 3. 新增關聯處理函式
+  const handleAddRelation = () => {
+    if (!selectedTargetId) return;
+    // 檢查是否已經存在相同人的關聯
+    if (relations.some(r => r.targetId === selectedTargetId)) {
+      alert("已存在與該角色的關聯設定！");
+      return;
+    }
+    setRelations([...relations, { targetId: selectedTargetId, type: relationType }]);
+    setSelectedTargetId(""); // 加完後重設選擇器
+  };
+
+  // 🌟 4. 移除關聯處理函式
+  const handleRemoveRelation = (targetIdToRemove: string) => {
+    setRelations(relations.filter(r => r.targetId !== targetIdToRemove));
+  };
+
+  // 實作點擊儲存按鈕的邏輯
   const handleSaveClick = async () => {
     const updatedItem = {
       ...item,
       name: name,
       faction: faction,
       description: description,
-      title: titles[0] || "", // 保留舊屬性相容性
-      titles: titles,         // 🌟 關鍵：把整個稱號陣列打包塞進 JSON 裡！
-      customFields: customFields
+      title: titles[0] || "", 
+      titles: titles,         
+      customFields: customFields,
+      relations: relations // 🌟 5. 將最新的關係陣列一起打包塞進 JSON 送給後端！
     };
     
-    setSaveStatus("儲存中..."); // 按下瞬間改變文字
+    setSaveStatus("儲中...");
     
     try {
-      await onSave(updatedItem); // 等待 SettingsPanel 把資料打給後端
+      await onSave(updatedItem); 
       setSaveStatus("✅ 儲存成功！");
     } catch (error) {
       setSaveStatus("❌ 儲存失敗");
     }
 
-    // 兩秒後把按鈕文字變回原樣
     setTimeout(() => {
       setSaveStatus("儲存人物設定");
     }, 2000);
@@ -102,13 +135,11 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
         
         <div className="space-y-2">
           <h2 className="text-2xl font-bold text-slate-900">{name || "未命名人物"}</h2>
-          {/* 🌟 加上 flex-wrap 避免稱號太多超出邊界 */}
           <div className="flex gap-2 flex-wrap"> 
             <Badge variant="default" className="bg-amber-600 hover:bg-amber-700">
               {availableFactions.find(f => f.id === faction)?.name || '無所屬'}
             </Badge>
 
-            {/* 🌟 修正：過濾掉空字串，並把所有稱號都 map 出來！ */}
             {titles.filter(t => t.trim() !== "").map((title, index) => (
               <Badge key={index} variant="outline">{title}</Badge>
             ))}
@@ -123,7 +154,6 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
           <Input id="name" value={name} onChange={(e) => setName(e.target.value)} /> 
         </div>
 
-        {/* 🌟 替換為動態產生的下拉選單 */}
         <div className="space-y-2">
           <label className="text-sm font-semibold text-slate-700">所屬陣營</label>
           <select
@@ -181,7 +211,7 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
           />
         </div>
 
-        {/* 核心升級：世界觀自訂欄位引擎 */}
+        {/* 世界觀自訂欄位引擎 */}
         <div className="grid gap-2 pt-4 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <Label className="text-slate-700 font-bold flex items-center gap-2">
@@ -229,18 +259,62 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
           </div>
         </div>
 
-        {/* 關係顯示區塊 */}
+        {/* 🌟 核心修改：動態關係建立與顯示區塊 */}
         <div className="grid gap-2 pt-4 border-t border-slate-100">
-          <Label>關聯人物</Label>
-          <div className="flex flex-wrap gap-2 p-3 rounded-md border border-slate-200 bg-slate-50">
-            {item.relations && item.relations.length > 0 ? (
-              item.relations.map((rel, index) => (
-                <Badge key={index} variant="secondary" className="text-sm py-1 bg-white shadow-sm border-slate-200">
-                  與 {rel.targetId} ({rel.type})
-                </Badge>
-              ))
+          <Label className="font-bold text-slate-700">關聯人物設定</Label>
+          
+          {/* 選擇與新增控制列 */}
+          <div className="flex flex-wrap gap-2 items-center mb-2">
+            <select
+              value={selectedTargetId}
+              onChange={(e) => setSelectedTargetId(e.target.value)}
+              className="rounded-md border border-slate-300 p-2 text-sm focus:border-blue-500 focus:outline-none bg-white min-w-[180px]"
+            >
+              <option value="">-- 選擇關聯對象 --</option>
+              {availableCharacters.map(char => (
+                <option key={char.id} value={char.id}>{char.name}</option>
+              ))}
+            </select>
+
+            <Input 
+              value={relationType} 
+              onChange={(e) => setRelationType(e.target.value)} 
+              placeholder="關係 (例如：宿敵、親屬)" 
+              className="w-32 h-9"
+            />
+
+            <button
+              type="button"
+              onClick={handleAddRelation}
+              disabled={!selectedTargetId}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold px-4 py-2 h-9 rounded-md transition-colors"
+            >
+              + 建立連結
+            </button>
+          </div>
+
+          {/* 渲染現有的關聯標籤 */}
+          <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-slate-200 bg-slate-50 min-h-[60px] items-center">
+            {relations.length > 0 ? (
+              relations.map((rel, index) => {
+                // 從 allSettings 中反向查出該 targetId 的真實姓名，查不到就顯示原 ID
+                const targetName = availableCharacters.find(c => c.id === rel.targetId)?.name || rel.targetId;
+                return (
+                  <Badge key={index} variant="secondary" className="text-sm py-1 px-3 bg-white shadow-sm border-slate-200 flex items-center gap-2 group">
+                    <span>👤 與 <strong className="text-blue-700">{targetName}</strong> 的關係是【{rel.type}】</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRelation(rel.targetId)}
+                      className="text-slate-400 hover:text-red-500 font-bold text-xs transition-colors"
+                      title="解除此關聯"
+                    >
+                      ✕
+                    </button>
+                  </Badge>
+                )
+              })
             ) : (
-              <span className="text-sm text-slate-400">目前無關聯設定</span>
+              <span className="text-sm text-slate-400">目前無關聯設定，請用上方選擇器建立人物連結。</span>
             )}
           </div>
         </div>
@@ -249,10 +323,10 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
         <button 
           onClick={handleSaveClick}
-          disabled={saveStatus !== "儲存人物設定"} // 儲存期間暫時禁用按鈕防連點
+          disabled={saveStatus !== "儲存人物設定"} 
           className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white px-6 py-2 rounded-md font-medium transition-colors"
         >
-          {saveStatus} {/* 🌟 顯示動態文字 */}
+          {saveStatus} 
         </button>
       </div>
     </div>

@@ -33,8 +33,11 @@ export default function ChapterListPage() {
     }
   }
 
+  // 🌟 修正處：明確使用區塊語法包裹，防止 TS 將特定變數誤判為 Boolean 簽章呼叫
   useEffect(() => {
-    if (novelId) fetchData()
+    if (novelId) {
+      fetchData()
+    }
   }, [novelId])
 
   // 新增章節的邏輯
@@ -64,12 +67,25 @@ export default function ChapterListPage() {
 
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">{novelTitle}</h1>
-          <button 
-            onClick={handleCreateChapter}
-            className="bg-green-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
-          >
-            + 新增章節
-          </button>
+          
+          {/* 按鈕群組 */}
+          <div className="flex items-center gap-3">
+            {/* 通往全螢幕設定集的按鈕 */}
+            <button 
+              onClick={() => router.push(`/novel_list/${novelId}/settings`)}
+              className="border border-green-600 text-green-600 px-5 py-2 rounded-lg font-bold hover:bg-green-50 transition-all flex items-center gap-2"
+            >
+              ⚙️ 作品設定集
+            </button>
+
+            {/* 原本的新增章節按鈕 */}
+            <button 
+              onClick={handleCreateChapter}
+              className="bg-green-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
+            >
+              + 新增章節
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

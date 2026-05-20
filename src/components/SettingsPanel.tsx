@@ -1,4 +1,3 @@
-// src/components/SettingsPanel.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -13,7 +12,6 @@ import EventForm from "@/components/EventForm";
 import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 
-// 🌟 1. 配合 page.tsx 與資料庫 schema，將屬性改為 projectId
 interface SettingsPanelProps {
   projectId: string;
 }
@@ -25,13 +23,14 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline'>('form');
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
 
+  // 🌟 追蹤當前表單是否有被修改且未儲存
+  const [hasChanges, setHasChanges] = useState(false);
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        // 🌟 2. 讀取時：把 projectId 帶在網址後面給後端過濾
         const res = await fetch(`/api/settings?projectId=${projectId}`); 
         if (!res.ok) throw new Error('讀取資料失敗');
-        
         const data = await res.json();
         
         if (data && data.length > 0) {
@@ -49,7 +48,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
     if (projectId) {
       fetchSettings();
     }
-  }, [projectId]); // 🌟 加入 dependency
+  }, [projectId]); 
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -66,7 +65,22 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [settingsData.length]);
 
-  // 更新與儲存項目 (更新單一實體通常靠 id 即可，但為了安全起見，後端也應確認權限)
+  const confirmLeave = () => {
+    if (hasChanges) {
+      const isUserSure = window.confirm("⚠️ 您有未儲存的變更！如果離開，目前修改的內容將會消失。確定要離開嗎？");
+      
+      // 🌟 核心修正：如果使用者按下「確定」決定放棄變更離開
+      if (isUserSure) {
+        setHasChanges(false); // 帳勾銷！把狀態洗白回「乾淨」，避免下一頁無限循環跳彈窗
+        return true;          // 允許這次跳轉
+      }
+      
+      return false; // 使用者按取消，留在原地
+    }
+    return true; // 本來就沒有變更，直接放行
+  };
+
+  // 更新與儲存項目
   const handleUpdateItem = async (updatedItem: SettingItem) => {
     setSettingsData(prevData => {
       return prevData.map(group => {
@@ -81,6 +95,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
     });
     
     setSelectedItem(updatedItem); 
+    setHasChanges(false); // 🌟 儲存成功後，恢復安全狀態
 
     try {
       const res = await fetch(`/api/settings/${updatedItem.id}`, {
@@ -121,7 +136,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
               type: 'new_category', 
               name: group.category,
               categoryType: getCategoryType(group.category),
-              projectId: projectId // 🌟 3. 套用模板時，綁定到這本小說
+              projectId: projectId 
             })
           })
         )
@@ -132,6 +147,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
   };
 
   const handleEventHighlight = (ids: string[]) => {
+    if (!confirmLeave()) return; 
     setHighlightedIds(ids);
     setViewMode('graph'); 
   };
@@ -141,7 +157,8 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
       const found = group.items.find(item => item.id === nodeId);
       if (found) {
         setSelectedItem(found);
-        setViewMode('timeline');
+        setViewMode('form'); 
+        setHasChanges(false); 
         break;
       }
     }
@@ -149,6 +166,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
 
   // 新增項目
   const handleAddItem = async (categoryName: string, type: string) => {
+    if (!confirmLeave()) return; 
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -157,7 +175,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
           categoryName: categoryName,
           type: type, 
           item: { name: "未命名新項目" },
-          projectId: projectId // 🌟 4. 新增項目時，綁定到這本小說
+          projectId: projectId 
         })
       });
 
@@ -175,6 +193,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
       
       setSelectedItem(realItem);
       setViewMode('form');
+      setHasChanges(false); 
     } catch (error) {
       console.error(error);
       alert('新增失敗！請確認資料庫狀態。');
@@ -191,6 +210,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
     
     if (selectedItem?.id === itemId) {
       setSelectedItem(null);
+      setHasChanges(false);
     }
 
     try {
@@ -217,7 +237,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
         body: JSON.stringify({ 
           type: 'new_category', 
           name: newCategoryName,
-          projectId: projectId // 🌟 5. 新增目錄時，綁定到這本小說
+          projectId: projectId 
         })
       });
     } catch (error) {
@@ -227,65 +247,37 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
 
   const handleDeleteCategory = async (categoryName: string) => {
     if (confirm(`確定要刪除「${categoryName}」目錄嗎？裡面的所有設定將會一併消失！`)) {
-      
       setSettingsData(prev => prev.filter(g => g.category !== categoryName));
-      
       if (selectedItem?.category === categoryName || selectedItem?.category === 'custom') {
         setSelectedItem(null);
         setViewMode('form');
+        setHasChanges(false);
       }
-
       try {
-        const res = await fetch('/api/settings', {
+        await fetch('/api/settings', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            action: 'delete_category', 
-            categoryName: categoryName,
-            projectId: projectId // 🌟 6. 刪除目錄時，告訴後端是哪本小說的目錄
-          })
+          body: JSON.stringify({ action: 'delete_category', categoryName: categoryName, projectId: projectId })
         });
-
-        if (!res.ok) throw new Error('伺服器回應錯誤');
       } catch (error) {
         console.error('刪除目錄失敗:', error);
-        alert('⚠️ 目錄刪除失敗，請確認網路或資料庫狀態。');
       }
     }
   };
 
-  // 重新命名目錄
   const handleRenameCategory = async (oldName: string, newName: string) => {
     if (!newName.trim() || oldName === newName) return;
-
     setSettingsData(prev => {
-      return prev.map(group => {
-        if (group.category === oldName) {
-          return {
-            ...group,
-            category: newName,
-          };
-        }
-        return group;
-      });
+      return prev.map(group => group.category === oldName ? { ...group, category: newName } : group);
     });
-
     try {
-      const res = await fetch('/api/settings', {
+      await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'rename_category', 
-          oldName: oldName, 
-          newName: newName,
-          projectId: projectId // 🌟 7. 改名時，也帶上 projectId
-        })
+        body: JSON.stringify({ action: 'rename_category', oldName, newName, projectId })
       });
-      
-      if (!res.ok) throw new Error('伺服器回應錯誤');
     } catch (error) {
-      console.error('更新目錄名稱失敗:', error);
-      alert('⚠️ 目錄名稱修改失敗，請確認網路或資料庫狀態。');
+      console.error(error);
     }
   };
 
@@ -297,7 +289,6 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
             <h1 className="text-4xl font-bold text-slate-900">建立你的新專案</h1>
             <p className="text-slate-500">請選擇一個預設模板，或從完全空白的畫布開始。</p>
           </div>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {PLATFORM_TEMPLATES.map((template) => (
               <button
@@ -305,13 +296,9 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
                 onClick={() => handleSelectTemplate(template)}
                 className="flex flex-col items-start p-6 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:shadow-md transition-all text-left group"
               >
-                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">
-                  {template.icon}
-                </div>
+                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">{template.icon}</div>
                 <h3 className="text-xl font-bold text-slate-800 mb-2">{template.name}</h3>
-                <p className="text-slate-500 text-sm leading-relaxed">
-                  {template.description}
-                </p>
+                <p className="text-slate-500 text-sm leading-relaxed">{template.description}</p>
               </button>
             ))}
           </div>
@@ -328,8 +315,10 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
         <SettingsSidebar 
           data={settingsData}
           onSelect={(item) => {
+            if (!confirmLeave()) return; 
             setSelectedItem(item);
             setViewMode('form'); 
+            setHasChanges(false); 
           }} 
           selectedId={selectedItem?.id} 
           onAdd={handleAddItem}
@@ -345,7 +334,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-slate-800">
-                {viewMode === 'graph' ? '全域人物關係圖' : selectedItem ? `${selectedItem.name} (編輯中)` : "未選取項目"}
+                {viewMode === 'graph' ? '全域人物關係圖' : selectedItem ? `${selectedItem.name} ${hasChanges ? '*(已修改)' : '(編輯中)'}` : "未選取項目"}
               </h1>
               
               {selectedItem && viewMode === 'form' && (
@@ -370,7 +359,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
             
             <div className="flex gap-2">
               <button 
-                onClick={() => { setViewMode('timeline'); setHighlightedIds(null); }}
+                onClick={() => { if (!confirmLeave()) return; setViewMode('timeline'); setHighlightedIds(null); }}
                 className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                   viewMode === 'timeline' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                 }`}
@@ -379,7 +368,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
               </button>
 
               <button 
-                onClick={() => { setViewMode('graph'); setHighlightedIds(null); }}
+                onClick={() => { if (!confirmLeave()) return; setViewMode('graph'); setHighlightedIds(null); }}
                 className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                   viewMode === 'graph' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                 }`}
@@ -406,11 +395,17 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
                 />
              ) : viewMode === 'graph' ? (
                 <RelationGraph 
-                  highlightedIds={highlightedIds} 
+                  allSettings={settingsData} 
+                  highlightedIds={highlightedIds}
                   onNodeSelect={handleNodeSelectFromGraph} 
                 />
              ) : selectedItem ? (
-                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+                /* 🌟 核心修正：將 onChange 與 onInput 監聽事件直接綁在表單包覆容器上，精準攔截內部所有欄位的變更事件冒泡 */
+                <div 
+                  className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
+                  onChange={() => setHasChanges(true)}
+                  onInput={() => setHasChanges(true)}
+                >
                   {selectedItem.category === 'character' && (
                     <CharacterForm 
                       key={selectedItem.id} 
