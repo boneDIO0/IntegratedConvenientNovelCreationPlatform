@@ -172,7 +172,7 @@ export default function Navbar() {
                       <p className="text-sm font-semibold text-slate-950">
                         {session?.user?.name}
                       </p>
-                      <p className="text-xs text-slate-500">user@example.com</p>
+                      <p className="text-xs text-slate-500">{session?.user?.email || "無提供信箱"}</p>
                     </div>
                     <div className="border-t border-border/70" />
                     <button
