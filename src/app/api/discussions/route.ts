@@ -6,15 +6,13 @@ import { handleApiError } from '@/lib/ErrorHandler';
 // 讀取留言 (GET)
 export async function GET(request: Request) {
   try {
-    // 🌟 從網址抓出我們要查哪一本小說 (例如 /api/discussions?projectId=123)
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
 
-    if (!projectId) {
-      return NextResponse.json({ status: "error", message: "缺少小說 ID" }, { status: 400 });
+    if (!projectId || projectId === 'undefined' || projectId === 'null') {
+      return NextResponse.json({ status: "error", message: "缺少有效的小說 ID" }, { status: 400 });
     }
 
-    // 🌟 真實 DB 操作：抓取這本小說的所有留言，並按照時間排序
     const messages = await prisma.projectMessages.findMany({
       where: { projectId: projectId },
       orderBy: { createdAt: 'asc' }, // 舊的在上面，新的在下面
@@ -37,7 +35,6 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 🌟 防呆：檢查必填欄位
     if (!body.content || !body.projectId || !body.authorId) {
       return NextResponse.json(
         { status: "error", message: "留言失敗：缺少必要資訊" },
@@ -45,7 +42,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🌟 真實 DB 操作：寫入一筆新留言
     const newMessage = await prisma.projectMessages.create({
       data: {
         content: body.content,

@@ -4,14 +4,15 @@
 useState and onClick are available */
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
+import { usePathname } from 'next/navigation';
 
-import { useSession } from 'next-auth/react';
-
-export function DiscussionBoard({ novelId }: { novelId: string }) {
-
+export function DiscussionBoard() {
   const { data: session } = useSession();
+  const pathname = usePathname();
+  const novelId = pathname?.startsWith('/novel_list/') ? pathname.split('/')[2] : null;
 
   /* 建立狀態儲存使用者的輸入和 API 的回應
      記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
@@ -23,10 +24,12 @@ export function DiscussionBoard({ novelId }: { novelId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
 
   const fetchMessages = async () => {
+    if (!novelId || novelId === 'undefined') return;
+
     try {
       const res = await fetch(`/api/discussions?projectId=${novelId}`);
-      const data = await res.json();
-      setMessages(data.data);
+      const json = await res.json();
+      setMessages(json.data || []);
     } catch (error) {
       console.error('抓取留言失敗', error);
     }
@@ -35,7 +38,7 @@ export function DiscussionBoard({ novelId }: { novelId: string }) {
   // 網頁一載入時自動執行一次抓取
   useEffect(() => {
     fetchMessages();
-  }, []);
+  }, [novelId]);
 
   // 將資料給後端 API
   const handleSubmit = async () => {
@@ -45,6 +48,19 @@ export function DiscussionBoard({ novelId }: { novelId: string }) {
     if (!session?.user?.id) {
       alert("請先登入才能留言！");
       return;
+    }
+
+    alert(`
+      準備檢查變數...
+      1. 留言內容 (content): ${content}
+      2. 作者 ID (authorId): ${session.user.id}
+      3. 小說 ID (novelId): ${novelId}
+    `);
+
+    // 🌟 我們也在前端加上跟後端一樣的防護網
+    if (!novelId || novelId === 'undefined') {
+      alert("抓到兇手了！novelId 是空的或 undefined，難怪後端會退件！");
+      return; // 踩剎車，不發送 fetch
     }
 
     setIsLoading(true);
@@ -127,9 +143,9 @@ export function DiscussionBoard({ novelId }: { novelId: string }) {
 
       {/* --- 留言列表區塊 --- */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-700">留言列表 ({messages.length})</h2>
+        <h2 className="text-lg font-bold text-gray-700">留言列表 ({messages?.length || 0})</h2>
         
-        {messages.length === 0 ? (
+        {messages?.length === 0 ? (
           <p className="text-gray-500 text-center py-4">目前還沒有討論</p>
         ) : (
           // 以 map 迴圈將陣列裡的每一筆資料變成一個 UI 卡片
