@@ -13,7 +13,12 @@ import EventForm from "@/components/EventForm";
 import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 
-export function SettingsPanel() {
+// 🌟 1. 配合 page.tsx 與資料庫 schema，將屬性改為 projectId
+interface SettingsPanelProps {
+  projectId: string;
+}
+
+export function SettingsPanel({ projectId }: SettingsPanelProps) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
@@ -23,7 +28,8 @@ export function SettingsPanel() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const res = await fetch('/api/settings'); 
+        // 🌟 2. 讀取時：把 projectId 帶在網址後面給後端過濾
+        const res = await fetch(`/api/settings?projectId=${projectId}`); 
         if (!res.ok) throw new Error('讀取資料失敗');
         
         const data = await res.json();
@@ -40,8 +46,10 @@ export function SettingsPanel() {
       }
     };
 
-    fetchSettings();
-  }, []);
+    if (projectId) {
+      fetchSettings();
+    }
+  }, [projectId]); // 🌟 加入 dependency
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -58,7 +66,7 @@ export function SettingsPanel() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [settingsData.length]);
 
-  // 更新與儲存項目
+  // 更新與儲存項目 (更新單一實體通常靠 id 即可，但為了安全起見，後端也應確認權限)
   const handleUpdateItem = async (updatedItem: SettingItem) => {
     setSettingsData(prevData => {
       return prevData.map(group => {
@@ -89,13 +97,12 @@ export function SettingsPanel() {
     }
   };
 
-  // 🌟 升級：處理模板選擇 (自動同步空目錄到資料庫，並加上正確的類型標籤)
+  // 處理模板選擇
   const handleSelectTemplate = async (template: TemplateDef) => {
     setSettingsData(template.initialData); 
     window.location.hash = 'editor';
     setIsInitialized(true);
 
-    // 🕵️‍♂️ 建立一個小幫手：根據目錄名稱猜測它是什麼類型
     const getCategoryType = (name: string) => {
       if (name.includes('人物')) return 'character';
       if (name.includes('組織')) return 'faction';
@@ -113,7 +120,8 @@ export function SettingsPanel() {
             body: JSON.stringify({ 
               type: 'new_category', 
               name: group.category,
-              categoryType: getCategoryType(group.category) // 🌟 把這行加上！傳遞正確的類型
+              categoryType: getCategoryType(group.category),
+              projectId: projectId // 🌟 3. 套用模板時，綁定到這本小說
             })
           })
         )
@@ -139,7 +147,7 @@ export function SettingsPanel() {
     }
   };
 
-  // 🌟 升級：新增項目 (直接打 API 要 UUID)
+  // 新增項目
   const handleAddItem = async (categoryName: string, type: string) => {
     try {
       const res = await fetch('/api/settings', {
@@ -148,7 +156,8 @@ export function SettingsPanel() {
         body: JSON.stringify({
           categoryName: categoryName,
           type: type, 
-          item: { name: "未命名新項目" } 
+          item: { name: "未命名新項目" },
+          projectId: projectId // 🌟 4. 新增項目時，綁定到這本小說
         })
       });
 
@@ -184,7 +193,6 @@ export function SettingsPanel() {
       setSelectedItem(null);
     }
 
-    // 呼叫刪除 API
     try {
       await fetch(`/api/settings/${itemId}`, { method: 'DELETE' });
     } catch (error) {
@@ -192,7 +200,7 @@ export function SettingsPanel() {
     }
   };
 
-  // 🌟 升級：新增目錄 (寫入資料庫)
+  // 新增目錄
   const handleAddCategory = async (newCategoryName: string) => {
     if (!newCategoryName.trim()) return;
     if (settingsData.some(g => g.category === newCategoryName)) {
@@ -206,7 +214,11 @@ export function SettingsPanel() {
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'new_category', name: newCategoryName })
+        body: JSON.stringify({ 
+          type: 'new_category', 
+          name: newCategoryName,
+          projectId: projectId // 🌟 5. 新增目錄時，綁定到這本小說
+        })
       });
     } catch (error) {
       console.error("新增目錄失敗", error);
@@ -216,7 +228,6 @@ export function SettingsPanel() {
   const handleDeleteCategory = async (categoryName: string) => {
     if (confirm(`確定要刪除「${categoryName}」目錄嗎？裡面的所有設定將會一併消失！`)) {
       
-      // 1. 樂觀更新：立刻讓前端畫面上的目錄消失
       setSettingsData(prev => prev.filter(g => g.category !== categoryName));
       
       if (selectedItem?.category === categoryName || selectedItem?.category === 'custom') {
@@ -224,14 +235,14 @@ export function SettingsPanel() {
         setViewMode('form');
       }
 
-      // 2. 打 API 叫資料庫斬草除根
       try {
         const res = await fetch('/api/settings', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             action: 'delete_category', 
-            categoryName: categoryName 
+            categoryName: categoryName,
+            projectId: projectId // 🌟 6. 刪除目錄時，告訴後端是哪本小說的目錄
           })
         });
 
@@ -243,25 +254,22 @@ export function SettingsPanel() {
     }
   };
 
-  // 🌟 修正：重新命名目錄 (只改目錄名稱，絕不動項目的型別基因，並存入資料庫)
+  // 重新命名目錄
   const handleRenameCategory = async (oldName: string, newName: string) => {
     if (!newName.trim() || oldName === newName) return;
 
-    // 1. 樂觀更新：只修改外層 group 的 category 名稱
     setSettingsData(prev => {
       return prev.map(group => {
         if (group.category === oldName) {
           return {
             ...group,
             category: newName,
-            // 🚨 修正：不要去動 group.items 裡面的 item.category，因為那是型別基因！
           };
         }
         return group;
       });
     });
 
-    // 2. 打 API 存進 Neon 資料庫
     try {
       const res = await fetch('/api/settings', {
         method: 'PUT',
@@ -269,7 +277,8 @@ export function SettingsPanel() {
         body: JSON.stringify({ 
           action: 'rename_category', 
           oldName: oldName, 
-          newName: newName 
+          newName: newName,
+          projectId: projectId // 🌟 7. 改名時，也帶上 projectId
         })
       });
       
@@ -327,20 +336,18 @@ export function SettingsPanel() {
           onDelete={handleDeleteItem}
           onAddCategory={handleAddCategory}
           onDeleteCategory={handleDeleteCategory}
-          onRenameCategory={handleRenameCategory} // 🌟 補上這條線，解決 TS 報錯！
+          onRenameCategory={handleRenameCategory}
         />
       </aside>
 
       <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
         <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col">
           <div className="mb-6 flex items-center justify-between">
-            {/* 🌟 左側：標題 + 表單切換器 */}
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-slate-800">
                 {viewMode === 'graph' ? '全域人物關係圖' : selectedItem ? `${selectedItem.name} (編輯中)` : "未選取項目"}
               </h1>
               
-              {/* 🌟 隨心所欲的表單切換下拉選單 */}
               {selectedItem && viewMode === 'form' && (
                 <select
                   value={selectedItem.category}
@@ -348,7 +355,7 @@ export function SettingsPanel() {
                     const newType = e.target.value;
                     const updated = { ...selectedItem, category: newType };
                     setSelectedItem(updated);
-                    handleUpdateItem(updated); // 切換瞬間直接存檔！
+                    handleUpdateItem(updated); 
                   }}
                   className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm"
                 >
@@ -404,8 +411,6 @@ export function SettingsPanel() {
                 />
              ) : selectedItem ? (
                 <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-                  {/* 🌟 確定 onSave 有正確接上 */}
-                  {/* 🌟 補上 allSettings={settingsData}，把全世界的資料餵給它！ */}
                   {selectedItem.category === 'character' && (
                     <CharacterForm 
                       key={selectedItem.id} 

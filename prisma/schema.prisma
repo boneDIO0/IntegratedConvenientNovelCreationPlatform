@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
-  url        = env("DATABASE_URL")
+  url        = env("DATABASE_URL") 
   directUrl  = env("DIRECT_URL")
   extensions = [vector]
   schemas    = ["audit", "public"]
@@ -124,7 +124,9 @@ model SettingCategory {
   isPreset   Boolean?        @default(false) @map("is_preset")
   deletedAt  DateTime?       @map("deleted_at") @db.Timestamptz(6)
   createdAt  DateTime?       @default(now()) @map("created_at") @db.Timestamptz(6)
-  project    Project         @relation(fields: [projectId], references: [id])
+  
+  // 加上 onDelete: Cascade，如果這本小說被刪除了，底下的目錄也跟著刪除
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade) 
   entities   SettingEntity[]
 
   @@index([projectId, orderIndex])
@@ -142,8 +144,10 @@ model SettingEntity {
   deletedAt  DateTime?       @map("deleted_at") @db.Timestamptz(6)
   createdAt  DateTime?       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime?       @default(now()) @map("updated_at") @db.Timestamptz(6)
-  category   SettingCategory @relation(fields: [categoryId], references: [id])
-  project    Project         @relation(fields: [projectId], references: [id])
+  
+  // 加上 onDelete: Cascade，確保目錄或小說被刪除時，實體也會一起消失
+  category   SettingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([categoryId, orderIndex])
   @@index([projectId])
