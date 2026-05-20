@@ -13,6 +13,9 @@ export function DiscussionBoard() {
   const { data: session } = useSession();
   const pathname = usePathname();
   const novelId = pathname?.startsWith('/novel_list/') ? pathname.split('/')[2] : null;
+  const isEditor = pathname?.includes('/editor');
+  const chapterId = isEditor ? pathname.split('/')[4] : null;
+  const currentChannelId = chapterId || "general";
 
   /* 建立狀態儲存使用者的輸入和 API 的回應
      記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
@@ -27,7 +30,7 @@ export function DiscussionBoard() {
     if (!novelId || novelId === 'undefined') return;
 
     try {
-      const res = await fetch(`/api/discussions?projectId=${novelId}`);
+      const res = await fetch(`/api/discussions?projectId=${novelId}&channelId=${currentChannelId}`);
       const json = await res.json();
       setMessages(json.data || []);
     } catch (error) {
@@ -38,7 +41,7 @@ export function DiscussionBoard() {
   // 網頁一載入時自動執行一次抓取
   useEffect(() => {
     fetchMessages();
-  }, [novelId]);
+  }, [novelId, currentChannelId]);
 
   // 將資料給後端 API
   const handleSubmit = async () => {
@@ -50,19 +53,6 @@ export function DiscussionBoard() {
       return;
     }
 
-    alert(`
-      準備檢查變數...
-      1. 留言內容 (content): ${content}
-      2. 作者 ID (authorId): ${session.user.id}
-      3. 小說 ID (novelId): ${novelId}
-    `);
-
-    // 🌟 我們也在前端加上跟後端一樣的防護網
-    if (!novelId || novelId === 'undefined') {
-      alert("抓到兇手了！novelId 是空的或 undefined，難怪後端會退件！");
-      return; // 踩剎車，不發送 fetch
-    }
-
     setIsLoading(true);
 
     try {
@@ -72,7 +62,8 @@ export function DiscussionBoard() {
         body: JSON.stringify({
           projectId: novelId,
           authorId: session.user.id,
-          content: content // 放入 textarea 取得的純文字
+          content: content,
+          channelId: currentChannelId
         }),
       });
 

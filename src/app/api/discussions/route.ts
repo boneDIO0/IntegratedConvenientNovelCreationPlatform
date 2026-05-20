@@ -8,13 +8,14 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
+    const channelId = searchParams.get('channelId') || 'general';
 
     if (!projectId || projectId === 'undefined' || projectId === 'null') {
       return NextResponse.json({ status: "error", message: "缺少有效的小說 ID" }, { status: 400 });
     }
 
     const messages = await prisma.projectMessages.findMany({
-      where: { projectId: projectId },
+      where: { projectId: projectId, channelId: channelId },
       orderBy: { createdAt: 'asc' }, // 舊的在上面，新的在下面
       include: {
         users: { // 順便把留言者的名字和頭像抓出來！
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
         content: body.content,
         projectId: body.projectId,
         authorId: body.authorId,
-        channelId: "general", // 預設放一個頻道 ID，符合 DBA 的必填規格
+        channelId: body.channelId || 'general'
       }
     });
 
