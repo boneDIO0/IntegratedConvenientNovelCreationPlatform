@@ -1,11 +1,8 @@
-﻿import NextAuth from "next-auth";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { prisma } from "@/lib/prisma";
-import { authOptions } from "@/lib/auth/config"; // 🌟 確保名稱對上
+﻿// src/app/api/auth/[...nextauth]/route.ts
+import NextAuth from "next-auth";
+import { authOptions } from "@/lib/auth/config"; 
 
-const handler = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  ...authOptions,
-});
+// 🌟 直接把整包 authOptions 丟進去就好
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };
