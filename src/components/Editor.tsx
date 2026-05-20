@@ -5,7 +5,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import { useState, useCallback } from 'react'
 
-// 🌟 新增：定義這個編輯器需要接收的資料
+// 定義這個編輯器需要接收的資料
 interface EditorProps {
   novelId: string;
   chapterId: string;
@@ -14,16 +14,20 @@ interface EditorProps {
 }
 
 export default function Editor({ novelId, chapterId, initialTitle, initialContent }: EditorProps) {
+  // 宣告狀態 (必須放在元件內部)
+  const [isSaving, setIsSaving] = useState(false)
+  const [lastSavedContent, setLastSavedContent] = useState(initialContent)
+  
   const [, setTick] = useState(0)
   const forceUpdate = useCallback(() => setTick(tick => tick + 1), [])
   
-  // 🌟 新增：存檔狀態顯示
-  const [saveStatus, setSaveStatus] = useState('● 已儲存')
+  // 存檔狀態顯示
+  const [saveStatus, setSaveStatus] = useState('已儲存')
 
   const editor = useEditor({
     extensions: [StarterKit, Underline],
     immediatelyRender: false,
-    content: initialContent || '<p>開始撰寫你的偉大故事...</p>', // 🌟 讀取傳進來的內容
+    content: initialContent || '<p>開始撰寫你的偉大故事...</p>', // 讀取傳進來的內容
     editorProps: {
       attributes: {
         class: 'prose max-w-none focus:outline-none min-h-[800px] text-[20px] leading-relaxed',
@@ -37,17 +41,26 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     }
   })
 
-  // 🌟 新增：將該章節的內容精準存回 localStorage
   const handleSave = async () => {
-    if (!editor) return
+    // 防呆 1: 編輯器未載入、正在存檔中、或是內容為空，直接中止操作
+    if (!editor || isSaving || editor.isEmpty) return
+
+    const currentContent = editor.getJSON()
+
+    // 防呆 2: 比對內容，如果和上次存檔完全相同，不發送 API 請求
+    if (JSON.stringify(currentContent) === JSON.stringify(lastSavedContent)) {
+      setSaveStatus('已儲存')
+      return
+    }
+
+    setIsSaving(true)
     setSaveStatus('儲存中...')
 
     const titleInput = document.getElementById('doc-title') as HTMLInputElement
     const currentTitle = titleInput ? titleInput.value : initialTitle
-    const currentContent = editor.getJSON()
 
     try {
-      // 呼叫我們剛剛寫好的 PATCH API
+      // 呼叫 PATCH API 更新章節與建立 Checkpoint
       const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -59,12 +72,18 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
       if (!res.ok) throw new Error("儲存失敗")
 
-      setSaveStatus('● 已儲存')
+      // 儲存成功後，更新最後存檔的內容記錄
+      setLastSavedContent(currentContent)
+      setSaveStatus('已儲存')
     } catch (error) {
       console.error(error)
-      setSaveStatus('❌ 儲存失敗')
+      setSaveStatus('儲存失敗')
+    } finally {
+      // 無論成功或失敗，最後務必解除鎖定狀態
+      setIsSaving(false)
     }
   }
+
   if (!editor) {
     return null
   }
@@ -95,9 +114,9 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-2">
                 <input 
-                  id="doc-title" // 🌟 加上 ID 讓存檔函式抓得到
+                  id="doc-title" // 加上 ID 讓存檔函式抓得到
                   type="text" 
-                  defaultValue={initialTitle} // 🌟 預設值改成傳進來的標題
+                  defaultValue={initialTitle} // 預設值改成傳進來的標題
                   onChange={() => setSaveStatus('編輯中...')}
                   autoComplete="off"
                   className="text-left text-lg font-semibold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent px-2 py-0.5 transition-all w-64"
@@ -111,11 +130,15 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
           <div className="flex items-center gap-5">
             <button 
-              type="button" 
-              onClick={handleSave} // 🌟 綁定存檔事件
-              className="bg-blue-600 text-white px-5 py-1.5 rounded-full font-bold hover:bg-blue-700 transition-colors shadow-md text-sm"
+              onClick={handleSave}
+              disabled={editor.isEmpty || isSaving}
+              className={`px-4 py-2 rounded font-medium transition-colors ${
+                (editor.isEmpty || isSaving)
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
-              儲存章節
+              {isSaving ? '處理中...' : '儲存章節'}
             </button>
             <div className="w-9 h-9 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold cursor-pointer border-2 border-white shadow-sm text-sm">
               U
