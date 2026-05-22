@@ -1,5 +1,8 @@
 "use client"
 
+import { useParams } from "next/navigation"
+import { History } from "lucide-react" // 引入漂亮的圖示
+
 import * as React from "react"
 import { ChevronDown, BookOpenCheck } from "lucide-react"
 import { signIn, signOut, useSession } from "next-auth/react"
@@ -15,8 +18,12 @@ import { useEditorUI } from "@/contexts/EditorUIContext"
 export default function Navbar() {
   const router = useRouter()
   const pathname = usePathname()
+  const params = useParams()
 
-  const { isSettingsOpen, toggleSettings, setActiveOverlay } = useEditorUI()
+  const projectId = (params?.projectId) as string
+  const chapterId = (params?.chapterId) as string
+
+  const { isSettingsOpen, toggleSettings, activeOverlay, setActiveOverlay, fetchVersions } = useEditorUI()
 
   // 🌟 1. 偵測目前在哪個頁面
   const isEditorPage = pathname?.includes('/editor');
@@ -107,13 +114,35 @@ export default function Navbar() {
                 {isDiscussionOpen ? "👁️‍🗨️" : "🗨️"}
               </button>
               {isEditorPage && (
-                <div className="flex gap-2 mr-4 border-r pr-4">
-                  <button onClick={() => setActiveOverlay('version')} className="px-3 py-1 bg-purple-100 rounded">🕰️</button>
-                  <button onClick={toggleSettings} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm">
-                    {isSettingsOpen ? '✕ 關閉設定集' : '◀ 打開設定集'}
-                  </button>
-                </div>
-              )}
+                  <div className="flex items-center gap-2 mr-4 border-r pr-4">
+                    {/* 修改後的歷史紀錄按鈕 */}
+                    <button
+                      onClick={() => {
+                        if (activeOverlay === 'version') {
+                          setActiveOverlay('none')
+                        } else {
+                          setActiveOverlay('version')
+                          // 點擊打開的瞬間，立刻命令去後端 Prisma 撈取最新歷史清單
+                          fetchVersions(projectId, chapterId)
+                        }
+                      }}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium",
+                        activeOverlay === 'version'
+                          ? "bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
+                          : "bg-purple-50 hover:bg-purple-100 text-purple-700"
+                      )}
+                      title="開啟版本歷史管理"
+                    >
+                      <History className="h-4 w-4" />
+                      <span>歷史紀錄</span>
+                    </button>
+
+                    <button onClick={toggleSettings} className="px-3 py-1 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-medium text-gray-700 transition-colors">
+                      {isSettingsOpen ? '✕ 關閉設定集' : '◀ 打開設定集'}
+                    </button>
+                  </div>
+                )}
               <div ref={menuRef} className="relative">
                 <button
                   type="button"
