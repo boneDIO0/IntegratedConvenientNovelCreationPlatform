@@ -61,7 +61,10 @@ export async function POST(request: Request, { params }: RouteParams) {
       where: {
         id: versionId,
         targetId: chapterId,
-        targetType: 'CHAPTER' // 🌟 確保與後端儲存時的大寫 CHAPTER 一致
+        targetType: {
+          equals: 'CHAPTER',
+          mode: 'insensitive'
+        }
       }
     });
 
