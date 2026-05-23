@@ -14,41 +14,66 @@ import DynamicForm from "@/components/DynamicForm";
 
 interface SettingsPanelProps {
   projectId: string;
+  chapterId?: string;
 }
 
-export function SettingsPanel({ projectId }: SettingsPanelProps) {
-  const [isInitialized, setIsInitialized] = useState(false);
+export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
+  // 🌟 1. 核心新增：儲存這本小說完全沒有過濾的「全域完整設定集」，供管理器勾選使用
+  const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
+  
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline'>('form');
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
 
-  // 🌟 追蹤當前表單是否有被修改且未儲存
   const [hasChanges, setHasChanges] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); 
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isSyncingChapter, setIsSyncingChapter] = useState(false); // 控制勾選時的 loading 狀態
+
+  // 🌟 2. 核心抽離：將 Fetch 邏輯獨立出來，方便勾選完後能即時局部刷新
+  const fetchSettings = async () => {
+    try {
+      setIsLoading(true);
+      let url = `/api/settings?projectId=${projectId}`;
+      if (chapterId) {
+        url += `&chapterId=${chapterId}`;
+      }
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('讀取資料失敗');
+      const data = await res.json();
+      
+      if (data && data.length > 0) {
+        setSettingsData(data);
+        setIsInitialized(true);
+        if (window.location.hash !== '#editor') {
+          window.location.replace('#editor');
+        }
+      } else {
+        setIsInitialized(false);
+      }
+
+      // 🌟 3. 如果處於章節模式，加碼撈取一份不帶 chapterId 的完整設定庫，用來做全域要素對照
+      if (chapterId) {
+        const globalRes = await fetch(`/api/settings?projectId=${projectId}`);
+        if (globalRes.ok) {
+          const globalData = await globalRes.json();
+          setGlobalAllSettings(globalData);
+        }
+      }
+    } catch (error) {
+      console.error('無法連線到資料庫:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const res = await fetch(`/api/settings?projectId=${projectId}`); 
-        if (!res.ok) throw new Error('讀取資料失敗');
-        const data = await res.json();
-        
-        if (data && data.length > 0) {
-          setSettingsData(data);
-          if (window.location.hash !== '#editor') {
-            window.location.replace('#editor');
-          }
-          setIsInitialized(true);
-        }
-      } catch (error) {
-        console.error('無法連線到資料庫:', error);
-      }
-    };
-
     if (projectId) {
       fetchSettings();
     }
-  }, [projectId]); 
+  }, [projectId, chapterId]); // 🌟 監聽 chapterId 切換，換章節時自動重綁資料
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -68,16 +93,41 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
   const confirmLeave = () => {
     if (hasChanges) {
       const isUserSure = window.confirm("⚠️ 您有未儲存的變更！如果離開，目前修改的內容將會消失。確定要離開嗎？");
-      
-      // 🌟 核心修正：如果使用者按下「確定」決定放棄變更離開
       if (isUserSure) {
-        setHasChanges(false); // 帳勾銷！把狀態洗白回「乾淨」，避免下一頁無限循環跳彈窗
-        return true;          // 允許這次跳轉
+        setHasChanges(false); 
+        return true;          
       }
-      
-      return false; // 使用者按取消，留在原地
+      return false; 
     }
-    return true; // 本來就沒有變更，直接放行
+    return true; 
+  };
+
+  // 🌟 4. 核心新增：處理將設定實體勾選加入/退出本章節的多對多 API 呼叫
+  const handleToggleSettingToChapter = async (entityId: string, isChecked: boolean) => {
+    if (!chapterId) return;
+    try {
+      setIsSyncingChapter(true);
+      // 假設你新增了此功能對應的關聯 API 端點
+      const res = await fetch(`/api/settings`, {
+        method: 'PATCH', // 使用 PATCH 來處理局部關聯變更
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: isChecked ? 'connect_chapter' : 'disconnect_chapter',
+          chapterId: chapterId,
+          entityId: entityId
+        })
+      });
+
+      if (!res.ok) throw new Error('同步章節設定失敗');
+      
+      // 勾選聯動成功後，重新整理當前畫面資料，側邊欄目錄就會即時增減！
+      await fetchSettings();
+    } catch (error) {
+      console.error(error);
+      alert('⚠️ 關聯章節要素失敗，請確認資料庫狀態。');
+    } finally {
+      setIsSyncingChapter(false);
+    }
   };
 
   // 更新與儲存項目
@@ -95,7 +145,7 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
     });
     
     setSelectedItem(updatedItem); 
-    setHasChanges(false); // 🌟 儲存成功後，恢復安全狀態
+    setHasChanges(false); 
 
     try {
       const res = await fetch(`/api/settings/${updatedItem.id}`, {
@@ -182,15 +232,16 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
       if (!res.ok) throw new Error('新增至資料庫失敗');
       const realItem = await res.json(); 
 
-      setSettingsData(prevData => {
-        return prevData.map(group => {
-          if (group.category === categoryName) {
-            return { ...group, items: [...group.items, realItem] };
-          }
-          return group;
+      // 🌟 如果是在章節模式下直接點「+」新增項目，除了塞進列表，通常也默認跟當前章節自動 connect
+      if (chapterId) {
+        await fetch(`/api/settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'connect_chapter', chapterId, entityId: realItem.id })
         });
-      });
-      
+      }
+
+      await fetchSettings(); // 重新整理
       setSelectedItem(realItem);
       setViewMode('form');
       setHasChanges(false); 
@@ -280,6 +331,15 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
       console.error(error);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-900 mb-4"></div>
+        <p className="text-sm text-slate-500 font-medium">正在連線雲端資料庫...</p>
+      </div>
+    );
+  }
 
   if (!isInitialized) {
     return (
@@ -400,7 +460,6 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
                   onNodeSelect={handleNodeSelectFromGraph} 
                 />
              ) : selectedItem ? (
-                /* 🌟 核心修正：將 onChange 與 onInput 監聽事件直接綁在表單包覆容器上，精準攔截內部所有欄位的變更事件冒泡 */
                 <div 
                   className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
                   onChange={() => setHasChanges(true)}
@@ -427,9 +486,72 @@ export function SettingsPanel({ projectId }: SettingsPanelProps) {
                   )}
                 </div>
              ) : (
-                <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
-                  <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
-                </div>
+                /* 🌟 5. 核心大升級：如果沒有選取單一項目，且正處於章節模式中，直接渲染「本章登場要素管理大面板」 */
+                chapterId ? (
+                  <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[700px]">
+                    <div>
+                      <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
+                      <p className="text-sm text-slate-500">
+                        勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏，助你專注當前分鏡。
+                      </p>
+                    </div>
+
+                    {isSyncingChapter && (
+                      <div className="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg animate-pulse font-medium">
+                        ⏳ 正在同步章節關係網路至雲端 Neon...
+                      </div>
+                    )}
+
+                    <div className="space-y-6 flex-1">
+                      {globalAllSettings.map((group) => (
+                        <div key={group.category} className="space-y-3">
+                          <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
+                            {group.category}
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {group.items.map((item) => {
+                              // 反查該項目是否已經存在於當前章節的過濾列表中
+                              const isAssigned = settingsData
+                                .flatMap((g) => g.items)
+                                .some((i) => i.id === item.id);
+
+                              return (
+                                <label 
+                                  key={item.id} 
+                                  className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                                    isAssigned 
+                                      ? 'border-blue-500 bg-blue-50/40 shadow-sm' 
+                                      : 'border-slate-200 bg-white hover:border-slate-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      item.category === 'character' ? 'bg-blue-500' : 
+                                      item.category === 'faction' ? 'bg-orange-500' : 'bg-emerald-500'
+                                    }`} />
+                                    <span className="text-sm font-semibold text-slate-800">{item.name}</span>
+                                  </div>
+                                  <input 
+                                    type="checkbox"
+                                    checked={isAssigned}
+                                    disabled={isSyncingChapter}
+                                    onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
+                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* 如果是非章節模式（全域模式），且沒有點選卡片，則維持原本的空白提示 */
+                  <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
+                    <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
+                  </div>
+                )
              )}
           </div>
         </div>

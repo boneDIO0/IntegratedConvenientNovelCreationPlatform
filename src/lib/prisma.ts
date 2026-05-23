@@ -18,27 +18,14 @@ const prismaClientSingleton = () => {
   });
 };
 
-<<<<<<< Updated upstream
-type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClientSingleton | undefined;
-};
-
-export const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-
-=======
+// 採用擴充全域型別的標準寫法，防止 Next.js 在開發時重複建立連線池
 declare global {
   var prismaGlobal: ReturnType<typeof prismaClientSingleton> | undefined;
 }
 
-// 🌟 標準寫法：先確保 global 變數被賦值，再統一匯出
 if (!globalThis.prismaGlobal) {
   globalThis.prismaGlobal = prismaClientSingleton();
 }
 
 export const prisma = globalThis.prismaGlobal;
->>>>>>> Stashed changes
 export default prisma;
