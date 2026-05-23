@@ -1,32 +1,56 @@
 // src/app/api/settings/route.ts
-
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// 🌟 GET: 讀取這本小說的所有目錄與設定項目
+// 🌟 GET: 讀取這本小說的目錄與設定項目 (支援按章節局部過濾)
 export async function GET(request: Request) {
   try {
-    // 🌟 從網址參數抓取 projectId (?projectId=xxx)
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
+    const chapterId = searchParams.get('chapterId'); 
 
     if (!projectId) {
       return NextResponse.json({ error: '缺少 projectId' }, { status: 400 });
     }
 
-    const categories = await prisma.settingCategory.findMany({
-      where: { 
-        projectId: projectId, // 🌟 關鍵：只抓這本小說的目錄
-        deletedAt: null 
-      }, 
-      include: {
-        entities: {
-          where: { deletedAt: null }, 
-          orderBy: { orderIndex: 'asc' } 
+    let categories;
+
+    if (chapterId) {
+      // 🎬 模式 A：章節局部模式。只過濾出與該章節有建立多對多連動的設定實體 (SettingEntity)
+      categories = await prisma.settingCategory.findMany({
+        where: { 
+          projectId: projectId, 
+          deletedAt: null 
         }, 
-      },
-      orderBy: { orderIndex: 'asc' }
-    });
+        include: {
+          entities: {
+            where: { 
+              deletedAt: null,
+              chapters: {
+                some: { id: chapterId } 
+              }
+            }, 
+            orderBy: { orderIndex: 'asc' } 
+          }, 
+        },
+        orderBy: { orderIndex: 'asc' }
+      });
+    } else {
+      // 🌍 模式 B：全域世界觀模式。一網打盡這本小說所有的設定資料
+      categories = await prisma.settingCategory.findMany({
+        where: { 
+          projectId: projectId, 
+          deletedAt: null 
+        }, 
+        include: {
+          entities: {
+            where: { deletedAt: null }, 
+            orderBy: { orderIndex: 'asc' } 
+          }, 
+        },
+        orderBy: { orderIndex: 'asc' }
+      });
+    }
 
     // 轉換成前端熟悉的格式
     const formattedData = categories.map(cat => ({
@@ -54,13 +78,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const projectId = body.projectId; // 🌟 接收前端傳來的 projectId
+    const projectId = body.projectId; 
 
     if (!projectId) {
       return NextResponse.json({ error: '缺少 projectId，無法新增設定' }, { status: 400 });
     }
     
-    // 狀況 A：新增獨立目錄
     if (body.type === 'new_category') {
       let existingCat = await prisma.settingCategory.findFirst({
         where: { name: body.name, projectId: projectId, deletedAt: null }
@@ -73,14 +96,13 @@ export async function POST(request: Request) {
       const newCat = await prisma.settingCategory.create({
         data: { 
           name: body.name,
-          projectId: projectId, // 🌟 綁定到這本小說
+          projectId: projectId, 
           type: body.categoryType || 'custom' 
         }
       });
       return NextResponse.json(newCat, { status: 201 });
     }
     
-    // 狀況 B：新增項目
     let parentCategory = await prisma.settingCategory.findFirst({
       where: { name: body.categoryName, projectId: projectId, deletedAt: null }
     });
@@ -89,7 +111,7 @@ export async function POST(request: Request) {
       parentCategory = await prisma.settingCategory.create({
         data: {
           name: body.categoryName,
-          projectId: projectId, // 🌟 綁定到這本小說
+          projectId: projectId, 
           type: body.type || 'custom', 
         }
       });
@@ -99,7 +121,7 @@ export async function POST(request: Request) {
       data: {
         title: body.item.name, 
         categoryId: parentCategory.id,
-        projectId: projectId, // 🌟 綁定到這本小說
+        projectId: projectId, 
       }
     });
 
@@ -122,7 +144,7 @@ export async function PUT(request: Request) {
     const body = await request.json();
 
     if (body.action === 'rename_category') {
-      const projectId = body.projectId; // 🌟 接收 projectId
+      const projectId = body.projectId; 
       if (!projectId) return NextResponse.json({ error: '缺少 projectId' }, { status: 400 });
 
       const targetCategory = await prisma.settingCategory.findFirst({
@@ -152,7 +174,7 @@ export async function DELETE(request: Request) {
     const body = await request.json();
 
     if (body.action === 'delete_category') {
-      const projectId = body.projectId; // 🌟 接收 projectId
+      const projectId = body.projectId; 
       if (!projectId) return NextResponse.json({ error: '缺少 projectId' }, { status: 400 });
 
       const targetCategory = await prisma.settingCategory.findFirst({
@@ -161,13 +183,11 @@ export async function DELETE(request: Request) {
 
       if (!targetCategory) return NextResponse.json({ error: '找不到該目錄' }, { status: 404 });
 
-      // 1. 軟刪除這個目錄
       await prisma.settingCategory.update({
         where: { id: targetCategory.id },
         data: { deletedAt: new Date() }
       });
 
-      // 2. 順便把這個目錄底下的所有項目 (Entities) 也一起軟刪除
       await prisma.settingEntity.updateMany({
         where: { categoryId: targetCategory.id },
         data: { deletedAt: new Date() }
@@ -180,5 +200,49 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error("刪除失敗:", error);
     return NextResponse.json({ error: '無法刪除資料' }, { status: 500 });
+  }
+}
+
+// 🌟 PATCH: 處理章節與設定項目的「局部登場關聯」(多對多 Connect / Disconnect)
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { action, chapterId, entityId } = body;
+
+    if (!chapterId || !entityId) {
+      return NextResponse.json({ error: '缺少必要參數' }, { status: 400 });
+    }
+
+    // 防呆：確認該設定項目目前非軟刪除狀態
+    const targetEntity = await prisma.settingEntity.findFirst({
+      where: { id: entityId, deletedAt: null }
+    });
+    if (!targetEntity) {
+      return NextResponse.json({ error: '該設定項目不存在或已被刪除' }, { status: 404 });
+    }
+
+    if (action === 'connect_chapter') {
+      // 🌟 終極大招：使用原生 SQL 直接對多對多聯結表插入資料，100% 免疫 TypeScript 型別錯誤！
+      await prisma.$executeRaw`
+        INSERT INTO "_ChapterSettings" ("A", "B")
+        VALUES (${chapterId}::uuid, ${entityId}::uuid)
+        ON CONFLICT DO NOTHING
+      `;
+      return NextResponse.json({ message: '成功將要素劃分至本章登場名單' }, { status: 200 });
+    }
+
+    if (action === 'disconnect_chapter') {
+      // 🌟 終極大招：使用原生 SQL 直接從聯結表刪除關聯記錄
+      await prisma.$executeRaw`
+        DELETE FROM "_ChapterSettings"
+        WHERE "A" = ${chapterId}::uuid AND "B" = ${entityId}::uuid
+      `;
+      return NextResponse.json({ message: '成功從本章登場名單中撤出' }, { status: 200 });
+    }
+
+    return NextResponse.json({ error: '未知的變更動作' }, { status: 400 });
+  } catch (error) {
+    console.error("同步章節要素失敗:", error);
+    return NextResponse.json({ error: '伺服器無法處理多對多關聯網路' }, { status: 500 });
   }
 }

@@ -71,7 +71,10 @@ export default function ChapterEditorPage() {
             <div className="flex flex-col items-center ">
               <h3 className="text-2xl font-bold text-gray-800 mb-2 ">詳細設定區</h3>
               {/* 核心修改：把網址抓到的 novelId 當作 projectId 傳給設定面板！ */}
-              <SettingsPanel projectId={novelId} />
+              <SettingsPanel 
+                projectId={novelId} 
+                chapterId={chapterId}
+              />
             </div>
           </div>
         )}
