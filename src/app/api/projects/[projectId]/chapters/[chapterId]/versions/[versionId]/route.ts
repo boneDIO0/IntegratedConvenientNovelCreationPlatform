@@ -113,7 +113,10 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       where: {
         id: versionId,
         targetId: chapterId,
-        targetType: 'CHAPTER'
+        targetType: {
+          equals: 'CHAPTER',
+          mode: 'insensitive'
+        }
       }
     });
 

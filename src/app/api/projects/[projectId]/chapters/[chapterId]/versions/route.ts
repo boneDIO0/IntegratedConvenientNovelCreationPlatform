@@ -13,7 +13,10 @@ export async function GET(
     const checkpoints = await prisma.checkpoint.findMany({
       where: {
         targetId: chapterId,
-        targetType: 'CHAPTER',
+        targetType: {
+          equals: 'CHAPTER',
+          mode: 'insensitive'
+        }
       },
       orderBy: { createdAt: 'desc' },
     });
