@@ -50,7 +50,7 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
     group.items.filter(i => i.category === 'faction')
   );
 
-  // 🌟 2. 用你提議的方法，動態抓取全作品的所有「其他角色」作為可關聯候選人
+  // 🌟 2. 用全作品總庫，動態抓取所有「其他角色」作為可關聯候選人 (下拉選單用)
   const availableCharacters = allSettings
     .flatMap(group => group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-'))) // 相容可能的人物分類標記
     .filter(char => char.id !== item.id && char.name !== name); // 排除自己
@@ -107,7 +107,7 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
       relations: relations // 🌟 5. 將最新的關係陣列一起打包塞進 JSON 送給後端！
     };
     
-    setSaveStatus("儲中...");
+    setSaveStatus("儲存中...");
     
     try {
       await onSave(updatedItem); 
@@ -297,11 +297,26 @@ export default function CharacterForm({ item, onSave, allSettings = [] }: Charac
           <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-slate-200 bg-slate-50 min-h-[60px] items-center">
             {relations.length > 0 ? (
               relations.map((rel, index) => {
-                // 從 allSettings 中反向查出該 targetId 的真實姓名，查不到就顯示原 ID
-                const targetName = availableCharacters.find(c => c.id === rel.targetId)?.name || rel.targetId;
+                // 🌟 修正點：改用全域總庫（allSettings）做無差別扁平反查，防止本章未登場角色變亂碼
+                const allCharactersInProject = allSettings.flatMap(g => g.items);
+                const targetChar = allCharactersInProject.find(c => c.id === rel.targetId);
+                const targetName = targetChar?.name || rel.targetId;
+
+                // 🌟 UX 加分項：判斷該角色是否在「目前章節的可選清單」中，如果不在代表本章未登場
+                const isAbsentInChapter = !availableCharacters.some(c => c.id === rel.targetId);
+
                 return (
-                  <Badge key={index} variant="secondary" className="text-sm py-1 px-3 bg-white shadow-sm border-slate-200 flex items-center gap-2 group">
-                    <span>👤 與 <strong className="text-blue-700">{targetName}</strong> 的關係是【{rel.type}】</span>
+                  <Badge 
+                    key={index} 
+                    variant="secondary" 
+                    className={`text-sm py-1 px-3 bg-white shadow-sm border-slate-200 flex items-center gap-2 transition-all ${
+                      isAbsentInChapter ? "opacity-60 saturate-50 bg-slate-100/70" : ""
+                    }`}
+                  >
+                    <span>
+                      👤 與 <strong className="text-blue-700">{targetName}</strong> 的關係是【{rel.type}】
+                      {isAbsentInChapter && <span className="text-xs text-slate-400 ml-1">(本章未登場)</span>}
+                    </span>
                     <button
                       type="button"
                       onClick={() => handleRemoveRelation(rel.targetId)}

@@ -126,7 +126,10 @@ export default function ChapterEditorPage() {
             <div className="w-[45%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">
               <div className="flex flex-col items-center p-6">
                 <h3 className="text-2xl font-bold text-gray-800 mb-2">詳細設定區</h3>
-                <SettingsPanel projectId={novelId} />
+                <SettingsPanel 
+                  projectId={novelId} // 或者是 params.novelId
+                  chapterId={chapterId} // 🌟 就是這行！把動態路由或狀態裡的章節 ID 傳進去！
+                />
               </div>
             </div>
           )}

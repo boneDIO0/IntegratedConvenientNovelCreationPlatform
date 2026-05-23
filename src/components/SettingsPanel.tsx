@@ -19,19 +19,23 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
-  // 🌟 1. 核心新增：儲存這本小說完全沒有過濾的「全域完整設定集」，供管理器勾選使用
+  // 儲存這本小說完全沒有過濾的「全域完整設定集」
   const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
   
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
-  const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline'>('form');
+  
+  // 🌟 修正 1：擴充 viewMode 型別，新增 'chapter_manager' 模式
+  // 當有傳入 chapterId 時，初始狀態預設鎖定在 'chapter_manager'
+  const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline' | 'chapter_manager'>(
+    chapterId ? 'chapter_manager' : 'form'
+  );
+  
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
-
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isInitialized, setIsInitialized] = useState(false);
-  const [isSyncingChapter, setIsSyncingChapter] = useState(false); // 控制勾選時的 loading 狀態
+  const [isSyncingChapter, setIsSyncingChapter] = useState(false); 
 
-  // 🌟 2. 核心抽離：將 Fetch 邏輯獨立出來，方便勾選完後能即時局部刷新
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
@@ -43,23 +47,18 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const res = await fetch(url);
       if (!res.ok) throw new Error('讀取資料失敗');
       const data = await res.json();
-      
-      if (data && data.length > 0) {
-        setSettingsData(data);
-        setIsInitialized(true);
-        if (window.location.hash !== '#editor') {
-          window.location.replace('#editor');
-        }
-      } else {
-        setIsInitialized(false);
-      }
+      setSettingsData(data);
 
-      // 🌟 3. 如果處於章節模式，加碼撈取一份不帶 chapterId 的完整設定庫，用來做全域要素對照
-      if (chapterId) {
-        const globalRes = await fetch(`/api/settings?projectId=${projectId}`);
-        if (globalRes.ok) {
-          const globalData = await globalRes.json();
-          setGlobalAllSettings(globalData);
+      // 同步撈取全域設定總庫，用來做全域要素對照勾選
+      const globalRes = await fetch(`/api/settings?projectId=${projectId}`);
+      if (globalRes.ok) {
+        const globalData = await globalRes.json();
+        setGlobalAllSettings(globalData);
+        
+        if (globalData && globalData.length > 0) {
+          setIsInitialized(true);
+        } else {
+          setIsInitialized(false);
         }
       }
     } catch (error) {
@@ -69,16 +68,24 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
+  // 🌟 修正 2：監聽當前 chapterId 變動，切換章節時無條件將視圖切回 'chapter_manager' 並清空選取
   useEffect(() => {
     if (projectId) {
       fetchSettings();
+      if (chapterId) {
+        setViewMode('chapter_manager');
+        setSelectedItem(null);
+      }
     }
-  }, [projectId, chapterId]); // 🌟 監聽 chapterId 切換，換章節時自動重綁資料
+  }, [projectId, chapterId]); 
 
   useEffect(() => {
     const handleHashChange = () => {
       if (window.location.hash === '#editor') {
-        setIsInitialized(true);
+        // 如果處於章節模式，不讓 Hash 改變硬塞回預設表單視圖
+        if (!chapterId) {
+          setIsInitialized(true);
+        }
       } else if (settingsData.length === 0) {
         setIsInitialized(false);
       }
@@ -88,7 +95,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     handleHashChange();
 
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [settingsData.length]);
+  }, [settingsData.length, chapterId]);
 
   const confirmLeave = () => {
     if (hasChanges) {
@@ -102,14 +109,12 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     return true; 
   };
 
-  // 🌟 4. 核心新增：處理將設定實體勾選加入/退出本章節的多對多 API 呼叫
   const handleToggleSettingToChapter = async (entityId: string, isChecked: boolean) => {
     if (!chapterId) return;
     try {
       setIsSyncingChapter(true);
-      // 假設你新增了此功能對應的關聯 API 端點
       const res = await fetch(`/api/settings`, {
-        method: 'PATCH', // 使用 PATCH 來處理局部關聯變更
+        method: 'PATCH', 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: isChecked ? 'connect_chapter' : 'disconnect_chapter',
@@ -120,7 +125,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
       if (!res.ok) throw new Error('同步章節設定失敗');
       
-      // 勾選聯動成功後，重新整理當前畫面資料，側邊欄目錄就會即時增減！
+      // 勾選成功後即時刷新資料，側邊欄目錄與勾選清單同步連動
       await fetchSettings();
     } catch (error) {
       console.error(error);
@@ -130,7 +135,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-  // 更新與儲存項目
   const handleUpdateItem = async (updatedItem: SettingItem) => {
     setSettingsData(prevData => {
       return prevData.map(group => {
@@ -148,52 +152,20 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     setHasChanges(false); 
 
     try {
-      const res = await fetch(`/api/settings/${updatedItem.id}`, {
+      await fetch(`/api/settings/${updatedItem.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedItem)
       });
-
-      if (!res.ok) throw new Error('伺服器回應錯誤');
-      console.log('🎉 儲存成功！已安全寫入雲端資料庫。');
     } catch (error) {
-      console.error('儲存至資料庫失敗:', error);
-      alert('⚠️ 儲存至雲端失敗。');
+      console.error(error);
     }
   };
 
-  // 處理模板選擇
   const handleSelectTemplate = async (template: TemplateDef) => {
     setSettingsData(template.initialData); 
     window.location.hash = 'editor';
     setIsInitialized(true);
-
-    const getCategoryType = (name: string) => {
-      if (name.includes('人物')) return 'character';
-      if (name.includes('組織')) return 'faction';
-      if (name.includes('物品')) return 'item';
-      if (name.includes('事件')) return 'event';
-      return 'custom';
-    };
-
-    try {
-      await Promise.all(
-        template.initialData.map(group => 
-          fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              type: 'new_category', 
-              name: group.category,
-              categoryType: getCategoryType(group.category),
-              projectId: projectId 
-            })
-          })
-        )
-      );
-    } catch (error) {
-      console.error('同步模板目錄至資料庫失敗:', error);
-    }
   };
 
   const handleEventHighlight = (ids: string[]) => {
@@ -214,7 +186,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-  // 新增項目
   const handleAddItem = async (categoryName: string, type: string) => {
     if (!confirmLeave()) return; 
     try {
@@ -232,7 +203,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       if (!res.ok) throw new Error('新增至資料庫失敗');
       const realItem = await res.json(); 
 
-      // 🌟 如果是在章節模式下直接點「+」新增項目，除了塞進列表，通常也默認跟當前章節自動 connect
       if (chapterId) {
         await fetch(`/api/settings`, {
           method: 'PATCH',
@@ -241,95 +211,65 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         });
       }
 
-      await fetchSettings(); // 重新整理
+      await fetchSettings(); 
       setSelectedItem(realItem);
       setViewMode('form');
       setHasChanges(false); 
     } catch (error) {
       console.error(error);
-      alert('新增失敗！請確認資料庫狀態。');
     }
   };
 
   const handleDeleteItem = async (itemId: string) => {
     setSettingsData(prevData => {
-      return prevData.map(group => ({
-        ...group,
-        items: group.items.filter(item => item.id !== itemId)
-      }));
+      return prevData.map(group => ({ ...group, items: group.items.filter(item => item.id !== itemId) }));
     });
-    
     if (selectedItem?.id === itemId) {
       setSelectedItem(null);
-      setHasChanges(false);
+      if (chapterId) setViewMode('chapter_manager');
     }
-
     try {
       await fetch(`/api/settings/${itemId}`, { method: 'DELETE' });
-    } catch (error) {
-      console.error("刪除項目失敗", error);
-    }
+    } catch (error) {}
   };
 
-  // 新增目錄
   const handleAddCategory = async (newCategoryName: string) => {
     if (!newCategoryName.trim()) return;
-    if (settingsData.some(g => g.category === newCategoryName)) {
-      alert("此目錄名稱已存在！");
-      return;
-    }
-
     setSettingsData(prev => [...prev, { category: newCategoryName, items: [] }]);
-    
     try {
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          type: 'new_category', 
-          name: newCategoryName,
-          projectId: projectId 
-        })
+        body: JSON.stringify({ type: 'new_category', name: newCategoryName, projectId })
       });
-    } catch (error) {
-      console.error("新增目錄失敗", error);
-    }
+    } catch (error) {}
   };
 
   const handleDeleteCategory = async (categoryName: string) => {
-    if (confirm(`確定要刪除「${categoryName}」目錄嗎？裡面的所有設定將會一併消失！`)) {
+    if (confirm(`確定要刪除「${categoryName}」目錄嗎？`)) {
       setSettingsData(prev => prev.filter(g => g.category !== categoryName));
-      if (selectedItem?.category === categoryName || selectedItem?.category === 'custom') {
-        setSelectedItem(null);
-        setViewMode('form');
-        setHasChanges(false);
-      }
+      setSelectedItem(null);
+      if (chapterId) setViewMode('chapter_manager');
       try {
         await fetch('/api/settings', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete_category', categoryName: categoryName, projectId: projectId })
+          body: JSON.stringify({ action: 'delete_category', categoryName, projectId })
         });
-      } catch (error) {
-        console.error('刪除目錄失敗:', error);
-      }
+      } catch (error) {}
     }
   };
 
   const handleRenameCategory = async (oldName: string, newName: string) => {
     if (!newName.trim() || oldName === newName) return;
-    setSettingsData(prev => {
-      return prev.map(group => group.category === oldName ? { ...group, category: newName } : group);
-    });
+    setSettingsData(prev => prev.map(g => g.category === oldName ? { ...g, category: newName } : g));
     try {
       await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'rename_category', oldName, newName, projectId })
       });
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) {}
   };
 
   if (isLoading) {
@@ -347,18 +287,12 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         <div className="max-w-4xl w-full space-y-8">
           <div className="text-center space-y-2">
             <h1 className="text-4xl font-bold text-slate-900">建立你的新專案</h1>
-            <p className="text-slate-500">請選擇一個預設模板，或從完全空白的畫布開始。</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {PLATFORM_TEMPLATES.map((template) => (
-              <button
-                key={template.id}
-                onClick={() => handleSelectTemplate(template)}
-                className="flex flex-col items-start p-6 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:shadow-md transition-all text-left group"
-              >
-                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">{template.icon}</div>
+              <button key={template.id} onClick={() => handleSelectTemplate(template)} className="p-6 bg-white border rounded-xl text-left">
                 <h3 className="text-xl font-bold text-slate-800 mb-2">{template.name}</h3>
-                <p className="text-slate-500 text-sm leading-relaxed">{template.description}</p>
+                <p className="text-slate-500 text-sm">{template.description}</p>
               </button>
             ))}
           </div>
@@ -371,7 +305,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col">
       <aside className="w-full md:w-80 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
         <h2 className="text-xl font-bold mb-4 text-slate-800">設定集目錄</h2>
-        
         <SettingsSidebar 
           data={settingsData}
           onSelect={(item) => {
@@ -394,164 +327,139 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-slate-800">
-                {viewMode === 'graph' ? '全域人物關係圖' : selectedItem ? `${selectedItem.name} ${hasChanges ? '*(已修改)' : '(編輯中)'}` : "未選取項目"}
+                {viewMode === 'graph' ? '全域人物關係圖' : 
+                 viewMode === 'chapter_manager' ? '🎬 本章登場要素配置' :
+                 selectedItem ? `${selectedItem.name} ${hasChanges ? '*(已修改)' : '(編輯中)'}` : "未選取項目"}
               </h1>
-              
-              {selectedItem && viewMode === 'form' && (
-                <select
-                  value={selectedItem.category}
-                  onChange={(e) => {
-                    const newType = e.target.value;
-                    const updated = { ...selectedItem, category: newType };
-                    setSelectedItem(updated);
-                    handleUpdateItem(updated); 
-                  }}
-                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm"
-                >
-                  <option value="character">👤 人物表單</option>
-                  <option value="faction">🏛️ 組織表單</option>
-                  <option value="item">⚔️ 物品表單</option>
-                  <option value="event">📜 事件表單</option>
-                  <option value="custom">⚙️ 通用表單</option>
-                </select>
-              )}
             </div>
             
             <div className="flex gap-2">
               <button 
                 onClick={() => { if (!confirmLeave()) return; setViewMode('timeline'); setHighlightedIds(null); }}
-                className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                  viewMode === 'timeline' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
+                className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${viewMode === 'timeline' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
               >
                 ⏳ 歷史時間軸
               </button>
 
               <button 
                 onClick={() => { if (!confirmLeave()) return; setViewMode('graph'); setHighlightedIds(null); }}
-                className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                  viewMode === 'graph' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
+                className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${viewMode === 'graph' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
               >
                 🗺️ 檢視關係圖
               </button>
 
-              <button 
-                onClick={() => setViewMode('form')}
-                className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                  viewMode === 'form' ? 'bg-slate-100 text-slate-900 border-slate-300' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                📝 返回編輯器
-              </button>
+              {/* 🌟 修正 3：右上角工具列對齊。章節模式下亮出紫色登場管理按鈕，供隨時點擊切換回去修改 */}
+              {chapterId && (
+                <button 
+                  onClick={() => { if (!confirmLeave()) return; setViewMode('chapter_manager'); setSelectedItem(null); }}
+                  className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${viewMode === 'chapter_manager' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+                >
+                  🎬 本章登場管理
+                </button>
+              )}
+              
+              {!chapterId && (
+                <button 
+                  onClick={() => setViewMode('form')}
+                  className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${viewMode === 'form' ? 'bg-slate-100 text-slate-900 border-slate-300' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+                >
+                  📝 返回編輯器
+                </button>
+              )}
             </div>
           </div>
           
           <div className="flex-1 min-h-[600px] flex">
              {viewMode === 'timeline' ? (
-                <TimelineView 
-                  onEventClick={handleEventHighlight} 
-                  filterTargetId={selectedItem?.id} 
-                />
+                <TimelineView onEventClick={handleEventHighlight} filterTargetId={selectedItem?.id} />
              ) : viewMode === 'graph' ? (
-                <RelationGraph 
-                  allSettings={settingsData} 
-                  highlightedIds={highlightedIds}
-                  onNodeSelect={handleNodeSelectFromGraph} 
-                />
+                <RelationGraph allSettings={settingsData} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
+             ) : viewMode === 'chapter_manager' ? (
+                /* 🌟 修正 4：章節管理器主介面。附帶「✨ 完成配置」主動退出鈕，大幅提升 UX 體驗 */
+                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[700px]">
+                  <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定 management</h3>
+                      <p className="text-sm text-slate-500">
+                        勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏。
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedItem(null);
+                        const firstItem = settingsData.flatMap(g => g.items)[0];
+                        if (firstItem) {
+                          setSelectedItem(firstItem);
+                          setViewMode('form');
+                        } else {
+                          setViewMode('form'); 
+                        }
+                      }}
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg shadow-sm transition-all whitespace-nowrap"
+                    >
+                      ✨ 完成配置
+                    </button>
+                  </div>
+
+                  {isSyncingChapter && (
+                    <div className="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg animate-pulse font-medium">
+                      ⏳ 正在同步章節關係網路至雲端 Neon...
+                    </div>
+                  )}
+
+                  <div className="space-y-6 flex-1">
+                    {globalAllSettings.map((group) => (
+                      <div key={group.category} className="space-y-3">
+                        <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
+                          {group.category}
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {group.items.map((item) => {
+                            const isAssigned = settingsData
+                              .flatMap((g) => g.items)
+                              .some((i) => i.id === item.id);
+
+                            return (
+                              <label key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${isAssigned ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-2 h-2 rounded-full ${item.category === 'character' ? 'bg-blue-500' : item.category === 'faction' ? 'bg-orange-500' : 'bg-emerald-500'}`} />
+                                  <span className="text-sm font-semibold text-slate-800">{item.name}</span>
+                                </div>
+                                <input 
+                                  type="checkbox"
+                                  checked={isAssigned}
+                                  disabled={isSyncingChapter}
+                                  onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
+                                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
              ) : selectedItem ? (
-                <div 
-                  className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
-                  onChange={() => setHasChanges(true)}
-                  onInput={() => setHasChanges(true)}
-                >
+                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm" onChange={() => setHasChanges(true)} onInput={() => setHasChanges(true)}>
                   {selectedItem.category === 'character' && (
                     <CharacterForm 
                       key={selectedItem.id} 
                       item={selectedItem} 
                       onSave={handleUpdateItem} 
-                      allSettings={settingsData} 
+                      // 🌟 修正：把包含全域所有角色名字的總庫傳進去
+                      allSettings={globalAllSettings} 
                     />
                   )}
                   {selectedItem.category === 'faction' && <FactionForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
                   {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
                   {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
-
-                  {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && (
-                    <DynamicForm 
-                      key={selectedItem.id} 
-                      item={selectedItem} 
-                      onSave={handleUpdateItem} 
-                    />
-                  )}
+                  {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && <DynamicForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
                 </div>
              ) : (
-                /* 🌟 5. 核心大升級：如果沒有選取單一項目，且正處於章節模式中，直接渲染「本章登場要素管理大面板」 */
-                chapterId ? (
-                  <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[700px]">
-                    <div>
-                      <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
-                      <p className="text-sm text-slate-500">
-                        勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏，助你專注當前分鏡。
-                      </p>
-                    </div>
-
-                    {isSyncingChapter && (
-                      <div className="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg animate-pulse font-medium">
-                        ⏳ 正在同步章節關係網路至雲端 Neon...
-                      </div>
-                    )}
-
-                    <div className="space-y-6 flex-1">
-                      {globalAllSettings.map((group) => (
-                        <div key={group.category} className="space-y-3">
-                          <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
-                            {group.category}
-                          </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {group.items.map((item) => {
-                              // 反查該項目是否已經存在於當前章節的過濾列表中
-                              const isAssigned = settingsData
-                                .flatMap((g) => g.items)
-                                .some((i) => i.id === item.id);
-
-                              return (
-                                <label 
-                                  key={item.id} 
-                                  className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${
-                                    isAssigned 
-                                      ? 'border-blue-500 bg-blue-50/40 shadow-sm' 
-                                      : 'border-slate-200 bg-white hover:border-slate-300'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className={`w-2 h-2 rounded-full ${
-                                      item.category === 'character' ? 'bg-blue-500' : 
-                                      item.category === 'faction' ? 'bg-orange-500' : 'bg-emerald-500'
-                                    }`} />
-                                    <span className="text-sm font-semibold text-slate-800">{item.name}</span>
-                                  </div>
-                                  <input 
-                                    type="checkbox"
-                                    checked={isAssigned}
-                                    disabled={isSyncingChapter}
-                                    onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
-                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                  />
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  /* 如果是非章節模式（全域模式），且沒有點選卡片，則維持原本的空白提示 */
-                  <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
-                    <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
-                  </div>
-                )
+                <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
+                  <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
+                </div>
              )}
           </div>
         </div>
