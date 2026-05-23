@@ -27,8 +27,9 @@ export async function GET(
   }
 }
 
-/// ✏️ 儲存：更新章節的標題與編輯器內容，並同時建立 Checkpoint 歷史紀錄
-export async function PATCH(
+// ✏️ 儲存：更新章節的標題與編輯器內容，並同時建立 Checkpoint 歷史紀錄
+// 🌟 修正 1：將 PATCH 改為 PUT，與前端 Editor.tsx 保持一致
+export async function PUT(
   request: Request,
   context: { params: Promise<{ projectId: string; chapterId: string }> }
 ) {
@@ -36,7 +37,7 @@ export async function PATCH(
     const session = await getServerSession()
     if (!session || !session.user?.email) return new NextResponse("請先登入", { status: 401 })
 
-    // 🌟 先透過 email 找出這位作者的真實 UUID (因為 Checkpoint 需要 authorId)
+    // 先透過 email 找出這位作者的真實 UUID
     const currentUser = await prisma.user.findUnique({
       where: { email: session.user.email }
     })
@@ -47,33 +48,34 @@ export async function PATCH(
 
     // 🌟 核心修改：使用 Prisma Transaction，確保「更新」與「備份」同時成功
     const [updatedChapter, newCheckpoint] = await prisma.$transaction([
-      
+
       // 動作 1：更新目前的章節內容
       prisma.chapter.update({
         where: { id: chapterId },
         data: {
           title: body.title,
-          content: body.content, 
+          content: body.content,
         }
       }),
 
       // 動作 2：同步生出一份 Checkpoint 快照留底
       prisma.checkpoint.create({
         data: {
+          // 🌟 修正 2：確保欄位型態能正確與 PostgreSQL @db.Uuid 對接
           projectId: projectId,
           authorId: currentUser.id,
-          targetType: "chapter", // 標明這是章節的備份
-          targetId: chapterId,   // 記錄是哪一個章節
-          content: body.content, // 直接塞入我們剛改好 schema 的完整 JSON 內容
-          commitMsg: "編輯器手動存檔" // 給個預設的備註訊息
+          targetType: "CHAPTER", // 建議改用大寫，與你版本獲取 API 的 CHAPTER 一致
+          targetId: chapterId,
+          content: body.content as any, // 強制斷言符合 Prisma Json 型態
+          commitMsg: body.commitMsg || "編輯器手動存檔" // 🌟 修正 3：改用前端傳進來的自訂備註（例如：第幾章 - 手動存檔點）
         }
       })
-      
+
     ])
 
     return NextResponse.json(updatedChapter)
   } catch (error) {
-    console.error("PATCH Chapter & Checkpoint Error:", error)
+    console.error("PUT Chapter & Checkpoint Error:", error)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }

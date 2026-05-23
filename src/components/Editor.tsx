@@ -3,7 +3,8 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useEditorUI } from '@/contexts/EditorUIContext'
 
 // 定義這個編輯器需要接收的資料
 interface EditorProps {
@@ -40,49 +41,50 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
       setSaveStatus('編輯中...') // 只要打字就變成編輯中
     }
   })
+  // 2. 從中拿取還原訊號
+  const { latestRestoredContent, setLatestRestoredContent, fetchVersions } = useEditorUI()
+
+  // 3. 核心：一旦發現傳來歷史版本的內文，立刻強制洗牌 Tiptap 畫布
+  useEffect(() => {
+      if (editor && latestRestoredContent) {
+        // 將後端傳回的 Prisma Json 內文注入 Tiptap
+        editor.commands.setContent(latestRestoredContent)
+
+        // 注入成功後，將大腦的訊號重設為 null，避免重複觸發
+        setLatestRestoredContent(null)
+      }
+    }, [latestRestoredContent, editor, setLatestRestoredContent])
 
   const handleSave = async () => {
-    // 防呆 1: 編輯器未載入、正在存檔中、或是內容為空，直接中止操作
-    if (!editor || isSaving || editor.isEmpty) return
+      if (!editor) return
+      setSaveStatus('儲存中...')
 
-    const currentContent = editor.getJSON()
+      const titleInput = document.getElementById('doc-title') as HTMLInputElement
+      const currentTitle = titleInput ? titleInput.value : initialTitle
+      const currentContent = editor.getJSON()
 
-    // 防呆 2: 比對內容，如果和上次存檔完全相同，不發送 API 請求
-    if (JSON.stringify(currentContent) === JSON.stringify(lastSavedContent)) {
-      setSaveStatus('已儲存')
-      return
-    }
-
-    setIsSaving(true)
-    setSaveStatus('儲存中...')
-
-    const titleInput = document.getElementById('doc-title') as HTMLInputElement
-    const currentTitle = titleInput ? titleInput.value : initialTitle
-
-    try {
-      // 呼叫 PATCH API 更新章節與建立 Checkpoint
-      const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: currentTitle,
-          content: currentContent
+      try {
+        const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: currentTitle,
+            content: currentContent,
+            saveVersion: true,
+            commitMsg: `${currentTitle || '未命名章節'} - 手動存檔點`
+          })
         })
-      })
 
-      if (!res.ok) throw new Error("儲存失敗")
+        if (!res.ok) throw new Error("儲存失敗")
 
-      // 儲存成功後，更新最後存檔的內容記錄
-      setLastSavedContent(currentContent)
-      setSaveStatus('已儲存')
-    } catch (error) {
-      console.error(error)
-      setSaveStatus('儲存失敗')
-    } finally {
-      // 無論成功或失敗，最後務必解除鎖定狀態
-      setIsSaving(false)
-    }
-  }
+        setSaveStatus('● 已儲存')
+        fetchVersions(novelId, chapterId)
+
+      } catch (error) {
+        console.error(error)
+        setSaveStatus('❌ 儲存失敗')
+      }
+    };
 
   if (!editor) {
     return null
