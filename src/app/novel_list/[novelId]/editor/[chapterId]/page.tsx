@@ -81,20 +81,7 @@ export default function ChapterEditorPage() {
         console.error("還原請求出錯:", error);
       }
     };
-        {/* 這是設定集 */}
-        {isSettingsOpen && (
-          <div className="w-[45%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto">          
-            <div className="flex flex-col items-center ">
-              <h3 className="text-2xl font-bold text-gray-800 mb-2 ">詳細設定區</h3>
-              {/* 核心修改：把網址抓到的 novelId 當作 projectId 傳給設定面板！ */}
-              <SettingsPanel 
-                projectId={novelId} 
-                chapterId={chapterId}
-              />
-            </div>
-          </div>
-        )}
-      </div>
+
 
     // 🌟 3. 歷史紀錄：點擊卡片執行「刪除」 (呼叫後端 DELETE API)
     const handleDeleteVersion = async (versionId: string) => {

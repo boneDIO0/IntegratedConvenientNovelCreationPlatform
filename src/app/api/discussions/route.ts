@@ -1,36 +1,57 @@
-// 留言板 API (GET 和 POST)
-import { handleApiError } from '@/lib/ErrorHandler';
+// 檔案路徑：src/app/api/discussions/route.ts
 import { NextResponse } from 'next/server';
-import { getAllMessages, addMessage } from '@/lib/mockDiscussionMessages';
-import { Message } from '@/types/message';
+import prisma from '@/lib/prisma'; // 🌟 召喚真實的資料庫引擎
+import { handleApiError } from '@/lib/ErrorHandler';
 
-export async function GET() {
-  const messages = getAllMessages();
-  return NextResponse.json(messages, { status: 200 });
+// 讀取留言 (GET)
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const projectId = searchParams.get('projectId');
+    const channelId = searchParams.get('channelId') || 'general';
+
+    if (!projectId || projectId === 'undefined' || projectId === 'null') {
+      return NextResponse.json({ status: "error", message: "缺少有效的小說 ID" }, { status: 400 });
+    }
+
+    const messages = await prisma.projectMessages.findMany({
+      where: { projectId: projectId, channelId: channelId },
+      orderBy: { createdAt: 'asc' }, // 舊的在上面，新的在下面
+      include: {
+        users: { // 順便把留言者的名字和頭像抓出來！
+          select: { name: true, image: true }
+        }
+      }
+    });
+
+    return NextResponse.json({ status: "success", data: messages }, { status: 200 });
+
+  } catch (error) {
+    return handleApiError(error, "讀取留言過程發生錯誤");
+  }
 }
 
+// 新增留言 (POST)
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // check if content absent
-    if (!body.content) {
+    if (!body.content || !body.projectId || !body.authorId) {
       return NextResponse.json(
-        { status: "error", message: "留言失敗：留言內容不能為空" },
+        { status: "error", message: "留言失敗：缺少必要資訊" },
         { status: 400 }
       );
     }
 
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      authorName: body.authorName || '匿名訪客',
-      content: body.content,
-      createdAt: new Date().toISOString(),
-    };
+    const newMessage = await prisma.projectMessages.create({
+      data: {
+        content: body.content,
+        projectId: body.projectId,
+        authorId: body.authorId,
+        channelId: body.channelId || 'general'
+      }
+    });
 
-    addMessage(newMessage);
-
-    /* **尚未連接 DB，先假裝連接成功** */
     return NextResponse.json(
       { status: "success", message: "成功留言", data: newMessage },
       { status: 201 }

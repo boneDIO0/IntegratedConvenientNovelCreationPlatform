@@ -4,10 +4,18 @@
 useState and onClick are available */
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
+import { usePathname } from 'next/navigation';
 
 export function DiscussionBoard() {
+  const { data: session } = useSession();
+  const pathname = usePathname();
+  const novelId = pathname?.startsWith('/novel_list/') ? pathname.split('/')[2] : null;
+  const isEditor = pathname?.includes('/editor');
+  const chapterId = isEditor ? pathname.split('/')[4] : null;
+  const currentChannelId = chapterId || "general";
 
   /* 建立狀態儲存使用者的輸入和 API 的回應
      記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
@@ -19,10 +27,12 @@ export function DiscussionBoard() {
   const [messages, setMessages] = useState<Message[]>([]);
 
   const fetchMessages = async () => {
+    if (!novelId || novelId === 'undefined') return;
+
     try {
-      const res = await fetch('/api/discussions');
-      const data = await res.json();
-      setMessages(data);
+      const res = await fetch(`/api/discussions?projectId=${novelId}&channelId=${currentChannelId}`);
+      const json = await res.json();
+      setMessages(json.data || []);
     } catch (error) {
       console.error('抓取留言失敗', error);
     }
@@ -31,12 +41,17 @@ export function DiscussionBoard() {
   // 網頁一載入時自動執行一次抓取
   useEffect(() => {
     fetchMessages();
-  }, []);
+  }, [novelId, currentChannelId]);
 
   // 將資料給後端 API
   const handleSubmit = async () => {
     // 防呆: 如果什麼都沒打就不理他
     if (!content.trim()) return; 
+
+    if (!session?.user?.id) {
+      alert("請先登入才能留言！");
+      return;
+    }
 
     setIsLoading(true);
 
@@ -45,8 +60,10 @@ export function DiscussionBoard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          authorName: '初級寫手', // Demo 先寫死
-          content: content // 放入 textarea 取得的純文字
+          projectId: novelId,
+          authorId: session.user.id,
+          content: content,
+          channelId: currentChannelId
         }),
       });
 
@@ -117,16 +134,16 @@ export function DiscussionBoard() {
 
       {/* --- 留言列表區塊 --- */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-700">留言列表 ({messages.length})</h2>
+        <h2 className="text-lg font-bold text-gray-700">留言列表 ({messages?.length || 0})</h2>
         
-        {messages.length === 0 ? (
+        {messages?.length === 0 ? (
           <p className="text-gray-500 text-center py-4">目前還沒有討論</p>
         ) : (
           // 以 map 迴圈將陣列裡的每一筆資料變成一個 UI 卡片
           messages.map((msg) => (
             <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
               <div className="flex justify-between items-center mb-2">
-                <span className="font-bold text-sm text-blue-600">{msg.authorName}</span>
+                <span className="font-bold text-sm text-blue-600">{msg.users?.name || '未知使用者'}</span>
                 
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-400">
