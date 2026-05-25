@@ -231,16 +231,38 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   };
 
   const handleDeleteItem = async (itemId: string) => {
+    if (!confirm("⚠️ 確定要永久刪除此設定項目嗎？這將會一併解除所有章節的登場勾選，且無法復原。")) return;
     setSettingsData(prevData => {
-      return prevData.map(group => ({ ...group, items: group.items.filter(item => item.id !== itemId) }));
+      return prevData.map(group => ({
+        ...group,
+        items: group.items.filter(item => item.id !== itemId)
+      }));
+    });
+    setGlobalAllSettings(prevGlobal => {
+      return prevGlobal.map(group => ({
+        ...group,
+        items: group.items.filter(item => item.id !== itemId)
+      }));
     });
     if (selectedItem?.id === itemId) {
       setSelectedItem(null);
       if (chapterId) setViewMode('chapter_manager');
     }
     try {
-      await fetch(`/api/settings/${itemId}`, { method: 'DELETE' });
-    } catch (error) {}
+      // 🌟 核心修正二：打後端 DELETE API 時，讓後端同時清空要素主表與對照表的關聯（CASCADE）
+      const res = await fetch(`/api/settings/${itemId}`, { 
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        // 把 projectId 一併帶過去，方便後端路由進行安全校驗
+        body: JSON.stringify({ projectId }) 
+      });
+
+      if (!res.ok) throw new Error("資料庫刪除失敗");
+      console.log(`🎉 ID: ${itemId} 及其所有章節登場關聯已從雲端 Neon 完美抹除！`);
+    } catch (error) {
+      console.error("刪除雲端同步失敗:", error);
+      alert("⚠️ 雲端刪除失敗，請重新整理網頁檢查 Neon 資料庫狀態。");
+    }
   };
 
   const handleAddCategory = async (newCategoryName: string) => {

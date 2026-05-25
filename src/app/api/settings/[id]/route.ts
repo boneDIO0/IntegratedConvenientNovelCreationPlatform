@@ -3,15 +3,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-// 🌟 1. 修正：在 Next.js 15+ 中，params 變成了一個 Promise
+// 在 Next.js 15+ / 16+ 中，params 是一個 Promise
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-// PUT 請求：更新指定的設定項目
+// ==========================================
+// 📝 PUT 請求：更新指定的設定項目
+// ==========================================
 export async function PUT(request: Request, { params }: RouteParams) {
   try {
-    // 🌟 2. 修正：必須加上 await 來解開 params 拿出 id
     const { id } = await params; 
     const body = await request.json(); 
 
@@ -33,26 +34,32 @@ export async function PUT(request: Request, { params }: RouteParams) {
 
     return NextResponse.json(updatedEntity, { status: 200 });
   } catch (error) {
-    // 這裡改印 error 本身，避免 params 還沒解開就報錯
     console.error(`PUT 錯誤:`, error);
     return NextResponse.json({ error: '無法更新設定' }, { status: 500 });
   }
 }
 
-// DELETE 請求：刪除指定的設定項目
+// ==========================================
+// 🗑️ DELETE 請求：刪除指定的設定項目（含連鎖清理孤兒關聯）
+// ==========================================
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
-    // 🌟 2. 修正：必須加上 await
     const { id } = await params;
 
+    // 🌟 核心修正：直接在更新主表時，利用 chapters.disconnect 傳入空陣列 []
+    // 這在 Prisma 裡代表「一鍵切斷此要素與全世界所有章節的登場關聯表綁定」，乾淨俐落！
     await prisma.settingEntity.update({
       where: { id },
       data: {
-        deletedAt: new Date()
+        deletedAt: new Date(), // 標記為軟刪除
+        chapters: {
+          set: [] // 🌟 魔術指令：直接清空對照表中有關這條要素的所有登場紀錄
+        }
       }
     });
 
-    return NextResponse.json({ message: '刪除成功' }, { status: 200 });
+    console.log(`後端安全報告：要素 ID ${id} 及其隱式章節登場關聯（_ChapterSettings）已完美抹除。`);
+    return NextResponse.json({ message: '刪除成功，章節關聯已連鎖抹除' }, { status: 200 });
   } catch (error) {
     console.error(`DELETE 錯誤:`, error);
     return NextResponse.json({ error: '無法刪除設定' }, { status: 500 });
