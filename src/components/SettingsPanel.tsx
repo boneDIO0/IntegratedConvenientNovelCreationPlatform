@@ -19,13 +19,9 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
-  // 儲存這本小說完全沒有過濾的「全域完整設定集」
   const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
-  
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
   
-  // 🌟 修正 1：擴充 viewMode 型別，新增 'chapter_manager' 模式
-  // 當有傳入 chapterId 時，初始狀態預設鎖定在 'chapter_manager'
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline' | 'chapter_manager'>(
     chapterId ? 'chapter_manager' : 'form'
   );
@@ -49,7 +45,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const data = await res.json();
       setSettingsData(data);
 
-      // 同步撈取全域設定總庫，用來做全域要素對照勾選
       const globalRes = await fetch(`/api/settings?projectId=${projectId}`);
       if (globalRes.ok) {
         const globalData = await globalRes.json();
@@ -68,7 +63,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-  // 🌟 修正 2：監聽當前 chapterId 變動，切換章節時無條件將視圖切回 'chapter_manager' 並清空選取
   useEffect(() => {
     if (projectId) {
       fetchSettings();
@@ -82,7 +76,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   useEffect(() => {
     const handleHashChange = () => {
       if (window.location.hash === '#editor') {
-        // 如果處於章節模式，不讓 Hash 改變硬塞回預設表單視圖
         if (!chapterId) {
           setIsInitialized(true);
         }
@@ -124,8 +117,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       });
 
       if (!res.ok) throw new Error('同步章節設定失敗');
-      
-      // 勾選成功後即時刷新資料，側邊欄目錄與勾選清單同步連動
       await fetchSettings();
     } catch (error) {
       console.error(error);
@@ -136,9 +127,24 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   };
 
   const handleUpdateItem = async (updatedItem: SettingItem) => {
+    // 🌟 核心優化：直接拿最高權威的真實 UUID (id) 去做全列表地毯式掃描，100% 免疫 category 型別打架
     setSettingsData(prevData => {
       return prevData.map(group => {
-        if (group.category === updatedItem.category || group.items.some(i => i.id === updatedItem.id)) {
+        // 只要這個目錄群組裡面，有任何一個項目的 ID 對上了，就代表這就是我們要更新的目標目錄！
+        if (group.items.some(i => i.id === updatedItem.id)) {
+          return {
+            ...group,
+            items: group.items.map(item => item.id === updatedItem.id ? updatedItem : item)
+          };
+        }
+        return group;
+      });
+    });
+    
+    // 同步更新全域設定總庫，確保關係圖與下拉選單跟著原地滿血升級
+    setGlobalAllSettings(prevGlobal => {
+      return prevGlobal.map(group => {
+        if (group.items.some(i => i.id === updatedItem.id)) {
           return {
             ...group,
             items: group.items.map(item => item.id === updatedItem.id ? updatedItem : item)
@@ -149,16 +155,20 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     });
     
     setSelectedItem(updatedItem); 
-    setHasChanges(false); 
+    setHasChanges(false); // 儲存成功，關閉 *(已修改) 標籤
 
     try {
-      await fetch(`/api/settings/${updatedItem.id}`, {
+      // 正式打進雲端 Neon PostgreSQL 資料庫
+      const res = await fetch(`/api/settings/${updatedItem.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedItem)
       });
+      
+      if (!res.ok) throw new Error("後端儲存失敗");
+      console.log("🎉 組織設定已成功同步至 Neon 雲端資料庫！");
     } catch (error) {
-      console.error(error);
+      console.error("雲端同步出錯:", error);
     }
   };
 
@@ -331,6 +341,27 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                  viewMode === 'chapter_manager' ? '🎬 本章登場要素配置' :
                  selectedItem ? `${selectedItem.name} ${hasChanges ? '*(已修改)' : '(編輯中)'}` : "未選取項目"}
               </h1>
+
+              {/* 🌟 核心修正點：將表單類別動態切換 Select 完整迎接回來！ */}
+              {selectedItem && (viewMode === 'form' || !viewMode) && (
+                <select
+                  value={selectedItem.category}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    const updated = { ...selectedItem, category: newType };
+                    setSelectedItem(updated);
+                    handleUpdateItem(updated); // 聯動同步雲端資料庫
+                    setHasChanges(true); // 亮起已修改狀態
+                  }}
+                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm"
+                >
+                  <option value="character">👤 人物表單</option>
+                  <option value="faction">🏛️ 組織表單</option>
+                  <option value="item">⚔️ 物品表單</option>
+                  <option value="event">📜 事件表單</option>
+                  <option value="custom">⚙️ 通用表單</option>
+                </select>
+              )}
             </div>
             
             <div className="flex gap-2">
@@ -348,7 +379,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                 🗺️ 檢視關係圖
               </button>
 
-              {/* 🌟 修正 3：右上角工具列對齊。章節模式下亮出紫色登場管理按鈕，供隨時點擊切換回去修改 */}
               {chapterId && (
                 <button 
                   onClick={() => { if (!confirmLeave()) return; setViewMode('chapter_manager'); setSelectedItem(null); }}
@@ -373,13 +403,12 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
              {viewMode === 'timeline' ? (
                 <TimelineView onEventClick={handleEventHighlight} filterTargetId={selectedItem?.id} />
              ) : viewMode === 'graph' ? (
-                <RelationGraph allSettings={settingsData} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
+                <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
              ) : viewMode === 'chapter_manager' ? (
-                /* 🌟 修正 4：章節管理器主介面。附帶「✨ 完成配置」主動退出鈕，大幅提升 UX 體驗 */
                 <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[700px]">
                   <div className="flex items-start justify-between border-b border-slate-100 pb-4">
                     <div>
-                      <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定 management</h3>
+                      <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
                       <p className="text-sm text-slate-500">
                         勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏。
                       </p>
@@ -441,17 +470,25 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   </div>
                 </div>
              ) : selectedItem ? (
-                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm" onChange={() => setHasChanges(true)} onInput={() => setHasChanges(true)}>
+                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
                   {selectedItem.category === 'character' && (
                     <CharacterForm 
                       key={selectedItem.id} 
                       item={selectedItem} 
                       onSave={handleUpdateItem} 
-                      // 🌟 修正：把包含全域所有角色名字的總庫傳進去
                       allSettings={globalAllSettings} 
+                      currentChapterSettings={settingsData}
+                      onDirty={() => setHasChanges(true)}
                     />
                   )}
-                  {selectedItem.category === 'faction' && <FactionForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                  {selectedItem.category === 'faction' && (
+                    <FactionForm 
+                      key={selectedItem.id} 
+                      item={selectedItem} 
+                      onSave={handleUpdateItem} 
+                      onDirty={() => setHasChanges(true)} 
+                    />
+                  )}
                   {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
                   {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
                   {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && <DynamicForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}

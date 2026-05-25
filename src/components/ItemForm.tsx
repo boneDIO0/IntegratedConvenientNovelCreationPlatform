@@ -1,4 +1,5 @@
-// src/components/ItemForm.tsx
+'use client'
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -7,13 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SettingItem } from "@/lib/mockSettings"
 import { useState } from "react" 
 
-// 🌟 1. 新增 Interface，並接收 onSave 函式
+// 🌟 1. 擴充 Interface：接收非同步 onSave 與髒數據監聽
 interface ItemFormProps {
   item: SettingItem;
-  onSave: (updatedItem: SettingItem) => void;
+  onSave: (updatedItem: SettingItem) => void | Promise<void>; // 支援 Promise 等待
+  onDirty?: () => void; // 讓欄位更動時能秒通知父層亮起 *(已修改) 標籤
 }
 
-export default function ItemForm({ item, onSave }: ItemFormProps) {
+export default function ItemForm({ item, onSave, onDirty }: ItemFormProps) {
   
   // 🌟 2. 使用狀態來管理表單欄位
   const [name, setName] = useState(item.name || "");
@@ -21,8 +23,11 @@ export default function ItemForm({ item, onSave }: ItemFormProps) {
   const [resonanceEffect, setResonanceEffect] = useState(item.resonanceEffect || "");
   const [description, setDescription] = useState(item.description || "");
 
-  // 🌟 3. 實作存檔邏輯
-  const handleSaveClick = () => {
+  // 🌟 3. 核心新增：管理按鈕文字與動畫的狀態
+  const [saveStatus, setSaveStatus] = useState("儲存物品設定");
+
+  // 🌟 4. 實作非同步存檔邏輯 (穩穩加上 async)
+  const handleSaveClick = async () => {
     const updatedItem: SettingItem = {
       ...item,
       name,
@@ -30,7 +35,25 @@ export default function ItemForm({ item, onSave }: ItemFormProps) {
       resonanceEffect,
       description
     };
-    onSave(updatedItem);
+
+    // 🎬 狀態 A：進入儲存中
+    setSaveStatus("儲存中...");
+
+    try {
+      // 🌟 靜靜等待雲端 Neon PostgreSQL 交易回傳成功
+      await onSave(updatedItem);
+      
+      // 🎬 狀態 B：顯示成功綠勾
+      setSaveStatus("✅ 儲存成功！");
+    } catch (error) {
+      console.error("物品設定儲存出錯:", error);
+      setSaveStatus("❌ 儲存失敗");
+    }
+
+    // 🎬 狀態 C：2 秒後重置按鈕狀態
+    setTimeout(() => {
+      setSaveStatus("儲存物品設定");
+    }, 2000);
   };
 
   // 根據類型動態決定標籤的顏色與文字
@@ -62,16 +85,22 @@ export default function ItemForm({ item, onSave }: ItemFormProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="grid gap-2">
             <Label htmlFor="name">物品/技能名稱</Label>
-            {/* 🌟 綁定 value 與 onChange */}
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} /> 
+            <Input 
+              id="name" 
+              value={name} 
+              onChange={(e) => { setName(e.target.value); onDirty?.(); }} 
+            /> 
           </div>
           <div className="grid gap-2">
             <Label htmlFor="itemType">類型</Label>
             <Select 
               value={itemType} 
-              onValueChange={(value) => setItemType(value as "weapon" | "artifact" | "consumable" | "skill")}
+              onValueChange={(value) => { 
+                setItemType(value as "weapon" | "artifact" | "consumable" | "skill"); 
+                onDirty?.(); 
+              }}
             >
-              <SelectTrigger id="itemType">
+              <SelectTrigger id="itemType" className="bg-white">
                 <SelectValue placeholder="選擇類型" />
               </SelectTrigger>
               <SelectContent>
@@ -85,7 +114,7 @@ export default function ItemForm({ item, onSave }: ItemFormProps) {
         </div>
 
         {/* 核心機制：共鳴效果 */}
-        <div className="grid gap-2 p-4 bg-amber-50 rounded-lg border border-amber-200">
+        <div className="grid gap-2 p-4 bg-amber-50 rounded-xl border border-amber-200">
           <Label htmlFor="resonance" className="text-amber-900 font-bold flex items-center gap-2">
             ✨ 共鳴效果 (Resonance Effect)
           </Label>
@@ -94,9 +123,9 @@ export default function ItemForm({ item, onSave }: ItemFormProps) {
           </p>
           <Textarea
             id="resonance"
-            className="min-h-[100px] resize-none border-amber-300 focus-visible:ring-amber-500"
+            className="min-h-[100px] resize-none border-amber-300 focus-visible:ring-amber-500 bg-white leading-relaxed"
             value={resonanceEffect}
-            onChange={(e) => setResonanceEffect(e.target.value)}
+            onChange={(e) => { setResonanceEffect(e.target.value); onDirty?.(); }}
           />
         </div>
 
@@ -104,16 +133,16 @@ export default function ItemForm({ item, onSave }: ItemFormProps) {
           <Label htmlFor="description">外觀與歷史背景</Label>
           <Textarea
             id="description"
-            className="min-h-[100px] resize-none"
+            className="min-h-[100px] resize-none leading-relaxed"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { setDescription(e.target.value); onDirty?.(); }}
           />
         </div>
 
         {/* 牽涉對象顯示區塊 */}
         <div className="grid gap-2">
-          <Label>擁有者與關聯對象</Label>
-          <div className="flex flex-wrap gap-2 p-3 rounded-md border border-slate-200 bg-slate-50">
+          <Label className="font-bold text-slate-700">擁有者與關聯對象</Label>
+          <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50">
             {item.relations && item.relations.length > 0 ? (
               item.relations.map((rel, index) => (
                 <Badge key={index} variant="secondary" className="text-sm py-1 bg-white border-slate-200 shadow-sm">
@@ -128,13 +157,14 @@ export default function ItemForm({ item, onSave }: ItemFormProps) {
 
       </div>
 
+      {/* 🌟 5. 底部控制區：啟用鎖定防禦，避免連點造成重複存檔 */}
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-        {/* 🌟 4. 放上真正的儲存按鈕 */}
         <button 
           onClick={handleSaveClick}
-          className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2 rounded-md font-medium transition-colors"
+          disabled={saveStatus !== "儲存物品設定"}
+          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-md font-medium transition-all shadow-sm"
         >
-          儲存物品設定
+          {saveStatus} 
         </button>
       </div>
     </div>

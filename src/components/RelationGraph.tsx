@@ -6,10 +6,16 @@ import '@xyflow/react/dist/style.css';
 import { SettingItem } from '@/lib/mockSettings';
 import dagre from 'dagre';
 
+interface ColorStyle {
+  bg: string;
+  border: string;
+  text: string;
+}
+
 interface RelationGraphProps {
   highlightedIds?: string[] | null;
   onNodeSelect?: (nodeId: string) => void;
-  // 🌟 1. 核心升級：直接把當前全域的設定資料傳進來，實現即時反應
+  // 核心升級：直接把當前全域的設定資料傳進來，實現即時反應
   allSettings: { category: string; items: SettingItem[] }[]; 
 }
 
@@ -44,50 +50,69 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = 'LR') => {
   return { layoutedNodes, layoutedEdges: edges };
 };
 
+// 🌟 1. 移入外部函式：純原生 Hex 擴充，將全作品的組織色彩轉化為關係圖 Style Map
+const generateDynamicFactionColors = (
+  settingsData: { category: string; items: SettingItem[] }[]
+): Record<string, ColorStyle> => {
+  const map: Record<string, ColorStyle> = {};
+  
+  const factions = settingsData
+    .flatMap((g) => g.items)
+    .filter((i) => i.category === 'faction');
+  
+  factions.forEach((f) => {
+    const userColor = f.color || "#64748b"; // 優先拿你在 FactionForm 存進資料庫的顏色
+    
+    map[f.id] = {
+      bg: `${userColor}15`, // 莫蘭迪柔和透光底色 (15 代表 8% 透明度)
+      border: userColor,    // 飽和陣營實色邊框
+      text: userColor       // 文字顏色
+    };
+  });
+  
+  return map;
+};
+
 export default function RelationGraph({ highlightedIds, onNodeSelect, allSettings = [] }: RelationGraphProps) {
   
-  // 🌟 第一塊：計算 Nodes 和 Edges 的 useMemo (將 allSettings 納入監聽項目)
+  // 第一塊：計算 Nodes 和 Edges 的 useMemo (將 allSettings 納入監聽項目)
   const { nodes, edges } = useMemo(() => {
-    // 🌟 2. 依照你提議的方法，動態抓取全作品的所有「人物」
-    // 支援可能被歸類在 "character" 或是原本分類名稱中的 items
+    // 動態抓取全作品的所有「人物」
     const characters = allSettings.flatMap(group => 
       group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-'))
     );
-    
-    // 🌟 3. 動態抓取所有陣營 (Faction)，好讓下方可以比對並套用色系
-    const factions = allSettings.flatMap(group => 
-      group.items.filter(i => i.category === 'faction')
-    );
+
+    // 🌟 2. 核心技術點：在 useMemo 內部生成當前資料庫最即時的陣營色彩對照表
+    const factionColorMap = generateDynamicFactionColors(allSettings);
 
     // 計算節點 (Nodes)
-    const initialNodes = characters.map((char, index) => {
+    const initialNodes = characters.map((char) => {
       const isHighlighted = highlightedIds ? highlightedIds.includes(char.id) : true;
       const opacity = isHighlighted ? 1 : 0.2;
 
-      // 🌟 4. 動態決定節點顏色，如果角色有陣營，你可以給他不同主題色 (這裡給幾個質感現代色)
-      let nodeBg = '#64748b'; // 預設無所屬： slate 色
-      if (char.faction && char.faction !== 'independent') {
-        // 這邊你可以根據 faction 的 id 做 hash 或者寫死你喜歡的專屬勢力色
-        if (char.faction.includes('horde') || char.faction === 'golden-horde') nodeBg = '#ea580c'; // 橘
-        else if (char.faction.includes('observer') || char.faction === 'observers') nodeBg = '#2563eb'; // 藍
-        else nodeBg = '#059669'; // 其他陣營預設：翡翠綠
-      }
+      // 🌟 3. 動態變色引擎：查表取出該角色陣營在資料庫中儲存的色彩設定
+      const colors = (char.faction && factionColorMap[char.faction]) || { 
+        bg: "#f8fafc",      // 無所屬散人背景
+        border: "#cbd5e1",  // 散人邊框
+        text: "#475569"     // 散人文字
+      };
 
       return {
         id: char.id,
-        // 初始座標會被 dagre 魔法覆蓋，但還是留著當防呆
-        position: { x: 0, y: 0 }, 
+        position: { x: 0, y: 0 }, // 初始座標會被 dagre 自動排版覆蓋
         data: { label: char.name },
+        // 🌟 4. 將對稱、高質感的動態莫蘭迪色系直接渲染進 React Flow 節點中
         style: {
-          background: nodeBg,
-          color: 'white',
-          border: 'none',
-          borderRadius: '8px',
-          padding: '10px 20px',
+          background: colors.bg,
+          color: colors.text,
+          border: `2px solid ${colors.border}`,
+          borderRadius: '12px',
+          padding: '10px 18px',
+          fontSize: '14px',
           fontWeight: 'bold',
-          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
           opacity: opacity,
-          transition: 'opacity 0.3s ease, background-color 0.3s ease',
+          transition: 'opacity 0.3s ease, background-color 0.3s ease, border-color 0.3s ease',
         }
       };
     });
@@ -97,7 +122,6 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
 
     characters.forEach(char => {
       (char.relations || []).forEach(rel => {
-        // 防呆：確認目標角色確實在目前的列表裡，避免連線指向不存在的幽靈 ID
         if (!characters.some(c => c.id === rel.targetId)) return;
 
         const pair = [char.id, rel.targetId].sort();
@@ -110,7 +134,6 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
 
         if (edgeMap.has(edgeId)) {
           const existingEdge = edgeMap.get(edgeId);
-          // 如果雙向都有定義，顯示雙向關係文字
           if (!existingEdge.label.includes(rel.type)) {
             existingEdge.label = `${existingEdge.label} ↔ ${rel.type}`;
           }
@@ -131,7 +154,7 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
               transition: 'opacity 0.3s ease',
             },
             labelBgStyle: { fill: '#ffffff', fillOpacity: edgeOpacity, rx: 5 }, 
-            labelStyle: { fontWeight: 700, fill: '#334155', opacity: edgeOpacity }
+            labelStyle: { fontWeight: 700, fill: '#475569', opacity: edgeOpacity, fontSize: '11px' }
           });
         }
       });
@@ -147,9 +170,7 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
     );
 
     return { nodes: layoutedNodes, edges: layoutedEdges };
-    // 🌟 5. 核心關鍵：將 allSettings 放入依賴陣列。一旦表單存檔，這裡會瞬間被觸發更新！
   }, [highlightedIds, allSettings]);
-
 
   // 第二塊：事件處理
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -158,10 +179,9 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
     }
   }, [onNodeSelect]);
 
-
   // 第三塊：渲染畫面
   return (
-    <div className="h-full w-full rounded-lg border border-slate-200 bg-white">
+    <div className="h-full w-full rounded-lg border border-slate-200 bg-white min-h-[550px]">
       <ReactFlow nodes={nodes} edges={edges} onNodeClick={handleNodeClick} fitView>
         <Background gap={16} size={1.5} color="#cbd5e1" />
         <Controls />
