@@ -6,7 +6,6 @@ import Editor from '@/components/Editor'
 import { useEditorUI } from '@/contexts/EditorUIContext'
 
 import { SettingsPanel } from '@/components/SettingsPanel'
-import { VersionsPanel } from '@/components/VersionsPanel'
 import { RotateCcw, Trash2, X, History } from "lucide-react"
 
 export default function ChapterEditorPage() {
