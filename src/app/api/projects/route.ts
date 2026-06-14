@@ -41,11 +41,23 @@ export async function POST() {
     if (!user) return new NextResponse("找不到使用者", { status: 404 })
 
     // 在資料庫中創建一個新 Project
-    const newProject = await prisma.project.create({
-      data: {
-        title: '未命名的作品',
-        ownerId: user.id
-      }
+    const newProject = await prisma.$transaction(async (tx) => {
+      const project = await tx.project.create({
+        data: {
+          title: '未命名的作品',
+          ownerId: user.id
+        }
+      })
+
+      await tx.projectMember.create({
+        data: {
+          projectId: project.id,
+          userId: user.id,
+          role: 'owner'
+        }
+      })
+
+      return project
     })
 
     return NextResponse.json(newProject)
