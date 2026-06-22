@@ -7,13 +7,18 @@ type EditorUIContextType = {
   activeOverlay: 'none' | 'version';
   setActiveOverlay: (val: 'none' | 'version') => void;
 
-  // 1. 新增：版本管理相關狀態與方法
-    versions: any[];                                       // 儲存從後端撈出來的 Checkpoint 列表
-    setVersions: React.Dispatch<React.SetStateAction<any[]>>;
-    latestRestoredContent: any;                            // 存放剛還原成功的 Tiptap JSON 內容
-    setLatestRestoredContent: (content: any) => void;
-    fetchVersions: (projectId: string, chapterId: string) => Promise<void>; // 撈取 DB 歷史紀錄的函式
-    isLoadingVersions: boolean;                            // 載入狀態動畫提示用
+  // 1. 版本管理相關狀態與方法
+  versions: any[];                                       // 儲存從後端撈出來的 Checkpoint 列表
+  setVersions: React.Dispatch<React.SetStateAction<any[]>>;
+  latestRestoredContent: any;                            // 存放剛還原成功的 Tiptap JSON 內容
+  setLatestRestoredContent: (content: any) => void;
+  fetchVersions: (projectId: string, chapterId: string) => Promise<void>; // 撈取 DB 歷史紀錄的函式
+  isLoadingVersions: boolean;                            // 載入狀態動畫提示用
+
+  // 🛡️ 新增：權限管理相關狀態
+  role: string | null;                                   // 當前使用者在該專案的角色
+  setRole: (role: string | null) => void;                // 設定角色的方法
+  isEditable: boolean;                                   // 是否具備編輯權限 (唯讀模式判斷用)
 }
 
 const EditorUIContext = createContext<EditorUIContextType | undefined>(undefined);
@@ -22,12 +27,17 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [activeOverlay, setActiveOverlay] = useState<'none' | 'version'>('none');
 
-  // 2. 新增：版本管理的 React State
+  // 2. 版本管理的 React State
   const [versions, setVersions] = useState<any[]>([]);
   const [latestRestoredContent, setLatestRestoredContent] = useState<any>(null);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
 
-// 3. 新增：非同步撈取後端 Prisma Checkpoint 列表的函式
+  // 🛡️ 新增：權限管理的 React State 與推導變數
+  const [role, setRole] = useState<string | null>(null);
+  // 自動推導：只要 role 是 owner 或 editor，isEditable 就會是 true
+  const isEditable = role === 'owner' || role === 'editor';
+
+// 3. 非同步撈取後端 Prisma Checkpoint 列表的函式
   const fetchVersions = async (projectId: string, chapterId: string) => {
     if (!projectId || !chapterId) return;
 
@@ -62,7 +72,12 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
       latestRestoredContent,
       setLatestRestoredContent,
       fetchVersions,
-      isLoadingVersions
+      isLoadingVersions,
+
+      // 權限狀態
+      role,
+      setRole,
+      isEditable
     }}>
       {children}
     </EditorUIContext.Provider>
