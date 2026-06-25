@@ -5,30 +5,29 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { SettingItem } from "@/lib/mockSettings"
-import { formatFantasyDate } from "@/lib/calendarEngine" 
+// 🌟 1. 載入剛剛改好的自定義曆法型別與引擎
+import { formatFantasyDate, CalendarConfig } from "@/lib/calendarEngine" 
 import { useState } from "react" 
 
-// 🌟 1. 調整 Interface 接收非同步 onSave 與髒數據監聽
 interface EventFormProps {
   item: SettingItem;
-  onSave: (updatedItem: SettingItem) => void | Promise<void>; // 支援 Promise 等待
-  onDirty?: () => void; // 讓欄位打字時能秒通知父層亮起 *(已修改) 標籤
+  // 🌟 2. 核心新增：從父層（SettingsPanel 或編輯器）傳入該專案在資料庫中的曆法參數
+  calendarConfig?: CalendarConfig; 
+  onSave: (updatedItem: SettingItem) => void | Promise<void>; 
+  onDirty?: () => void; 
 }
 
-export default function EventForm({ item, onSave, onDirty }: EventFormProps) {
-  // 🌟 2. 建立所有欄位的 state
+export default function EventForm({ item, calendarConfig, onSave, onDirty }: EventFormProps) {
   const [name, setName] = useState(item.name || "");
   const [currentDate, setCurrentDate] = useState(item.date || "");
   const [location, setLocation] = useState(item.location || "");
   const [description, setDescription] = useState(item.description || "");
 
-  // 🌟 3. 核心新增：管理按鈕文字與動畫的狀態
   const [saveStatus, setSaveStatus] = useState("儲存事件紀錄");
 
-  // 將標準時間轉成世界觀時間 (會根據 currentDate 即時重新計算)
-  const displayDate = formatFantasyDate(currentDate);
+  // 🌟 3. 將專案曆法配置傳入轉換引擎，落實真正的「參數驅動動態換算」
+  const displayDate = formatFantasyDate(currentDate, calendarConfig);
 
-  // 🌟 4. 實作非同步存檔邏輯 (穩穩加上 async)
   const handleSaveClick = async () => {
     const updatedItem: SettingItem = {
       ...item,
@@ -38,21 +37,16 @@ export default function EventForm({ item, onSave, onDirty }: EventFormProps) {
       description
     };
 
-    // 🎬 狀態 A：進入儲存中
     setSaveStatus("儲存中...");
 
     try {
-      // 🌟 靜靜等待雲端 Neon PostgreSQL 交易回傳成功
       await onSave(updatedItem);
-      
-      // 🎬 狀態 B：顯示成功綠勾
       setSaveStatus("✅ 儲存成功！");
     } catch (error) {
       console.error("歷史事件儲存出錯:", error);
       setSaveStatus("❌ 儲存失敗");
     }
 
-    // 🎬 狀態 C：2 秒後重置按鈕狀態
     setTimeout(() => {
       setSaveStatus("儲存事件紀錄");
     }, 2000);
@@ -132,7 +126,6 @@ export default function EventForm({ item, onSave, onDirty }: EventFormProps) {
         </div>
       </div>
 
-      {/* 🌟 5. 底部控制區：啟用鎖定防禦，避免作者多點連擊 */}
       <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
         <button 
           onClick={handleSaveClick}
