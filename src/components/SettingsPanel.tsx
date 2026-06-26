@@ -14,6 +14,7 @@ import DynamicForm from "@/components/DynamicForm";
 import { CalendarConfig } from "@/lib/calendarEngine"; 
 // 🌟 核心新增：載入剛剛寫好的世界觀曆法自定義配置表單
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
+import { useEditorUI } from "@/contexts/EditorUIContext";
 
 interface SettingsPanelProps {
   projectId: string;
@@ -21,6 +22,7 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
+  const { isEditable } = useEditorUI();
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
