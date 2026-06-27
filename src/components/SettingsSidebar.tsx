@@ -3,6 +3,7 @@
 import { Plus, Trash2, Pencil, Check, X, FolderPlus, Globe } from "lucide-react"; // 🌟 引入 Globe 圖示
 import { SettingItem } from "@/lib/mockSettings";
 import { useState } from "react";
+import { useEditorUI } from "@/contexts/EditorUIContext";
 
 interface SidebarProps {
   data: { category: string; items: SettingItem[] }[];
@@ -18,7 +19,8 @@ interface SidebarProps {
 export default function SettingsSidebar({ 
   data, onSelect, selectedId, onAdd, onDelete, onAddCategory, onDeleteCategory, onRenameCategory
 }: SidebarProps) {
-  
+  const { isEditable } = useEditorUI();
+
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   
