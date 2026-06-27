@@ -1,56 +1,73 @@
 // src/lib/calendarEngine.ts
 import dayjs from 'dayjs';
-import isBetween from 'dayjs/plugin/isBetween';
 
-dayjs.extend(isBetween);
-
-// 🌟 重新定義與 CalendarConfigForm 完全對齊的型別結構
 export interface CalendarConfig {
-  eraName: string;      // 紀元名稱 (如 "廢墟紀元")
-  baseYear: number;     // 西元元年對應年份 (如 2000)
-  months: { name: string; days: number }[]; // 帶有天數的自訂月份物件陣列
+  eraName: string;
+  baseYear: number;
+  months: { name: string; days: number }[];
 }
 
-// 預設月份稱謂 fallback
-const DEFAULT_MONTHS = [
-  '初雪之月', '寒風之月', '甦醒之月', '雷雨之月', 
-  '長草之月', '烈陽之月', '旱風之月', '金葉之月', 
-  '收穫之月', '枯木之月', '冰霜之月', '長夜之月'
-];
-
-/**
- * 將標準時間轉換為世界觀專屬曆法
- */
 export function formatFantasyDate(isoDate: string | undefined, config?: CalendarConfig): string {
   if (!isoDate) return "未知時間";
   
   const target = dayjs(isoDate);
   if (!target.isValid()) return "時間格式錯誤";
 
-  // 1. 讀取自訂配置，若無則降級套用預設值 (對齊表單的 eraName 與 baseYear)
   const era = config?.eraName || '廢墟紀元';
-  const baseYear = config?.baseYear !== undefined ? config.baseYear : 2000;
-  const configMonths = config?.months || [];
+  const baseYear = config?.baseYear !== undefined ? config.baseYear : 2046;
+  
+  // 1. 載入自訂月份，若無則套用 12 個月、每月 30 天的標準曆
+  const configMonths = config?.months && config.months.length > 0 
+    ? config.months 
+    : Array(12).fill(null).map((_, i) => ({ name: `${i + 1}月`, days: 30 }));
 
-  const currentYear = target.year();
-  const currentMonthIdx = target.month(); // 0-11
-  const currentDay = target.date();
+  // 計算世界觀設定中「一整年」到底有多少天 (例如你的星海曆加起來是 366 天)
+  const daysInFantasyYear = configMonths.reduce((sum, m) => sum + m.days, 0);
 
-  // 2. 計算世界觀年份
-  const worldYear = currentYear - baseYear;
+  // 🌟 2. 計算絕對零點：大災變元年的 1 月 1 日
+  const epochRoot = dayjs(`${baseYear}-01-01`);
 
-  // 3. 撈取月份名稱
-  const monthName = configMonths[currentMonthIdx]?.name || DEFAULT_MONTHS[currentMonthIdx] || `${currentMonthIdx + 1}月`;
+  // 🌟 3. 計算目標日期與絕對零點相差的「絕對總天數」
+  const diffAbsoluteDays = target.diff(epochRoot, 'day');
 
-  // 4. 根據年份正負判斷紀元
-  if (worldYear < 0) {
-    return `舊曆 ${Math.abs(worldYear)} 年 ${monthName} ${currentDay} 日`;
+  let fantasyYear = 0;
+  let remainingDays = 0;
+  let isBeforeEpoch = diffAbsoluteDays < 0;
+
+  if (!isBeforeEpoch) {
+    // 🎬 【大災變後】正向推算
+    fantasyYear = Math.floor(diffAbsoluteDays / daysInFantasyYear) + 1;
+    // 取餘數代表是這一年的第幾天 (1-based)
+    remainingDays = (diffAbsoluteDays % daysInFantasyYear) + 1;
   } else {
-    return `${era} ${worldYear + 1} 年 ${monthName} ${currentDay} 日`;
+    // 🎬 【大災變前：舊曆】逆向推算 (數學鏡像修正)
+    // 由於 diffAbsoluteDays 是負數，我們取絕對值後往前推算
+    const absDiffDays = Math.abs(diffAbsoluteDays);
+    // 扣除不滿一年的部分
+    fantasyYear = Math.floor((absDiffDays - 1) / daysInFantasyYear) + 1;
+    // 算出這一天在該舊曆年中，是倒數第幾天，進而換算成正向的「第幾天」
+    remainingDays = daysInFantasyYear - ((absDiffDays - 1) % daysInFantasyYear);
   }
-}
 
-export function getDaysBetween(date1: string, date2: string): number {
-  if (!date1 || !date2) return 0;
-  return Math.abs(dayjs(date1).diff(dayjs(date2), 'day'));
+  // 🌟 4. 根據「該年第幾天」，依據使用者設定的月份天數精準解構
+  let fantasyMonthName = "未知之月";
+  let fantasyDay = 1;
+  let scanDays = remainingDays;
+
+  for (let i = 0; i < configMonths.length; i++) {
+    const m = configMonths[i];
+    if (scanDays <= m.days) {
+      fantasyMonthName = m.name;
+      fantasyDay = scanDays;
+      break;
+    }
+    scanDays -= m.days;
+  }
+
+  // 5. 輸出完美對齊的格式
+  if (isBeforeEpoch) {
+    return `舊曆 ${fantasyYear} 年 ${fantasyMonthName} ${fantasyDay} 日`;
+  } else {
+    return `${era} ${fantasyYear} 年 ${fantasyMonthName} ${fantasyDay} 日`;
+  }
 }
