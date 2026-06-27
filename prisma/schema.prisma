@@ -1,6 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+ 
 }
 
 datasource db {
@@ -22,7 +23,7 @@ model User {
   tier          String?   @default("free")
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
   createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-
+  
   // --- 原本的關聯 ---
   checkpoints     Checkpoint[]
   memberships     ProjectMember[]
@@ -83,6 +84,7 @@ model Project {
   id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ownerId         String            @map("owner_id") @db.Uuid
   title           String
+  worldSetting    Json?             @default("{}") @map("world_setting")
   deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz(6)
   createdAt       DateTime?         @map("created_at") @db.Timestamptz(6) @default(now())
   checkpoints     Checkpoint[]
@@ -143,7 +145,7 @@ model SettingEntity {
   deletedAt  DateTime?       @map("deleted_at") @db.Timestamptz(6)
   createdAt  DateTime?       @map("created_at") @db.Timestamptz(6) @default(now())
   updatedAt  DateTime?       @map("updated_at") @db.Timestamptz(6) @default(now())
-
+  embedding Unsupported("vector(1024)")? //<-補這個
   chapters   Chapter[]       @relation("ChapterSettings")
   
   category   SettingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -232,7 +234,7 @@ model ProjectMessages {
   createdAt           DateTime         @map("created_at") @db.Timestamptz(6) @default(now())
   users               User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
   projects            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectMessages     ProjectMessages? @relation("RecursiveMessages", fields: [referencedMessageId], references: [id], onDelete: Cascade)
+  projectMessages     ProjectMessages? @relation("RecursiveMessages", fields: [referencedMessageId], references: [id], onDelete: NoAction)
   otherProjectMessages ProjectMessages[] @relation("RecursiveMessages")
 
   @@map("project_messages")
