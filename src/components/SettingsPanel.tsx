@@ -432,7 +432,12 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           
           <div className="flex-1 min-h-[600px] flex">
              {viewMode === 'timeline' ? (
-                <TimelineView onEventClick={handleEventHighlight} filterTargetId={selectedItem?.id} />
+                <TimelineView 
+                  allSettings={globalAllSettings}       // 🌟 傳入動態的全域設定總表
+                  calendarConfig={calendarConfig}       // 🌟 傳入從雲端資料庫撈出來的多紀元設定
+                  filterTargetId={selectedItem?.id}     // 🌟 傳入當前選取的項目（若無則為全域時間軸）
+                  onEventClick={handleEventHighlight}   // 🌟 綁定點擊跳轉關係圖的高亮連動
+                />
              ) : viewMode === 'graph' ? (
                 <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
              ) : viewMode === 'chapter_manager' ? (
