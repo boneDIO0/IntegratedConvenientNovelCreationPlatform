@@ -52,3 +52,4 @@ backfill-roles.ts
 
 #model
 public/models
+public/models/

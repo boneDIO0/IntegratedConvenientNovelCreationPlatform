@@ -18,7 +18,8 @@ export async function proxy(request: NextRequest) {
   const isPublicPage = 
     pathname === '/' || 
     pathname.startsWith('/login') || 
-    pathname.startsWith('/api/auth');
+    pathname.startsWith('/api/auth')||
+    pathname.startsWith('/api/settings/sync-embeddings');
 
   // 2. 攔截邏輯
   if (!isLoggedIn && !isPublicPage) {
