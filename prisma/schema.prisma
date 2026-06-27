@@ -150,6 +150,8 @@ model SettingEntity {
   
   category   SettingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  embedding Unsupported("vector(1024)")?
 
   @@index([categoryId, orderIndex])
   // 🌟 優化：新增 projectId 與 deletedAt 的索引，讓設定集加載與關係圖反查直接走索引
