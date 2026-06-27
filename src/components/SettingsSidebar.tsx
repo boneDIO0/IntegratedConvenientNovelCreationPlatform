@@ -54,17 +54,19 @@ export default function SettingsSidebar({
       {/* 頂端標題與控制列 */}
       <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
         <h2 className="text-xl font-bold text-slate-800">設定集目錄</h2>
-        <button 
-          onClick={() => setIsAddingCategory(!isAddingCategory)}
-          className="text-slate-400 hover:text-emerald-600 transition-colors"
-          title="新增自訂目錄"
-        >
-          {isAddingCategory ? <X size={18} /> : <FolderPlus size={18} />}
-        </button>
+        {isEditable && (
+          <button 
+            onClick={() => setIsAddingCategory(!isAddingCategory)}
+            className="text-slate-400 hover:text-emerald-600 transition-colors"
+            title="新增自訂目錄"
+          >
+            {isAddingCategory ? <X size={18} /> : <FolderPlus size={18} />}
+          </button>
+        )}
       </div>
       
       {/* 新增目錄輸入框 */}
-      {isAddingCategory && (
+      {isAddingCategory && isEditable && (
         <div className="mb-4 flex gap-2">
           <input 
             type="text"
@@ -137,39 +139,42 @@ export default function SettingsSidebar({
               ) : (
                 <div className="flex items-center gap-2">
                   <h3 
-                    className="text-sm font-bold text-slate-700 cursor-pointer hover:text-emerald-600 transition-colors"
+                    className={`text-sm font-bold text-slate-700 transition-colors ${isEditable ? 'cursor-pointer hover:text-emerald-600' : 'cursor-default'}`}
                     onDoubleClick={() => {
+                      if (!isEditable) return; 
                       setEditingCategory(group.category);
                       setEditName(group.category);
                     }}
-                    title="連按兩下重新命名"
+                    title={isEditable ? "連按兩下重新命名" : ""}
                   >
                     {group.category}
                   </h3>
                   
-                  <div className="flex opacity-0 group-hover/category:opacity-100 transition-opacity">
-                    <button 
-                      onClick={() => {
-                        setEditingCategory(group.category);
-                        setEditName(group.category);
-                      }}
-                      className="text-slate-300 hover:text-blue-500 p-1"
-                      title="重新命名目錄"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button 
-                      onClick={() => onDeleteCategory(group.category)}
-                      className="text-slate-300 hover:text-red-500 p-1"
-                      title="刪除整個目錄"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
+                  {isEditable && (
+                    <div className="flex opacity-0 group-hover/category:opacity-100 transition-opacity">
+                      <button 
+                        onClick={() => {
+                          setEditingCategory(group.category);
+                          setEditName(group.category);
+                        }}
+                        className="text-slate-300 hover:text-blue-500 p-1"
+                        title="重新命名目錄"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button 
+                        onClick={() => onDeleteCategory(group.category)}
+                        className="text-slate-300 hover:text-red-500 p-1"
+                        title="刪除整個目錄"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {editingCategory !== group.category && (
+              {editingCategory !== group.category && isEditable && (
                 <button 
                   onClick={() => onAdd(group.category, getTypeFromName(group.category))}
                   className="text-slate-400 hover:text-emerald-600 transition-colors p-1"
@@ -193,13 +198,15 @@ export default function SettingsSidebar({
                   >
                     {item.name}
                   </button>
-                  <button 
-                    onClick={() => onDelete(item.id)}
-                    className="opacity-0 group-hover/item:opacity-100 text-slate-300 hover:text-red-500 p-1 transition-opacity"
-                    title="刪除項目"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {isEditable && (
+                    <button 
+                      onClick={() => onDelete(item.id)}
+                      className="opacity-0 group-hover/item:opacity-100 text-slate-300 hover:text-red-500 p-1 transition-opacity"
+                      title="刪除項目"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </li>
               ))}
               {group.items.length === 0 && (
