@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "studio": "prisma studio"
+    "studio": "prisma studio",
+    "vercel-build": "prisma generate && next build"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

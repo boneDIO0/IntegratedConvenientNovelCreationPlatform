@@ -7,7 +7,7 @@ generator client {
 datasource db {
   provider   = "postgresql"
   // 🌟 穩定定錨：直接使用單軌直接連線字串，免去 Vercel 環境變數 Missing 煩惱
-  url        = env("DATABASE_URL")
+  url        = "postgresql://neondb_owner:npg_qOgTbHvs3P0G@ep-flat-fog-ao8zq8k4.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
   extensions = [vector]
   schemas    = ["audit", "public"]
 }
