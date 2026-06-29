@@ -1,7 +1,7 @@
 ﻿// src/lib/embedding.ts
 import { pipeline } from '@huggingface/transformers';
 import path from 'path';
-
+//這邊使用本地模型進行embedding相關的流程
 // 使用 Singleton 模式，確保模型在 Next.js 運行期間只被載入記憶體一次，避免記憶體洩漏
 let pipeInstance: any = null;
 

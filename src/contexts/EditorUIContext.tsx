@@ -1,4 +1,5 @@
 "use client"
+import AssistantChat from '@/components/AssistantChat';
 import { createContext, useContext, useState } from 'react'
 
 type EditorUIContextType = {
@@ -50,6 +51,7 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    
     <EditorUIContext.Provider value={{
       isSettingsOpen,
       toggleSettings: () => setIsSettingsOpen(!isSettingsOpen),
@@ -65,7 +67,9 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
       isLoadingVersions
     }}>
       {children}
+      
     </EditorUIContext.Provider>
+    
   )
 }
 

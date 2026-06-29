@@ -39,9 +39,10 @@ export async function PUT(request: Request, { params }: RouteParams) {
       // 🚀 情況 A：有實質內容！重新計算 1024 維度向量並覆蓋舊資料
       const vector = await generateEmbedding(embeddingText);
       if (vector && vector.length === 1024) {
+        const vectorJsonString = JSON.stringify(vector);
         await prisma.$executeRaw`
-          UPDATE "SettingEntity" 
-          SET "embedding" = ${vector}::vector
+          UPDATE "setting_entities" 
+          SET "embedding" = ${vectorJsonString}::vector
           WHERE "id" = ${id}::uuid
         `;
       }
@@ -49,7 +50,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       // 🔒 情況 B：作者把內容清空了、或只留下時間/數字。
       // 強制把資料庫的 embedding 欄位洗成 NULL，確保未來 AI 流程不會誤抓這條空資料！
       await prisma.$executeRaw`
-        UPDATE "SettingEntity" 
+        UPDATE "setting_entities" 
         SET "embedding" = NULL
         WHERE "id" = ${id}::uuid
       `;
