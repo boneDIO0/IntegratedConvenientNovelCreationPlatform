@@ -1,17 +1,27 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import prisma from '@/lib/prisma' // 使用組員的 prisma 連線檔
+import prisma from '@/lib/prisma' 
+import { authOptions } from '@/lib/auth/config' // 🌟 補上優化點：建議帶入你的 authOptions
+
+// 💡 1. 全面定義 Next.js 16 標準路由上下文（Context）型別
+interface RouteContext {
+  params: Promise<{
+    projectId: string;
+  }>;
+}
 
 // 📥 讀取：撈出這本小說所有的「章節」
 export async function GET(
-  request: Request,
-  { params }: { params: { projectId: string } }
+  request: NextRequest, // 💡 2. 建議改用標準 NextRequest
+  context: RouteContext // 💡 3. 核心修正：正式將 params 宣告為 Promise 上下文
 ) {
   try {
-    const session = await getServerSession()
+    // 💡 4. 優化點：傳入專案的 authOptions，防範 getServerSession 讀不到使用者 token
+    const session = await getServerSession(authOptions)
     if (!session) return new NextResponse("請先登入", { status: 401 })
 
-    const { projectId } = await params
+    // 💡 5. 核心動作：完美對齊 Next.js 16 異步拆解
+    const { projectId } = await context.params
 
     // 1. 先確認這本小說是不是這個人的（安全檢查）
     const project = await prisma.project.findUnique({
@@ -37,14 +47,15 @@ export async function GET(
 
 // 📤 新增：為這本小說建立一個「新章節」
 export async function POST(
-  request: Request,
-  { params }: { params: { projectId: string } }
+  request: NextRequest,
+  context: RouteContext // 💡 同步對齊 Next.js 16 異步參數規格
 ) {
   try {
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session) return new NextResponse("請先登入", { status: 401 })
 
-    const { projectId } = await params
+    // 💡 同步對齊異步拆解
+    const { projectId } = await context.params
 
     // 1. 計算目前的章節數，用來設定標題和排序
     const count = await prisma.chapter.count({
