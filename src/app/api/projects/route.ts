@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client' // 🌟 核心修正 1：引入 Prisma 命名空間以使用型別
+import { authOptions } from '@/lib/auth/config' // 🌟 優化點：帶入你們專案的 authOptions 配置
 
 // 讀取：撈出目前使用者的所有「小說 (Project)」
 export async function GET() {
   try {
-    const session = await getServerSession()
+    // 🌟 優化點：傳入 authOptions，確保在雲端能正確解析完整的 session 資訊
+    const session = await getServerSession(authOptions)
     if (!session || !session.user?.email) {
       return new NextResponse("請先登入", { status: 401 })
     }
@@ -32,7 +35,7 @@ export async function GET() {
 // 📤 新增：建立一本新的「小說 (Project)」
 export async function POST() {
   try {
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session || !session.user?.email) {
       return new NextResponse("請先登入", { status: 401 })
     }
@@ -41,11 +44,12 @@ export async function POST() {
     if (!user) return new NextResponse("找不到使用者", { status: 404 })
 
     // 在資料庫中創建一個新 Project
-    const newProject = await prisma.$transaction(async (tx) => {
+    // 🌟 核心修正 2：明確為 tx 加上 : Prisma.TransactionClient 型別，徹底消滅 implicitly has 'any' 錯誤！
+    const newProject = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const project = await tx.project.create({
         data: {
           title: '未命名的作品',
-          ownerId: user.id
+          ownerId: user.id // 這裡會完美對齊新 Schema 的 String 格式
         }
       })
 
