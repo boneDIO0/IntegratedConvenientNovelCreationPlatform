@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma'; // 🌟 修正 1：對齊專案的 default export 引入
-import { SettingCategory, SettingEntity } from '@prisma/client';
+// 🌟 核心修正：改從你們物理生成的 client 引入型別！
+import { SettingCategory, SettingEntity } from '../../../generated/client';
 
 // 🌟 修正 2：明確定義多層級關聯的 TypeScript 型別介面，徹底消滅 Implicit Any 錯誤
 interface EntityWithChapters extends SettingEntity {
