@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 interface CalendarConfigFormProps {
   projectId: string;
   initialConfig?: CalendarConfig;
-  // 🌟 修正 1：完美對齊父層，允許將最新快照當作參數回傳，徹底封殺 fetch 競爭
   onSaveSuccess: (latestConfig?: CalendarConfig) => void;
   onDirty?: () => void;
 }
@@ -57,9 +56,11 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
       if (initialConfig.eras && initialConfig.eras.length > 0) {
         const erasWithId = initialConfig.eras.map((era, idx) => ({
           ...era,
-          id: era.id || `era-${idx}-${Date.now()}`
+          id: era.id || `era-${idx}-${Date.now()}`,
+          // 🌟 修正點 1：在初始化時就進行防呆大掃除，如果後端帶出的物件裡缺了 months 欄位，立刻原地補滿 12 月
+          months: era.months && era.months.length > 0 ? era.months : DEFAULT_12_MONTHS
         }));
-        setEras(erasWithId);
+        setEras(erasWithId as any);
       } else {
         setEras(DEFAULT_ERAS_TEMPLATE);
       }
@@ -69,21 +70,17 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
     }
   }, [initialConfig]);
 
-  // 🌟 修正 2：處理拖曳結束事件
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
       onDirty?.();
       
       let updatedEras: EraDefinition[] = [];
-      
-      // 先同步更新本地的 React 狀態，確保畫面流暢不閃爍
       const oldIndex = eras.findIndex((item) => item.id === active.id);
       const newIndex = eras.findIndex((item) => item.id === over.id);
       updatedEras = arrayMove(eras, oldIndex, newIndex);
       setEras(updatedEras);
 
-      // 🌟 關鍵修正：不再打單獨的 /mode 路由，直接將最新完全體快照同步給主 API 與父層！
       if (updatedEras.length > 0) {
         const nextPayload: CalendarConfig = { mode, eras: updatedEras };
         await saveCalendarConfigDirectly(nextPayload);
@@ -91,7 +88,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
     }
   };
 
-  // 🌟 核心提取：合併為單一強大且穩定的儲存管道，避免雲端分布式調用出錯
   const saveCalendarConfigDirectly = async (payload: CalendarConfig) => {
     try {
       const res = await fetch(`/api/projects/${projectId}/calendar`, {
@@ -100,8 +96,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("同步曆法失敗");
-      
-      // 🌟 核心突破：直接把當前最正確的完全體傳給父層，父層收到後直接 set 鎖死，拒絕重新 load 舊快取！
       onSaveSuccess(payload); 
     } catch (err) {
       console.error("曆法即時同步出錯:", err);
@@ -143,7 +137,12 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
   const handleMonthChange = (eraIndex: number, monthIndex: number, field: "name" | "days", value: any) => {
     onDirty?.();
     const updated = [...eras];
-    const updatedMonths = [...updated[eraIndex].months];
+    // 🌟 修正點 2：更新月份時，多加一層安全熔斷，確保陣列記憶體參考安全
+    const targetMonths = updated[eraIndex].months && updated[eraIndex].months.length > 0 
+      ? updated[eraIndex].months 
+      : DEFAULT_12_MONTHS;
+      
+    const updatedMonths = [...targetMonths];
     updatedMonths[monthIndex] = { ...updatedMonths[monthIndex], [field]: value };
     updated[eraIndex].months = updatedMonths;
     setEras(updated);
@@ -181,7 +180,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
 
   return (
     <div className="space-y-6">
-      {/* 標頭標籤 */}
       <div className="border-b border-slate-100 pb-3">
         <h3 className="text-xl font-bold text-slate-800">🌍 修改世界觀多紀元斷代曆法</h3>
         <p className="text-sm text-slate-500 mt-1">
@@ -189,7 +187,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
         </p>
       </div>
 
-      {/* 雙軌制模式控制元件 */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-inner space-y-3">
         <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
           <ToggleLeft size={18} className="text-emerald-500" />
@@ -234,7 +231,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
         </div>
       </div>
 
-      {/* 頂層時期控制列 */}
       <div className="flex items-center justify-between pt-2">
         <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
           {mode === 'fantasy_only' ? <ArrowUpDown size={14} className="text-blue-500 animate-pulse" /> : <Layers size={14} />}
@@ -251,7 +247,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
         </button>
       </div>
 
-      {/* 雙軌制分流渲染畫布區 */}
       {mode === 'fantasy_only' ? (
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="space-y-3">
@@ -291,7 +286,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                     type="text"
                     value={era.name}
                     onChange={(e) => handleEraFieldChange(eraIdx, "name", e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none text-slate-700 bg-white"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -300,7 +295,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                     type="number"
                     value={(era.startYear === -Infinity || era.startYear === null || era.startYear === undefined) ? "" : era.startYear}
                     onChange={(e) => handleEraFieldChange(eraIdx, "startYear", e.target.value ? parseInt(e.target.value, 10) : null)}
-                    className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none text-slate-700 bg-white"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -309,7 +304,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                     type="number"
                     value={(era.endYear === null || era.endYear === undefined) ? "" : era.endYear}
                     onChange={(e) => handleEraFieldChange(eraIdx, "endYear", e.target.value ? parseInt(e.target.value, 10) : null)}
-                    className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none text-slate-700 bg-white"
                   />
                 </div>
                 <div className="flex items-center gap-2 pt-6 pl-2">
@@ -334,20 +329,21 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                   <span className="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700">12 月份制</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border border-slate-100 rounded-lg p-3 bg-slate-50/50">
-                  {era.months?.map((month, monthIdx) => (
+                  {/* 🌟 修正點 3：加上最高層級的安全回退分流，如果對象陣列不存在，強行渲染預設範本，防止開天窗 */}
+                  {(era.months && era.months.length > 0 ? era.months : DEFAULT_12_MONTHS).map((month, monthIdx) => (
                     <div key={monthIdx} className="flex items-center gap-2 bg-white p-1.5 rounded-lg border border-slate-200 text-xs">
                       <span className="font-bold text-slate-400 w-6 text-center">#{monthIdx + 1}</span>
                       <input
                         type="text"
                         value={month.name}
                         onChange={(e) => handleMonthChange(eraIdx, monthIdx, "name", e.target.value)}
-                        className="flex-1 rounded border border-slate-200 p-1 text-xs"
+                        className="flex-1 rounded border border-slate-200 p-1 text-xs text-slate-700 bg-white focus:outline-none"
                       />
                       <input
                         type="number"
                         value={month.days}
                         onChange={(e) => handleMonthChange(eraIdx, monthIdx, "days", parseInt(e.target.value, 10) || 30)}
-                        className="w-14 rounded border border-slate-200 p-1 text-xs text-center"
+                        className="w-14 rounded border border-slate-200 p-1 text-xs text-center text-slate-700 bg-white focus:outline-none"
                       />
                     </div>
                   ))}
@@ -358,7 +354,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
         </div>
       )}
 
-      {/* 底部儲存列 */}
       <div className="flex justify-end pt-4 border-t border-slate-100">
         <button
           onClick={handleSave}
