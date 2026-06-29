@@ -512,7 +512,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   {selectedItem.id === "project-calendar-config" ? (
                     <CalendarConfigForm 
                       projectId={projectId}
-                      initialConfig={calendarConfig}
+                      initialConfig={calendarConfig as any}
                       onSaveSuccess={() => {
                         fetchSettings();
                         setHasChanges(false); // 儲存成功，清除父層已修改標籤
