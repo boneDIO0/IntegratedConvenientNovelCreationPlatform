@@ -18,38 +18,68 @@ interface EventFormProps {
 export default function EventForm({ item, calendarConfig, onSave, onDirty }: EventFormProps) {
   const [name, setName] = useState(item.name || "");
   const [currentDate, setCurrentDate] = useState(item.date || "");
-  // 🌟 核心新增：新增手動輸入紀元文字的 State (對接 SettingItem 的擴充欄位)
-  const [fantasyDisplay, setFantasyDisplay] = useState(item.fantasyDisplay || "");
   const [location, setLocation] = useState(item.location || "");
   const [description, setDescription] = useState(item.description || "");
-
   const [saveStatus, setSaveStatus] = useState("儲存事件紀錄");
 
-  // 當切換選取不同歷史事件時，同步刷新狀態值
+  // 🌟 核心結構優化：將原本的死板字串拆解為連動的「紀元名稱」與「年份」狀態，徹底防呆
+  const [selectedEra, setSelectedEra] = useState("");
+  const [fantasyYear, setFantasyYear] = useState<number | "">("");
+
+  // 檢查當前曆法全域模式：'standard' (自動換算) | 'fantasy_only' (純自訂拖曳排序)
+  const isStandardMode = calendarConfig?.mode !== "fantasy_only";
+
+  // 當切換選取不同歷史事件時，同步刷新與拆解狀態值
   useEffect(() => {
     setName(item.name || "");
     setCurrentDate(item.date || "");
-    setFantasyDisplay(item.fantasyDisplay || "");
     setLocation(item.location || "");
     setDescription(item.description || "");
-  }, [item]);
 
-  // 檢查當前曆法全域模式：'standard' (自動換算) | 'fantasy_only' (手動輸入)
-  const isStandardMode = calendarConfig?.mode !== "fantasy_only";
+    if (!isStandardMode) {
+      // 試圖從既存的 "舊紀元 1 年" 字串中拆解出紀元與年份
+      const displayStr = item.fantasyDisplay || "";
+      const matched = displayStr.match(/^(.+?)\s*(\d+)\s*年$/);
+      
+      if (matched) {
+        setSelectedEra(matched[1]);
+        setFantasyYear(parseInt(matched[2], 10));
+      } else {
+        // 如果是全新事件，預設選取曆法中的第一個歷史紀元
+        const firstEraName = calendarConfig?.eras?.[0]?.name || "";
+        setSelectedEra(firstEraName);
+        setFantasyYear(1);
+      }
+    }
+  }, [item, calendarConfig, isStandardMode]);
 
-  // 🌟 核心修正：呼叫升級後的雙軌制引擎，把手動輸入的字串一併餵進去
-  const displayDate = formatFantasyDate(currentDate, calendarConfig, fantasyDisplay);
+  // 🌟 動態即時合成預覽文字
+  const generatedFantasyDisplay = selectedEra && fantasyYear !== "" ? `${selectedEra} ${fantasyYear} 年` : "";
+  const displayDate = isStandardMode 
+    ? formatFantasyDate(currentDate, calendarConfig, "")
+    : generatedFantasyDisplay;
 
   const handleSaveClick = async () => {
+    let calculatedWeight = item.sortWeight ?? 0;
+
+    // 🌟 核心權重演算法：如果開啟了自訂曆法模式，依據目前所選紀元在曆法中的物理拖曳順序，自動權重定錨！
+    if (!isStandardMode && calendarConfig?.eras) {
+      const eraIndex = calendarConfig.eras.findIndex(e => e.name === selectedEra);
+      const safeIndex = eraIndex !== -1 ? eraIndex : 0;
+      const safeYear = fantasyYear !== "" ? fantasyYear : 1;
+      
+      // 公式：(曆法陣列排序 * 100,000) + 當前年份。保證拖曳順序永遠具有最高優先權！
+      calculatedWeight = safeIndex * 100000 + safeYear;
+    }
+
     const updatedItem: SettingItem = {
       ...item,
       name,
-      // 雙軌制並存打包：
-      date: isStandardMode ? currentDate : "", 
-      fantasyDisplay: isStandardMode ? "" : fantasyDisplay, 
-      sortWeight: isStandardMode ? undefined : (item.sortWeight ?? 0),
       location,
-      description
+      description,
+      date: isStandardMode ? currentDate : "", 
+      fantasyDisplay: isStandardMode ? "" : generatedFantasyDisplay, 
+      sortWeight: calculatedWeight // 鎖定完美物理排序數字
     };
 
     setSaveStatus("儲存中...");
@@ -83,10 +113,10 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
         {/* 曆法引擎展示區塊 */}
         <div className="p-4 rounded-lg bg-slate-900 text-white shadow-inner flex flex-col gap-1 transition-colors">
           <span className="text-slate-400 text-xs">
-            {isStandardMode ? "引擎自動換算日期" : "寫手自訂紀元日期"}
+            {isStandardMode ? "引擎自動換算日期" : "世界觀曆法時序對齊預覽"}
           </span>
           <span className="text-xl font-bold tracking-wider text-emerald-400">
-            {displayDate || (isStandardMode ? "請選擇標準時間..." : "請輸入世界觀時間...")}
+            {displayDate || (isStandardMode ? "請選擇標準時間..." : "請選擇自訂紀元時序...")}
           </span>
         </div>
 
@@ -97,7 +127,7 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 🌟 核心修正：依據多紀元全域配置，動態渲染時間輸入介面 */}
+          {/* 🌟 核心重構：雙軌制連動分流 */}
           {isStandardMode ? (
             <div className="grid gap-2">
               <Label htmlFor="date">標準時間 (YYYY-MM-DD)</Label>
@@ -109,30 +139,40 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
               />
             </div>
           ) : (
-            <div className="contents md:grid md:grid-cols-3 gap-4 md:col-span-1">
-              <div className="grid gap-2 md:col-span-2">
-                <Label htmlFor="fantasyDisplay">自訂世界觀時間文字</Label>
-                <Input 
-                  id="fantasyDisplay" 
-                  type="text" 
-                  placeholder="例如：創世曆 150 年 暮月 3 日"
-                  value={fantasyDisplay} 
-                  onChange={(e) => { setFantasyDisplay(e.target.value); onDirty?.(); }}
-                />
+            <div className="grid grid-cols-3 gap-3 md:col-span-1">
+              {/* 紀元名稱下拉選單 */}
+              <div className="grid gap-2 col-span-2">
+                <Label htmlFor="eraSelect">選擇歷史紀元時期</Label>
+                <select
+                  id="eraSelect"
+                  value={selectedEra}
+                  onChange={(e) => { setSelectedEra(e.target.value); onDirty?.(); }}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                >
+                  {calendarConfig?.eras && calendarConfig.eras.length > 0 ? (
+                    calendarConfig.eras.map((era, index) => (
+                      <option key={`${era.name}-${index}`} value={era.name} className="text-slate-800">
+                        ✨ {era.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">(請先至曆法設定建立時期)</option>
+                  )}
+                </select>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="sortWeight" className="flex items-center gap-1">
-                  時間軸排序權重
-                  <span title="數字越小越古老（排在時間軸越上方），例如 1 代表創世、10 代表當代" className="cursor-help text-slate-400">❓</span>
-                </Label>
+
+              {/* 年份數字輸入框 */}
+              <div className="grid gap-2 col-span-1">
+                <Label htmlFor="eraYear">發生年份</Label>
                 <Input 
-                  id="sortWeight" 
+                  id="eraYear" 
                   type="number" 
+                  min={1}
                   placeholder="如: 1"
-                  // 💡 讀取或更新 item 的 sortWeight，記得作 Controlled 元件的空值保護
-                  value={item.sortWeight ?? ""} 
+                  value={fantasyYear} 
                   onChange={(e) => { 
-                    item.sortWeight = e.target.value ? parseInt(e.target.value) : undefined;
+                    const val = e.target.value;
+                    setFantasyYear(val === "" ? "" : parseInt(val, 10)); 
                     onDirty?.(); 
                   }}
                 />

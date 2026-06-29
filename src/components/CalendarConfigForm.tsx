@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-// 🌟 修正點 1：全面割捨舊引擎型別，擁抱唯一真理型別中心，徹底消滅 TS2322
 import { CalendarConfig, EraDefinition } from "@/types"; 
 import { Plus, Trash2, CalendarDays, HelpCircle, Layers, ToggleLeft, ArrowUpDown } from "lucide-react"; 
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
@@ -22,7 +21,8 @@ import { Button } from "@/components/ui/button";
 interface CalendarConfigFormProps {
   projectId: string;
   initialConfig?: CalendarConfig;
-  onSaveSuccess: () => void;
+  // 🌟 修正 1：完美對齊父層，允許將最新快照當作參數回傳，徹底封殺 fetch 競爭
+  onSaveSuccess: (latestConfig?: CalendarConfig) => void;
   onDirty?: () => void;
 }
 
@@ -69,24 +69,42 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
     }
   }, [initialConfig]);
 
-  // 🌟 修正點 2：解決異步狀態閉包快取 Bug，直接單向向下遞迴傳遞最新狀態
+  // 🌟 修正 2：處理拖曳結束事件
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
       onDirty?.();
       
       let updatedEras: EraDefinition[] = [];
-      setEras((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        updatedEras = arrayMove(items, oldIndex, newIndex);
-        return updatedEras;
-      });
+      
+      // 先同步更新本地的 React 狀態，確保畫面流暢不閃爍
+      const oldIndex = eras.findIndex((item) => item.id === active.id);
+      const newIndex = eras.findIndex((item) => item.id === over.id);
+      updatedEras = arrayMove(eras, oldIndex, newIndex);
+      setEras(updatedEras);
 
-      // 🎬 防呆安全熔斷：不再依賴環境變數中的 mode，直接用當下的物理快照去同步
+      // 🌟 關鍵修正：不再打單獨的 /mode 路由，直接將最新完全體快照同步給主 API 與父層！
       if (updatedEras.length > 0) {
-        await syncCalendarModeAndOrder(mode, updatedEras);
+        const nextPayload: CalendarConfig = { mode, eras: updatedEras };
+        await saveCalendarConfigDirectly(nextPayload);
       }
+    }
+  };
+
+  // 🌟 核心提取：合併為單一強大且穩定的儲存管道，避免雲端分布式調用出錯
+  const saveCalendarConfigDirectly = async (payload: CalendarConfig) => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/calendar`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("同步曆法失敗");
+      
+      // 🌟 核心突破：直接把當前最正確的完全體傳給父層，父層收到後直接 set 鎖死，拒絕重新 load 舊快取！
+      onSaveSuccess(payload); 
+    } catch (err) {
+      console.error("曆法即時同步出錯:", err);
     }
   };
 
@@ -152,39 +170,12 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
     try {
       setIsSaving(true);
       const payload: CalendarConfig = { mode, eras }; 
-      
-      const res = await fetch(`/api/projects/${projectId}/calendar`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error("儲存曆法失敗");
+      await saveCalendarConfigDirectly(payload);
       alert("🎉 世界觀多紀元雙軌制曆法規則更新成功！");
-      onSaveSuccess(); 
     } catch (error) {
-      console.error(error);
       alert("⚠️ 儲存失敗，請檢查資料庫連線狀態。");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const syncCalendarModeAndOrder = async (newMode: 'standard' | 'fantasy_only', currentEras: EraDefinition[]) => {
-    try {
-      const res = await fetch(`/api/projects/${projectId}/calendar/mode`, {
-        method: "PATCH", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: newMode,
-          sortedEraIds: currentEras.map(e => e.id) 
-        }),
-      });
-      
-      if (!res.ok) throw new Error("同步失敗");
-      onSaveSuccess();
-    } catch (err) {
-      console.error("拖曳即時儲存出錯:", err);
     }
   };
 
@@ -213,7 +204,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
               onChange={async () => { 
                 setMode('standard'); 
                 onDirty?.(); 
-                await syncCalendarModeAndOrder('standard', eras);
+                await saveCalendarConfigDirectly({ mode: 'standard', eras });
               }}
               className="mt-0.5 h-4 w-4 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
             />
@@ -231,12 +222,12 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
               onChange={async () => { 
                 setMode('fantasy_only'); 
                 onDirty?.(); 
-                await syncCalendarModeAndOrder('fantasy_only', eras);
+                await saveCalendarConfigDirectly({ mode: 'fantasy_only', eras });
               }} 
               className="mt-0.5 h-4 w-4 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
             />
             <div className="space-y-0.5">
-              <span className="text-xs font-bold text-slate-800 block">✍️ 純自訂紀元文字（🌟 支援拖曳排序）</span>
+              <span className="text-xs font-bold text-slate-800 block">⚙️ 純自訂紀元文字（🌟 支援拖曳排序）</span>
               <span className="text-[11px] text-slate-400 block leading-normal">解除西元綁定。透過「上下拖曳」直接排定歷史時期的先後順序，輕量化管理。</span>
             </div>
           </label>
@@ -248,7 +239,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
         <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
           {mode === 'fantasy_only' ? <ArrowUpDown size={14} className="text-blue-500 animate-pulse" /> : <Layers size={14} />}
           <span>
-            {mode === 'fantasy_only' ? "拖曳排定歷史紀元（越上方越古老）" : `歷史斷代切片（共 {eras.length} 個時期）`}
+            {mode === 'fantasy_only' ? "拖曳排定歷史紀元（越上方越古老）" : `歷史斷代切片（共 ${eras.length} 個時期）`}
           </span>
         </div>
         <button
@@ -262,7 +253,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
 
       {/* 雙軌制分流渲染畫布區 */}
       {mode === 'fantasy_only' ? (
-        /* 🎬 軌道 B：純紀元拖曳排序模式 */
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="space-y-3">
             <SortableContext items={eras.map((e) => e.id)} strategy={verticalListSortingStrategy}>
@@ -279,7 +269,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
           </div>
         </DndContext>
       ) : (
-        /* 🎬 軌道 A：原有的標準公式換算模式 */
         <div className="space-y-6">
           {eras.map((era, eraIdx) => (
             <div key={era.id || eraIdx} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 relative group/era">
@@ -309,7 +298,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                   <label className="text-xs font-semibold text-slate-600">西元起始年</label>
                   <input
                     type="number"
-                    // 🌟 修正點 3：加上安全空值熔斷降級，相容選填的 number | null | undefined
                     value={(era.startYear === -Infinity || era.startYear === null || era.startYear === undefined) ? "" : era.startYear}
                     onChange={(e) => handleEraFieldChange(eraIdx, "startYear", e.target.value ? parseInt(e.target.value, 10) : null)}
                     className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none"
@@ -384,9 +372,6 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
   );
 }
 
-// ==========================================
-// 🌟 局部防錯二次確認元件
-// ==========================================
 function DeleteEraConfirm({ eraName, onConfirm }: { eraName: string; onConfirm: () => void }) {
   return (
     <Dialog>
