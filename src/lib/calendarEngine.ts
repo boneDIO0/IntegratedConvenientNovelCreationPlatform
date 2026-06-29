@@ -10,6 +10,7 @@ export interface EraDefinition {
 }
 
 export interface CalendarConfig {
+  mode: 'standard' | 'fantasy_only';
   eras: EraDefinition[];
 }
 
@@ -65,7 +66,16 @@ function getAbsoluteDaysFromAD1(year: number, month: number, day: number): numbe
   return 365 * y + leapDays + monthDays + day;
 }
 
-export function formatFantasyDate(isoDate: string | undefined, config?: CalendarConfig): string {
+export function formatFantasyDate(
+  isoDate: string | undefined, 
+  config?: CalendarConfig,
+  customFantasyDisplay?: string // 🌟 新增：事件表單傳進來的「手動輸入時間字串」
+): string {
+
+  if (config?.mode === 'fantasy_only') {
+    return customFantasyDisplay || "未設定自訂曆法時間";
+  }
+  
   if (!isoDate) return "未知時間";
   
   const target = dayjs(isoDate);
