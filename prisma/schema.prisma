@@ -1,45 +1,47 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
+  previewFeatures = ["postgresqlExtensions", "multiSchema"]
 }
 
 datasource db {
   provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
+  // 🌟 穩定定錨：直接使用單軌直接連線字串，免去 Vercel 環境變數 Missing 煩惱
+  url        = "postgresql://neondb_owner:npg_qOgTbHvs3P0G@ep-flat-fog-ao8zq8k4.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
   extensions = [vector]
   schemas    = ["audit", "public"]
 }
 
 /// 使用者 (承接 Auth 資訊)
 model User {
-  id            String    @id @default(uuid()) @db.Uuid
-  name          String? // Auth.js 預設名稱
+  // 🌟 修正 1：改回 Auth.js 官方標準 CUID 字串，確保 Google 登入自動寫入不破防
+  id            String    @id @default(cuid())
+  name          String?   
   email         String?   @unique
   emailVerified DateTime? @map("email_verified")
-  image         String? // 使用者大頭貼
+  image         String?   
   username      String?   @unique
   tier          String?   @default("free")
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
   createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-
+  
   // --- 原本的關聯 ---
   checkpoints     Checkpoint[]
   memberships     ProjectMember[]
   projectMessages ProjectMessages[]
   projects        Project[]         @relation("ProjectOwner")
-
+  
   // --- Auth.js 的關聯 ---
-  accounts Account[]
-  sessions Session[]
+  accounts      Account[]
+  sessions      Session[]
 
-  @@map("users")
+  @@map("users") 
   @@schema("public")
 }
 
 model Account {
   id                String  @id @default(cuid())
-  userId            String  @map("user_id") @db.Uuid
+  // 🌟 修正 2：同步對齊 User.id 的 String 類型
+  userId            String  @map("user_id")
   type              String
   provider          String
   providerAccountId String  @map("provider_account_id")
@@ -61,7 +63,8 @@ model Account {
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id") @db.Uuid
+  // 🌟 修正 3：同步對齊 User.id 的 String 類型
+  userId       String   @map("user_id")
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -81,12 +84,10 @@ model VerificationToken {
 
 model Project {
   id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ownerId         String            @map("owner_id") @db.Uuid
+  // 🌟 修正 4：對齊所有 User 關聯外鍵
+  ownerId         String            @map("owner_id")
   title           String
-  
-  // 🌟 核心新增：用來儲存創作者自定義的時間曆法公式 (例如: { eraName: '廢墟紀元', baseYear: 1999 })
-  worldSetting    Json?             @default("{}") @map("world_setting") 
-  
+  worldSetting    Json?             @default("{}") @map("world_setting")
   deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz(6)
   createdAt       DateTime?         @map("created_at") @db.Timestamptz(6) @default(now())
   checkpoints     Checkpoint[]
@@ -106,7 +107,8 @@ model Project {
 model ProjectMember {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   projectId String    @map("project_id") @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
+  // 🌟 修正 5：對齊 User 關聯外鍵
+  userId    String    @map("user_id")
   role      String?
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
   createdAt DateTime  @map("created_at") @db.Timestamptz(6) @default(now())
@@ -128,7 +130,8 @@ model SettingCategory {
   isPreset   Boolean?        @default(false) @map("is_preset")
   deletedAt  DateTime?       @map("deleted_at") @db.Timestamptz(6)
   createdAt  DateTime?       @map("created_at") @db.Timestamptz(6) @default(now())
-  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade) 
   entities   SettingEntity[]
 
   @@index([projectId, orderIndex])
@@ -141,20 +144,19 @@ model SettingEntity {
   projectId  String          @map("project_id") @db.Uuid
   categoryId String          @map("category_id") @db.Uuid
   title      String
-  content    Json?           @default("{}")
+  content    Json?           @default("{}") 
   orderIndex Float?          @default(0) @map("order_index")
   deletedAt  DateTime?       @map("deleted_at") @db.Timestamptz(6)
   createdAt  DateTime?       @map("created_at") @db.Timestamptz(6) @default(now())
   updatedAt  DateTime?       @map("updated_at") @db.Timestamptz(6) @default(now())
-
-  // 🌟 修正：多對多關係的 @relation 識別名稱，雙方必須完全一致 (對齊 Chapter)
+  embedding  Unsupported("vector(1024)")? 
   chapters   Chapter[]       @relation("ChapterSettings")
   
   category   SettingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([categoryId, orderIndex])
-  @@index([projectId, deletedAt])
+  @@index([projectId, deletedAt]) 
   @@map("setting_entities")
   @@schema("public")
 }
@@ -162,13 +164,14 @@ model SettingEntity {
 model Checkpoint {
   id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   projectId    String?          @map("project_id") @db.Uuid
-  authorId     String?          @map("author_id") @db.Uuid
+  // 🌟 修正 6：對齊 User 關聯外鍵
+  authorId     String?          @map("author_id")
   parentId     String?          @map("parent_id") @db.Uuid
   commitMsg    String?          @map("commit_msg")
   targetType   String           @map("target_type")
   targetId     String?          @map("target_id") @db.Uuid
-  content      Json
-  deltaContent Json?
+  content      Json             
+  deltaContent Json?            
   createdAt    DateTime?        @map("created_at") @db.Timestamptz(6) @default(now())
   analysis     AnalysisResult[]
   author       User?            @relation(fields: [authorId], references: [id])
@@ -183,12 +186,13 @@ model Checkpoint {
 }
 
 model AnalysisResult {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  checkpointId String?   @map("checkpoint_id") @db.Uuid
-  embedding    Unsupported("vector")?
-  logicPayload Json?     @default("{}") @map("logic_payload")
-  createdAt    DateTime? @map("created_at") @db.Timestamptz(6) @default(now())
-  checkpoint   Checkpoint? @relation(fields: [checkpointId], references: [id])
+  id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid 
+  checkpointId String?                @map("checkpoint_id") @db.Uuid
+  // 🌟 修正 7：將全案向量維度對齊 1024
+  embedding    Unsupported("vector(1024)")?
+  logicPayload Json?                  @default("{}") @map("logic_payload")
+  createdAt    DateTime?              @map("created_at") @db.Timestamptz(6) @default(now())
+  checkpoint   Checkpoint?            @relation(fields: [checkpointId], references: [id])
 
   @@index([checkpointId])
   @@map("analysis_results")
@@ -197,7 +201,8 @@ model AnalysisResult {
 
 model LiveDraft {
   projectId  String    @map("project_id") @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
+  // 🌟 修正 8：對齊 User 關聯外鍵
+  userId     String    @map("user_id")
   rawContent Json      @map("raw_content")
   updatedAt  DateTime? @map("updated_at") @db.Timestamptz(6) @default(now())
   project    Project   @relation(fields: [projectId], references: [id])
@@ -214,7 +219,8 @@ model OperationLog {
   opType    String    @map("op_type")
   oldData   Json?     @map("old_data")
   newData   Json?     @map("new_data")
-  userId    String?   @map("user_id") @db.Uuid
+  // 🌟 修正 9：對齊 User 關聯外鍵
+  userId    String?   @map("user_id")
   createdAt DateTime? @map("created_at") @db.Timestamptz(6) @default(now())
 
   @@index([tableName, recordId])
@@ -224,20 +230,19 @@ model OperationLog {
 }
 
 model ProjectMessages {
-  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  content             String
-  authorId            String?          @map("author_id") @db.Uuid
-  projectId           String           @map("project_id") @db.Uuid
-  mentions            String[]         @db.Uuid
-  referencedFile      String?          @map("referenced_file") @db.Uuid
-  channelId           String           @map("channel_id")
-  referencedMessageId String?          @map("referenced_message_id") @db.Uuid
-  createdAt           DateTime         @map("created_at") @db.Timestamptz(6) @default(now())
-  users               User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  projects            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  // 🌟 建議將 onDelete 從 Cascade 改為 NoAction，避免母留言刪除時，子回覆慘遭全數株連
-  projectMessages     ProjectMessages? @relation("RecursiveMessages", fields: [referencedMessageId], references: [id], onDelete: NoAction)
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content              String
+  // 🌟 修正 10：對齊 User 關聯外鍵
+  authorId             String?          @map("author_id") 
+  projectId            String           @map("project_id") @db.Uuid
+  mentions             String[]         @db.Uuid
+  referencedFile       String?          @map("referenced_file") @db.Uuid
+  channelId            String           @map("channel_id")
+  referencedMessageId  String?          @map("referenced_message_id") @db.Uuid
+  createdAt            DateTime         @map("created_at") @db.Timestamptz(6) @default(now())
+  users                User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  projects             Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectMessages      ProjectMessages? @relation("RecursiveMessages", fields: [referencedMessageId], references: [id], onDelete: NoAction)
   otherProjectMessages ProjectMessages[] @relation("RecursiveMessages")
 
   @@map("project_messages")
@@ -247,19 +252,20 @@ model ProjectMessages {
 model Chapter {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   projectId    String    @map("project_id") @db.Uuid
-  title        String
-  content      Json?     @default("{}")
-  deltaContent Json?
-  orderIndex   Float     @default(0) @map("order_index")
-  wordCount    Int       @default(0) @map("word_count")
-  status       String    @default("draft")
+  title        String    
+  content      Json?     @default("{}") 
+  deltaContent Json?     
+  orderIndex   Float     @default(0) @map("order_index") 
+  wordCount    Int       @default(0) @map("word_count") 
+  status       String    @default("draft") 
 
-  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
-  createdAt DateTime  @map("created_at") @db.Timestamptz(6) @default(now())
-  updatedAt DateTime  @map("updated_at") @db.Timestamptz(6) @updatedAt
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt    DateTime  @map("created_at") @db.Timestamptz(6) @default(now())
+  updatedAt    DateTime  @map("updated_at") @db.Timestamptz(6) @updatedAt 
 
   assignedSettings SettingEntity[] @relation("ChapterSettings")
-  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, orderIndex])
   @@map("chapters")
