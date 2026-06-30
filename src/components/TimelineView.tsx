@@ -1,14 +1,13 @@
-"use client";
+'use client'
 
 import { useMemo } from "react";
 import { SettingItem } from "@/lib/mockSettings";
-// 🌟 核心修正：引入全域 CalendarConfig 型別定義
+// 🌟 核心修正：引入全域 CalendarConfig 型別定義與更新後的轉換引擎
 import { CalendarConfig, formatFantasyDate } from "@/lib/calendarEngine";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 interface TimelineViewProps {
-  // 🌟 核心優化 1：捨棄 mockSettings 靜態依賴，改由父層將真實資料流與曆法配置餵進來
   allSettings: { category: string; items: SettingItem[] }[]; 
   calendarConfig?: CalendarConfig;
   filterTargetId?: string; 
@@ -17,25 +16,36 @@ interface TimelineViewProps {
 
 export default function TimelineView({ allSettings, calendarConfig, filterTargetId, onEventClick }: TimelineViewProps) {
   
+  // 檢查當前曆法全域模式是否為標準自動換算
+  const isStandardMode = calendarConfig?.mode !== "fantasy_only";
+
   // 抓取、過濾並排序歷史事件
   const sortedEvents = useMemo(() => {
-    // 🌟 核心優化 2：從動態傳入的資料總庫中抓取事件群組 (相容多種常見命名樣式)
     const eventGroup = allSettings.find(
       (g) => g.category === "歷史事件 (Events)" || g.category === "歷史事件" || g.category === "event"
     );
     let events = (eventGroup?.items || []) as SettingItem[];
     
     if (filterTargetId) {
-      // 💡 健全過濾邏輯：保留牽涉對象包含該 ID *或者* 事件本身 ID 就是該篩選目標的資料
       events = events.filter(event => 
         event.id === filterTargetId || 
         event.relations?.some(rel => rel.targetId === filterTargetId)
       );
     }
     
-    // 依據標準 ISO 時間戳由古至今進行物理排序
-    return [...events].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  }, [allSettings, filterTargetId]); 
+    // 🌟 核心優化：依據雙軌制模式動態分流排序
+    return [...events].sort((a, b) => {
+      if (isStandardMode) {
+        // 🌐 軌道 A：標準時間模式下，依據標準 ISO 時間戳由古至今進行物理排序
+        return (a.date || "").localeCompare(b.date || "");
+      } else {
+        // ✍️ 軌道 B：純紀元手動模式下，優先使用自訂排序權重 (sortWeight) 排序，避免文字無法定錨
+        const weightA = a.sortWeight ?? 0;
+        const weightB = b.sortWeight ?? 0;
+        return weightA - weightB;
+      }
+    });
+  }, [allSettings, filterTargetId, isStandardMode]); 
 
   // 優化無資料時的提示
   if (sortedEvents.length === 0) {
@@ -61,12 +71,12 @@ export default function TimelineView({ allSettings, calendarConfig, filterTarget
       <div className="relative border-l-2 border-slate-200 ml-4 md:ml-6 space-y-12 pb-12">
         
         {sortedEvents.map((event) => {
-          // 🌟 核心優化 3：將拉取到的全域斷代曆法配置傳入引擎，讓自定義的星曆/仙俠曆原地生效！
-          const fantasyDate = formatFantasyDate(event.date, calendarConfig);
+          // 🌟 核心優化 3：帶入第三個參數 event.fantasyDisplay，打通雙軌制分流渲染！
+          const fantasyDate = formatFantasyDate(event.date, calendarConfig, event.fantasyDisplay);
 
           return (
             <div key={event.id} className="relative pl-8 md:pl-10 group">
-              {/* 圓形節點 (動態高亮效果提升外觀) */}
+              {/* 圓形節點 */}
               <div className="absolute -left-[11px] top-1.5 h-5 w-5 rounded-full border-4 border-white bg-emerald-500 shadow-sm group-hover:scale-110 transition-transform" />
               
               {/* 內容卡片 */}
@@ -75,7 +85,7 @@ export default function TimelineView({ allSettings, calendarConfig, filterTarget
                 {/* 頂部：轉換後的世界觀時間 & 標籤 */}
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60 shadow-sm">
-                    ⏳ {fantasyDate}
+                    ⏳ {fantasyDate || (isStandardMode ? "未設定標準日期" : "未設定自訂時間")}
                   </span>
                   {event.location && (
                     <Badge variant="secondary" className="text-slate-500 font-medium bg-slate-100 border border-slate-200/40">
@@ -110,7 +120,6 @@ export default function TimelineView({ allSettings, calendarConfig, filterTarget
                       className="text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-sm self-end sm:self-auto"
                       onClick={() => {
                         if (onEventClick) {
-                          // 同步高亮事件本體與其關聯的所有角色節點
                           const involvedIds = [event.id, ...event.relations!.map(r => r.targetId)];
                           onEventClick(involvedIds);
                         }

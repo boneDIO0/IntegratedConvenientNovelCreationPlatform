@@ -12,7 +12,6 @@ import EventForm from "@/components/EventForm";
 import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 import { CalendarConfig } from "@/lib/calendarEngine"; 
-// 🌟 核心新增：載入剛剛寫好的世界觀曆法自定義配置表單
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
 import { useEditorUI } from "@/contexts/EditorUIContext";
 
@@ -197,7 +196,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   };
 
   const handleNodeSelectFromGraph = (nodeId: string) => {
-    if (nodeId === "project-calendar-config") return; // 防呆：點擊關係圖節點排除曆法設定項目
+    if (nodeId === "project-calendar-config") return; 
     for (const group of settingsData) {
       const found = group.items.find(item => item.id === nodeId);
       if (found) {
@@ -375,7 +374,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                  selectedItem ? `${selectedItem.name} ${hasChanges ? '*(已修改)' : '(編輯中)'}` : "未選取項目"}
               </h1>
 
-              {/* 🌟 核心優化 1：如果是曆法特殊設定，隱藏常規類型切換 Select，防止使用者洗掉 JSON 結構 */}
               {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
                 <select
                   value={selectedItem.category}
@@ -436,10 +434,10 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           <div className="flex-1 min-h-[600px] flex">
              {viewMode === 'timeline' ? (
                 <TimelineView 
-                  allSettings={globalAllSettings}       // 🌟 傳入動態的全域設定總表
-                  calendarConfig={calendarConfig}       // 🌟 傳入從雲端資料庫撈出來的多紀元設定
-                  filterTargetId={selectedItem?.id}     // 🌟 傳入當前選取的項目（若無則為全域時間軸）
-                  onEventClick={handleEventHighlight}   // 🌟 綁定點擊跳轉關係圖的高亮連動
+                  allSettings={globalAllSettings}       
+                  calendarConfig={calendarConfig}       
+                  filterTargetId={selectedItem?.id}     
+                  onEventClick={handleEventHighlight}   
                 />
              ) : viewMode === 'graph' ? (
                 <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
@@ -510,6 +508,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   </div>
                 </div>
              ) : selectedItem ? (
+                // 🌟 衝突解決完全體：將表單逻辑外層置換為 fieldset，一鍵連動唯讀模式
                 <fieldset 
                   disabled={!isEditable}
                   className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
@@ -519,16 +518,20 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                       🔒 <span className="font-medium">唯讀模式</span>：你目前正在檢視此設定集，沒有編輯權限。
                     </div>
                   )}
-                  {/* 🌟 核心優化 2：攔截並優先處理世界觀曆法配置面板分支 */}
+
                   {selectedItem.id === "project-calendar-config" ? (
                     <CalendarConfigForm 
                       projectId={projectId}
-                      initialConfig={calendarConfig}
-                      onSaveSuccess={() => {
-                        fetchSettings();
-                        setHasChanges(false); // 儲存成功，清除父層已修改標籤
-                    }}
-                    onDirty={() => setHasChanges(true)}
+                      initialConfig={calendarConfig as any}
+                      onSaveSuccess={(latestConfigFromBackend) => {
+                        if (latestConfigFromBackend) {
+                          setCalendarConfig(latestConfigFromBackend as any);
+                        } else {
+                          fetchSettings(); 
+                        }
+                        setHasChanges(false); 
+                      }}
+                      onDirty={() => setHasChanges(true)}
                     />
                   ) : (
                     <>
