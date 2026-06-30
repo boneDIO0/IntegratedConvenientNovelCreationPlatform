@@ -13,6 +13,7 @@ import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
 import { CalendarConfig } from "@/lib/calendarEngine"; 
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
+import { useEditorUI } from "@/contexts/EditorUIContext";
 
 interface SettingsPanelProps {
   projectId: string;
@@ -20,6 +21,7 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
+  const { isEditable } = useEditorUI();
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
@@ -353,7 +355,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
             setViewMode('form'); 
             setHasChanges(false); 
           }} 
-          selectedId={selectedItem?.id} 
+          selectedId={selectedItem?.id}
           onAdd={handleAddItem}
           onDelete={handleDeleteItem}
           onAddCategory={handleAddCategory}
@@ -375,6 +377,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
               {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
                 <select
                   value={selectedItem.category}
+                  disabled={!isEditable}
                   onChange={(e) => {
                     const newType = e.target.value;
                     const updated = { ...selectedItem, category: newType };
@@ -382,7 +385,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                     handleUpdateItem(updated); 
                     setHasChanges(true); 
                   }}
-                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm"
+                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
                 >
                   <option value="character">👤 人物表單</option>
                   <option value="faction">🏛️ 組織表單</option>
@@ -505,17 +508,26 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   </div>
                 </div>
              ) : selectedItem ? (
-                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+                // 🌟 衝突解決完全體：將表單逻辑外層置換為 fieldset，一鍵連動唯讀模式
+                <fieldset 
+                  disabled={!isEditable}
+                  className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
+                >
+                  {!isEditable && (
+                    <div className="mb-6 flex items-center gap-2 rounded-md bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600">
+                      🔒 <span className="font-medium">唯讀模式</span>：你目前正在檢視此設定集，沒有編輯權限。
+                    </div>
+                  )}
+
                   {selectedItem.id === "project-calendar-config" ? (
                     <CalendarConfigForm 
                       projectId={projectId}
                       initialConfig={calendarConfig as any}
-                      // 🌟 核心修正：將儲存成功後回傳的完全體最新曆法配置直接餵給 State，不再引發 fetchSettings 的資料覆蓋競爭！
                       onSaveSuccess={(latestConfigFromBackend) => {
                         if (latestConfigFromBackend) {
                           setCalendarConfig(latestConfigFromBackend as any);
                         } else {
-                          fetchSettings(); // 備援回退機制
+                          fetchSettings(); 
                         }
                         setHasChanges(false); 
                       }}
@@ -556,7 +568,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                       {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && <DynamicForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
                     </>
                   )}
-                </div>
+                </fieldset>
              ) : (
                 <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
                   <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
