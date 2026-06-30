@@ -98,6 +98,7 @@ model Project {
   owner           User              @relation("ProjectOwner", fields: [ownerId], references: [id])
   categories      SettingCategory[]
   entities        SettingEntity[]
+  coverUrl  String?  @map("cover_url")
 
   @@index([ownerId])
   @@map("projects")
