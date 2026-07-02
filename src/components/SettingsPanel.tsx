@@ -14,6 +14,7 @@ import DynamicForm from "@/components/DynamicForm";
 import { CalendarConfig } from "@/lib/calendarEngine"; 
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
 import { useEditorUI } from "@/contexts/EditorUIContext";
+import { useRouter } from "next/navigation";
 
 interface SettingsPanelProps {
   projectId: string;
@@ -22,6 +23,7 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const { isEditable } = useEditorUI();
+  const router = useRouter();
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
@@ -367,6 +369,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
         <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col">
           <div className="mb-6 flex items-center justify-between">
+            {/* 🌟 核心修正：移除會干擾 History 的圓圈返回鈕，直接乾淨地渲染標題 */}
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-slate-800">
                 {viewMode === 'graph' ? '全域人物關係圖' : 
@@ -508,7 +511,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   </div>
                 </div>
              ) : selectedItem ? (
-                // 🌟 衝突解決完全體：將表單逻辑外層置換為 fieldset，一鍵連動唯讀模式
                 <fieldset 
                   disabled={!isEditable}
                   className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
