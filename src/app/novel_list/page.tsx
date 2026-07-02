@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
+// 移除原本的 next/image，因為主頁面不需要處理圖片了
 import NovelSetting from '@/components/NovelSetting'
+import NovelCard from '@/components/NovelCard' // 👈 引入我們新做的卡片元件
 
-interface ProjectIndexItem {
+export interface ProjectIndexItem {
   id: string;
   title: string;
   createdAt: string; 
@@ -17,11 +18,9 @@ export default function NovelListPage() {
   const [projects, setProjects] = useState<ProjectIndexItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // 狀態管理：右鍵選單、刪除彈窗
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, projectId: null as string | null })
   const [deleteModal, setDeleteModal] = useState({ visible: false, projectId: null as string | null })
   
-  // 狀態管理：整合後的共用表單彈窗
   const [formModal, setFormModal] = useState({
     isOpen: false,
     mode: 'create' as 'create' | 'edit',
@@ -55,7 +54,6 @@ export default function NovelListPage() {
   }, [])
 
   const handleModalSubmit = async (title: string, file: File | null) => {
-    // 統一使用 FormData 處理文字與圖片
     const formData = new FormData()
     formData.append('title', title)
     if (file) formData.append('cover', file)
@@ -67,7 +65,6 @@ export default function NovelListPage() {
       const newProject = await res.json()
       router.push(`/novel_list/${newProject.id}`)
     } else if (formModal.mode === 'edit' && formModal.projectId) {
-      // 編輯模式也改用 FormData 傳送，不要設定 Content-Type
       const res = await fetch(`/api/projects/${formModal.projectId}`, {
         method: 'PATCH',
         body: formData 
@@ -92,11 +89,6 @@ export default function NovelListPage() {
     } catch (error) {
       alert("刪除失敗")
     }
-  }
-
-  const formatDate = (isoString: string) => {
-    const date = new Date(isoString)
-    return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
   }
 
   if (isLoading) {
@@ -125,45 +117,22 @@ export default function NovelListPage() {
           </div>
         ) : (
           projects.map((project) => (
-            <div 
+            // 👇 程式碼變得超級乾淨，只負責傳遞資料與事件
+            <NovelCard 
               key={project.id}
+              project={project}
               onClick={() => router.push(`/novel_list/${project.id}`)}
               onContextMenu={(e) => handleContextMenu(e, project.id)}
-              className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:border-blue-400 transition-all cursor-pointer group flex flex-col overflow-hidden"
-            >
-              <div className="w-full aspect-[3/4] relative bg-gray-100 border-b border-gray-100 overflow-hidden flex items-center justify-center">
-                {project.coverUrl ? (
-                  <Image 
-                    src={project.coverUrl} 
-                    alt={project.title}
-                    fill
-                    unoptimized
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                  />
-                ) : (
-                  <span className="text-gray-400 font-medium tracking-widest">NO COVER</span>
-                )}
-              </div>
-              
-              <div className="p-4 flex flex-col flex-1 bg-white">
-                <h2 className="text-lg font-bold text-gray-800 group-hover:text-blue-600 transition-colors line-clamp-1">
-                  {project.title}
-                </h2>
-                <div className="mt-auto pt-2">
-                  <span className="text-xs text-gray-400">建立於：{formatDate(project.createdAt)}</span>
-                </div>
-              </div>
-            </div>
+            />
           ))
         )}
       </div>
 
-      {/* 使用引入的共用彈窗元件 */}
       <NovelSetting 
         isOpen={formModal.isOpen}
         mode={formModal.mode}
         initialTitle={formModal.initialTitle}
+        initialCoverUrl={formModal.initialCoverUrl}
         onClose={() => setFormModal({ ...formModal, isOpen: false })}
         onSubmit={handleModalSubmit}
       />
@@ -183,7 +152,7 @@ export default function NovelListPage() {
                 mode: 'edit', 
                 projectId: contextMenu.projectId, 
                 initialTitle: targetNovel?.title || '',
-                initialCoverUrl: targetNovel?.coverUrl || '' // 👈 把原本的封面傳給彈窗顯示
+                initialCoverUrl: targetNovel?.coverUrl || ''
               })
               setContextMenu({ visible: false, x: 0, y: 0, projectId: null })
             }}
