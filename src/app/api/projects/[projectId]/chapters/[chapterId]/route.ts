@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
 import prisma from '@/lib/prisma'
+import { verifyProjectAccess } from '@/lib/auth-utils'
+import { PROJECT_ROLES } from '@/lib/roles'
 
 // 📥 讀取：撈出這個章節的標題與內容
 export async function GET(
@@ -8,11 +9,19 @@ export async function GET(
   context: { params: Promise<{ projectId: string; chapterId: string }> }
 ) {
   try {
-    const session = await getServerSession()
-    if (!session) return new NextResponse("請先登入", { status: 401 })
-
     // 🌟 記取教訓：一定要加 await
-    const { chapterId } = await context.params
+    const { projectId, chapterId } = await context.params
+
+    // 🛡️ RBAC 防禦：所有專案成員 (OWNER, EDITOR, VIEWER) 皆可讀取
+    const authCheck = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR,
+      PROJECT_ROLES.VIEWER
+    ])
+
+    if (!authCheck.isAuthorized) {
+      return new NextResponse(authCheck.error, { status: authCheck.status })
+    }
 
     const chapter = await prisma.chapter.findUnique({
       where: { id: chapterId }
@@ -34,16 +43,18 @@ export async function PUT(
   context: { params: Promise<{ projectId: string; chapterId: string }> }
 ) {
   try {
-    const session = await getServerSession()
-    if (!session || !session.user?.email) return new NextResponse("請先登入", { status: 401 })
-
-    // 先透過 email 找出這位作者的真實 UUID
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email }
-    })
-    if (!currentUser) return new NextResponse("找不到使用者", { status: 404 })
-
     const { projectId, chapterId } = await context.params
+
+    // 🛡️ RBAC 邊界防禦：只有 OWNER 和 EDITOR 可以修改章節
+    const authCheck = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ])
+
+    if (!authCheck.isAuthorized || !authCheck.userId) {
+      return new NextResponse(authCheck.error, { status: authCheck.status })
+    }
+
     const body = await request.json()
 
     // 🌟 核心修改：使用 Prisma Transaction，確保「更新」與「備份」同時成功
@@ -63,7 +74,7 @@ export async function PUT(
         data: {
           // 🌟 修正 2：確保欄位型態能正確與 PostgreSQL @db.Uuid 對接
           projectId: projectId,
-          authorId: currentUser.id,
+          authorId: authCheck.userId,
           targetType: "CHAPTER", // 建議改用大寫，與你版本獲取 API 的 CHAPTER 一致
           targetId: chapterId,
           content: body.content as any, // 強制斷言符合 Prisma Json 型態

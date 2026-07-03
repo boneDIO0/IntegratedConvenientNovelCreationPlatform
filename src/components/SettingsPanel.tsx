@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 import { useState, useEffect } from "react";
 import SettingsSidebar from "@/components/SettingsSidebar";
@@ -11,6 +11,10 @@ import ItemForm from "@/components/ItemForm";
 import EventForm from "@/components/EventForm";
 import TimelineView from "@/components/TimelineView";
 import DynamicForm from "@/components/DynamicForm";
+import { CalendarConfig } from "@/lib/calendarEngine"; 
+import CalendarConfigForm from "@/components/CalendarConfigForm"; 
+import { useEditorUI } from "@/contexts/EditorUIContext";
+import { useRouter } from "next/navigation";
 
 interface SettingsPanelProps {
   projectId: string;
@@ -18,10 +22,13 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
+  const { isEditable } = useEditorUI();
+  const router = useRouter();
   const [settingsData, setSettingsData] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
-  
+  const [calendarConfig, setCalendarConfig] = useState<CalendarConfig | undefined>(undefined);
+
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline' | 'chapter_manager'>(
     chapterId ? 'chapter_manager' : 'form'
   );
@@ -35,6 +42,16 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
+      
+      // 非同步拉取專案專屬的自定義世界觀曆法配置
+      const calendarRes = await fetch(`/api/projects/${projectId}/calendar`);
+      if (calendarRes.ok) {
+        const calendarResult = await calendarRes.json();
+        if (calendarResult.status === "success") {
+          setCalendarConfig(calendarResult.data);
+        }
+      }
+
       let url = `/api/settings?projectId=${projectId}`;
       if (chapterId) {
         url += `&chapterId=${chapterId}`;
@@ -127,10 +144,8 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   };
 
   const handleUpdateItem = async (updatedItem: SettingItem) => {
-    // 🌟 核心優化：直接拿最高權威的真實 UUID (id) 去做全列表地毯式掃描，100% 免疫 category 型別打架
     setSettingsData(prevData => {
       return prevData.map(group => {
-        // 只要這個目錄群組裡面，有任何一個項目的 ID 對上了，就代表這就是我們要更新的目標目錄！
         if (group.items.some(i => i.id === updatedItem.id)) {
           return {
             ...group,
@@ -141,7 +156,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       });
     });
     
-    // 同步更新全域設定總庫，確保關係圖與下拉選單跟著原地滿血升級
     setGlobalAllSettings(prevGlobal => {
       return prevGlobal.map(group => {
         if (group.items.some(i => i.id === updatedItem.id)) {
@@ -155,10 +169,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     });
     
     setSelectedItem(updatedItem); 
-    setHasChanges(false); // 儲存成功，關閉 *(已修改) 標籤
+    setHasChanges(false); 
 
     try {
-      // 正式打進雲端 Neon PostgreSQL 資料庫
       const res = await fetch(`/api/settings/${updatedItem.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -185,6 +198,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   };
 
   const handleNodeSelectFromGraph = (nodeId: string) => {
+    if (nodeId === "project-calendar-config") return; 
     for (const group of settingsData) {
       const found = group.items.find(item => item.id === nodeId);
       if (found) {
@@ -249,11 +263,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       if (chapterId) setViewMode('chapter_manager');
     }
     try {
-      // 🌟 核心修正二：打後端 DELETE API 時，讓後端同時清空要素主表與對照表的關聯（CASCADE）
       const res = await fetch(`/api/settings/${itemId}`, { 
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        // 把 projectId 一併帶過去，方便後端路由進行安全校驗
         body: JSON.stringify({ projectId }) 
       });
 
@@ -345,7 +357,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
             setViewMode('form'); 
             setHasChanges(false); 
           }} 
-          selectedId={selectedItem?.id} 
+          selectedId={selectedItem?.id}
           onAdd={handleAddItem}
           onDelete={handleDeleteItem}
           onAddCategory={handleAddCategory}
@@ -357,6 +369,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
         <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col">
           <div className="mb-6 flex items-center justify-between">
+            {/* 🌟 核心修正：移除會干擾 History 的圓圈返回鈕，直接乾淨地渲染標題 */}
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-slate-800">
                 {viewMode === 'graph' ? '全域人物關係圖' : 
@@ -364,18 +377,18 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                  selectedItem ? `${selectedItem.name} ${hasChanges ? '*(已修改)' : '(編輯中)'}` : "未選取項目"}
               </h1>
 
-              {/* 🌟 核心修正點：將表單類別動態切換 Select 完整迎接回來！ */}
-              {selectedItem && (viewMode === 'form' || !viewMode) && (
+              {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
                 <select
                   value={selectedItem.category}
+                  disabled={!isEditable}
                   onChange={(e) => {
                     const newType = e.target.value;
                     const updated = { ...selectedItem, category: newType };
                     setSelectedItem(updated);
-                    handleUpdateItem(updated); // 聯動同步雲端資料庫
-                    setHasChanges(true); // 亮起已修改狀態
+                    handleUpdateItem(updated); 
+                    setHasChanges(true); 
                   }}
-                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm"
+                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
                 >
                   <option value="character">👤 人物表單</option>
                   <option value="faction">🏛️ 組織表單</option>
@@ -423,7 +436,12 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           
           <div className="flex-1 min-h-[600px] flex">
              {viewMode === 'timeline' ? (
-                <TimelineView onEventClick={handleEventHighlight} filterTargetId={selectedItem?.id} />
+                <TimelineView 
+                  allSettings={globalAllSettings}       
+                  calendarConfig={calendarConfig}       
+                  filterTargetId={selectedItem?.id}     
+                  onEventClick={handleEventHighlight}   
+                />
              ) : viewMode === 'graph' ? (
                 <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
              ) : viewMode === 'chapter_manager' ? (
@@ -442,6 +460,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                         if (firstItem) {
                           setSelectedItem(firstItem);
                           setViewMode('form');
+                          setHasChanges(false);
                         } else {
                           setViewMode('form'); 
                         }
@@ -492,29 +511,66 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   </div>
                 </div>
              ) : selectedItem ? (
-                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-                  {selectedItem.category === 'character' && (
-                    <CharacterForm 
-                      key={selectedItem.id} 
-                      item={selectedItem} 
-                      onSave={handleUpdateItem} 
-                      allSettings={globalAllSettings} 
-                      currentChapterSettings={settingsData}
+                <fieldset 
+                  disabled={!isEditable}
+                  className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
+                >
+                  {!isEditable && (
+                    <div className="mb-6 flex items-center gap-2 rounded-md bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600">
+                      🔒 <span className="font-medium">唯讀模式</span>：你目前正在檢視此設定集，沒有編輯權限。
+                    </div>
+                  )}
+
+                  {selectedItem.id === "project-calendar-config" ? (
+                    <CalendarConfigForm 
+                      projectId={projectId}
+                      initialConfig={calendarConfig as any}
+                      onSaveSuccess={(latestConfigFromBackend) => {
+                        if (latestConfigFromBackend) {
+                          setCalendarConfig(latestConfigFromBackend as any);
+                        } else {
+                          fetchSettings(); 
+                        }
+                        setHasChanges(false); 
+                      }}
                       onDirty={() => setHasChanges(true)}
                     />
+                  ) : (
+                    <>
+                      {selectedItem.category === 'character' && (
+                        <CharacterForm 
+                          key={selectedItem.id} 
+                          item={selectedItem} 
+                          onSave={handleUpdateItem} 
+                          allSettings={globalAllSettings} 
+                          currentChapterSettings={settingsData}
+                          onDirty={() => setHasChanges(true)}
+                        />
+                      )}
+                      {selectedItem.category === 'faction' && (
+                        <FactionForm 
+                          key={selectedItem.id} 
+                          item={selectedItem} 
+                          onSave={handleUpdateItem} 
+                          onDirty={() => setHasChanges(true)} 
+                        />
+                      )}
+                      {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                      
+                      {selectedItem.category === 'event' && (
+                        <EventForm 
+                          key={selectedItem.id} 
+                          item={selectedItem} 
+                          calendarConfig={calendarConfig} 
+                          onSave={handleUpdateItem} 
+                          onDirty={() => setHasChanges(true)}
+                        />
+                      )}
+                      
+                      {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && <DynamicForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                    </>
                   )}
-                  {selectedItem.category === 'faction' && (
-                    <FactionForm 
-                      key={selectedItem.id} 
-                      item={selectedItem} 
-                      onSave={handleUpdateItem} 
-                      onDirty={() => setHasChanges(true)} 
-                    />
-                  )}
-                  {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
-                  {selectedItem.category === 'event' && <EventForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
-                  {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && <DynamicForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
-                </div>
+                </fieldset>
              ) : (
                 <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
                   <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
