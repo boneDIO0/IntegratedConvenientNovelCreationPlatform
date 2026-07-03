@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import NovelSetting from '@/components/NovelSetting'
 import NovelCard from '@/components/NovelCard'
+import { ProjectRole, PROJECT_ROLES } from '@/lib/roles'
 
 export interface ProjectIndexItem {
   id: string;
@@ -11,6 +12,7 @@ export interface ProjectIndexItem {
   createdAt: string; 
   coverUrl?: string; 
   status?: string; // 👈 修正 1：加上 status 屬性，讓 TypeScript 認得它
+  role?: ProjectRole;
 }
 
 export default function NovelListPage() {
@@ -84,7 +86,16 @@ export default function NovelListPage() {
   }
 
   const handleContextMenu = (e: React.MouseEvent, projectId: string) => {
-    e.preventDefault() 
+    e.preventDefault()
+     
+    const targetProject = projects.find(p => p.id === projectId)
+
+    if (targetProject?.role !== PROJECT_ROLES.OWNER) {
+      console.log("權限不足：僅有擁有者可進行專案設定與刪除")
+      return 
+    }
+    
+    // 擁有者才顯示選單
     setContextMenu({ visible: true, x: e.pageX, y: e.pageY, projectId: projectId })
   }
 

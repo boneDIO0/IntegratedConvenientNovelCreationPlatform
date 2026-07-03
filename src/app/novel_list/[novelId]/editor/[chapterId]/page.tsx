@@ -20,7 +20,8 @@ export default function ChapterEditorPage() {
       latestRestoredContent,
       setLatestRestoredContent,
       fetchVersions, // 🌟 Context 提供的撈取歷史版本函式
-      isLoadingVersions
+      isLoadingVersions,
+      isEditable
     } = useEditorUI();
 
   const params = useParams()
@@ -120,6 +121,7 @@ export default function ChapterEditorPage() {
             chapterId={chapterId}
             initialTitle={initialData.title}
             initialContent={initialData.content}
+            isEditable={true}
           />
         </div>
 
@@ -168,23 +170,25 @@ export default function ChapterEditorPage() {
                       {ver.commitMsg || "系統自動儲存點"}
                     </p>
 
-                    {/* 滑鼠懸停才顯現的操作按鈕 */}
-                    <div className="mt-3 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        onClick={() => handleRestoreVersion(ver.id)}
-                        className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg hover:bg-emerald-100 transition-colors"
-                      >
-                        <RotateCcw size={12} /> 還原
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteVersion(ver.id)}
-                        className="flex items-center gap-1 text-xs bg-red-50 text-red-600 px-2 py-1 rounded-lg hover:bg-red-100 transition-colors"
-                      >
-                        <Trash2 size={12} /> 刪除
-                      </button>
-                    </div>
+                    {/* 滑鼠懸停才顯現的操作按鈕，檢視者看不到 */}
+                    {isEditable && (
+                      <div className="mt-3 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreVersion(ver.id)}
+                          className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg hover:bg-emerald-100 transition-colors"
+                        >
+                          <RotateCcw size={12} /> 還原
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteVersion(ver.id)}
+                          className="flex items-center gap-1 text-xs bg-red-50 text-red-600 px-2 py-1 rounded-lg hover:bg-red-100 transition-colors"
+                        >
+                          <Trash2 size={12} /> 刪除
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))
               )}

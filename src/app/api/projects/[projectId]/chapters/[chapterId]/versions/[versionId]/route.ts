@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth/config';
 import prisma from '@/lib/prisma';
 
 // 定義 Next.js 動態路由的參數型態，明確區分三個層級
@@ -16,7 +17,7 @@ versionId: string;
 * 確保安全防護：防範 A 使用者透過惡意竄改網址 UUID，去還原或刪除 B 使用者的作品
 */
 async function validateOwnership(projectId: string) {
-  const session = await getServerSession();
+  const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) {
     return { error: '請先登入系統', status: 401 };
   }
@@ -53,7 +54,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     // 進行安全與權限檢查
     const auth = await validateOwnership(projectId);
     if ('error' in auth) {
-      return new NextResponse(auth.error, { status: auth.status });
+      return NextResponse.json(auth.error, { status: auth.status });
     }
 
     // 1. 在資料庫中精準撈出該筆 Checkpoint 的歷史快照
@@ -105,7 +106,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     // 進行安全與權限檢查
     const auth = await validateOwnership(projectId);
     if ('error' in auth) {
-      return new NextResponse(auth.error, { status: auth.status });
+      return NextResponse.json(auth.error, { status: auth.status });
     }
 
     // 1. 檢查該快照是否存在於此章節

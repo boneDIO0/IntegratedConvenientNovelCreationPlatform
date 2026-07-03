@@ -12,9 +12,10 @@ interface EditorProps {
   chapterId: string;
   initialTitle: string;
   initialContent: any;
+  isEditable: boolean;
 }
 
-export default function Editor({ novelId, chapterId, initialTitle, initialContent }: EditorProps) {
+export default function Editor({ novelId, chapterId, initialTitle, initialContent, isEditable }: EditorProps) {
   // 核心修正：儲存按鈕狀態管理
   const [isSaving, setIsSaving] = useState(false)
   const [, setTick] = useState(0)
@@ -26,6 +27,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const editor = useEditor({
     extensions: [StarterKit, Underline],
     immediatelyRender: false,
+    editable: isEditable,
     content: initialContent || '<p>開始撰寫你的偉大故事...</p>',
     editorProps: {
       attributes: {
@@ -115,29 +117,43 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             </div>
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-2">
+                {!isEditable && (
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs font-bold border border-slate-200 shadow-sm flex items-center gap-1 select-none">
+                    🔒 唯讀模式
+                  </span>
+                )}
+
                 <input 
                   id="doc-title" 
                   type="text" 
                   defaultValue={initialTitle} 
+                  disabled={!isEditable}
                   onChange={() => setSaveStatus('編輯中...')}
                   autoComplete="off"
-                  className="text-left text-lg font-semibold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent px-2 py-0.5 transition-all w-64"
+                  className={`text-left text-lg font-semibold text-gray-800 border-b bg-transparent px-2 py-0.5 transition-all w-64 focus:outline-none
+                    ${isEditable ? 'border-transparent hover:border-gray-300 focus:border-blue-500' : 'border-transparent opacity-80 cursor-default'}
+                  `}
                 />
-                <span className={`text-xs font-semibold transition-colors ${saveStatus.includes('已儲存') ? 'text-emerald-600' : 'text-amber-500'}`}>
-                  {saveStatus}
-                </span>
+                {isEditable && (
+                  <span className={`text-xs font-semibold transition-colors ${saveStatus.includes('已儲存') ? 'text-emerald-600' : 'text-amber-500'}`}>
+                    {saveStatus}
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-5">
-            <button 
-              onClick={handleSave}
-              disabled={editor.isEmpty || isSaving}
-              className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
-            >
-              {isSaving ? '處理中...' : '儲存章節'}
-            </button>
+            {isEditable && (
+              <button 
+                onClick={handleSave}
+                disabled={editor.isEmpty || isSaving}
+                className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {isSaving ? '處理中...' : '儲存章節'}
+              </button>
+            )}
+
             <div className="w-9 h-9 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold cursor-pointer border-2 border-white shadow-sm text-sm select-none">
               U
             </div>
@@ -145,15 +161,17 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         </div>
 
         {/* B / I / U 快捷列 */}
-        <div className="flex gap-1.5 px-3 py-1.5 bg-[#edf2fa] rounded-lg mx-6 mb-3 w-max border border-blue-100/50 shadow-sm">
-          <button type="button" onClick={() => handleToggle('bold')} className={getButtonClass('bold')} title="粗體 (Ctrl+B)">B</button>
-          <button type="button" onClick={() => handleToggle('italic')} className={getButtonClass('italic')} title="斜體 (Ctrl+I)">
-            <span className="italic font-serif text-xl">I</span>
-          </button>
-          <button type="button" onClick={() => handleToggle('underline')} className={getButtonClass('underline')} title="底線 (Ctrl+U)">
-            <span className="underline underline-offset-4">U</span>
-          </button>
-        </div>
+        {isEditable && (
+          <div className="flex gap-1.5 px-3 py-1.5 bg-[#edf2fa] rounded-lg mx-6 mb-3 w-max border border-blue-100/50 shadow-sm">
+            <button type="button" onClick={() => handleToggle('bold')} className={getButtonClass('bold')} title="粗體 (Ctrl+B)">B</button>
+            <button type="button" onClick={() => handleToggle('italic')} className={getButtonClass('italic')} title="斜體 (Ctrl+I)">
+              <span className="italic font-serif text-xl">I</span>
+            </button>
+            <button type="button" onClick={() => handleToggle('underline')} className={getButtonClass('underline')} title="底線 (Ctrl+U)">
+              <span className="underline underline-offset-4">U</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 🌟 修正點一：承載白紙卡片的局部滾動層 */}
