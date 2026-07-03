@@ -46,10 +46,8 @@ migrations
 
 /src/generated/prisma
 
-/src/generated/prisma
-
 backfill-roles.ts
 
-#model
-public/models
+# model
 public/models/
+public/models
