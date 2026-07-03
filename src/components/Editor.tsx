@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import { useState, useCallback, useEffect } from 'react'
 import { useEditorUI } from '@/contexts/EditorUIContext'
+import AssistantChat from './AssistantChat'
 
 interface EditorProps {
   novelId: string;
@@ -169,7 +170,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           
         </div>
       </div>
-
+      <AssistantChat projectId={novelId} />
     </div>
   )
 }
