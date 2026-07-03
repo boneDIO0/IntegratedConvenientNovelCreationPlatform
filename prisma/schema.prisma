@@ -11,6 +11,22 @@ datasource db {
   schemas    = ["audit", "public"]
 }
 
+enum ProjectStatus {
+  DRAFT       // 未公開
+  SERIALIZING // 連載中
+  COMPLETED   // 已完結
+
+  @@schema("public")
+}
+
+enum ChapterStatus {
+  DRAFT       // 未公開 (草稿)
+  PUBLISHED   // 已公開
+  HIDDEN      // 隱藏 (下架)
+
+  @@schema("public")
+}
+
 /// 使用者 (承接 Auth 資訊)
 model User {
   // 🌟 修正 1：改回 Auth.js 官方標準 CUID 字串，確保 Google 登入自動寫入不破防
@@ -88,8 +104,20 @@ model Project {
   ownerId         String            @map("owner_id")
   title           String
   worldSetting    Json?             @default("{}") @map("world_setting")
+  
+  // 📍 新增：發布與大廳展示資訊
+  status          ProjectStatus     @default(DRAFT) 
+  description     String?           @db.Text
+  tags            String[]
+  viewCount       Int               @default(0) @map("view_count")
+  publishedAt     DateTime?         @map("published_at") @db.Timestamptz(6)
+
   deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz(6)
   createdAt       DateTime?         @map("created_at") @db.Timestamptz(6) @default(now())
+  
+  coverUrl        String?           @map("cover_url")
+
+  // --- 關聯 ---
   checkpoints     Checkpoint[]
   liveDrafts      LiveDraft[]
   members         ProjectMember[]
@@ -98,7 +126,6 @@ model Project {
   owner           User              @relation("ProjectOwner", fields: [ownerId], references: [id])
   categories      SettingCategory[]
   entities        SettingEntity[]
-  coverUrl  String?  @map("cover_url")
 
   @@index([ownerId])
   @@map("projects")
@@ -258,14 +285,18 @@ model Chapter {
   deltaContent Json?     
   orderIndex   Float     @default(0) @map("order_index") 
   wordCount    Int       @default(0) @map("word_count") 
-  status       String    @default("draft") 
+  
+  // 📍 修改：改用嚴格的 Enum，預設為草稿
+  status       ChapterStatus @default(DRAFT) 
+  
+  // 📍 新增：章節正式發布給讀者看的時間
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(6)
 
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
   createdAt    DateTime  @map("created_at") @db.Timestamptz(6) @default(now())
   updatedAt    DateTime  @map("updated_at") @db.Timestamptz(6) @updatedAt 
 
   assignedSettings SettingEntity[] @relation("ChapterSettings")
-
   project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, orderIndex])
