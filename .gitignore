@@ -38,6 +38,7 @@ yarn-error.log*
 .env.*.local
 # vercel
 .vercel
+# prisma
 
 # typescript
 *.tsbuildinfo
@@ -49,3 +50,4 @@ migrations
 /src/generated/prisma
 #model
 public/models/
+
