@@ -1,7 +1,9 @@
-// src/components/SettingsSidebar.tsx
-import { Plus, Trash2, Pencil, Check, X, FolderPlus } from "lucide-react";
+'use client'
+
+import { Plus, Trash2, Pencil, Check, X, FolderPlus, Globe } from "lucide-react"; // 🌟 引入 Globe 圖示
 import { SettingItem } from "@/lib/mockSettings";
 import { useState } from "react";
+import { useEditorUI } from "@/contexts/EditorUIContext";
 
 interface SidebarProps {
   data: { category: string; items: SettingItem[] }[];
@@ -11,22 +13,20 @@ interface SidebarProps {
   onDelete: (itemId: string) => void;
   onAddCategory: (name: string) => void; 
   onDeleteCategory: (name: string) => void;
-  onRenameCategory: (oldName: string, newName: string) => void; // 🌟 接收改名函式
+  onRenameCategory: (oldName: string, newName: string) => void; 
 }
 
 export default function SettingsSidebar({ 
   data, onSelect, selectedId, onAdd, onDelete, onAddCategory, onDeleteCategory, onRenameCategory
 }: SidebarProps) {
-  
-  // 控制新增目錄的狀態
+  const { isEditable } = useEditorUI();
+
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   
-  // 🌟 控制「重新命名目錄」的狀態
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
-  // 儲存改名結果
   const handleSaveRename = (oldName: string) => {
     if (editName.trim() && editName !== oldName) {
       onRenameCategory(oldName, editName);
@@ -34,11 +34,10 @@ export default function SettingsSidebar({
     setEditingCategory(null);
   };
 
-  // 提交新目錄
   const submitNewCategory = () => {
     if (!newCategoryName.trim()) return;
     onAddCategory(newCategoryName);
-    setNewCategoryName("");
+    newCategoryName === "" && setNewCategoryName("");
     setIsAddingCategory(false);
   };
 
@@ -51,20 +50,24 @@ export default function SettingsSidebar({
   };
 
   return (
-    <aside className="w-64 border-r border-slate-200 bg-white h-full flex flex-col p-4">
-      <div className="flex items-center justify-between mb-4">
+    <aside className="w-full h-full flex flex-col bg-white">
+      {/* 頂端標題與控制列 */}
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
         <h2 className="text-xl font-bold text-slate-800">設定集目錄</h2>
-        <button 
-          onClick={() => setIsAddingCategory(!isAddingCategory)}
-          className="text-slate-400 hover:text-emerald-600 transition-colors"
-          title="新增自訂目錄"
-        >
-          {isAddingCategory ? <X size={18} /> : <FolderPlus size={18} />}
-        </button>
+        {isEditable && (
+          <button 
+            onClick={() => setIsAddingCategory(!isAddingCategory)}
+            className="text-slate-400 hover:text-emerald-600 transition-colors"
+            title="新增自訂目錄"
+          >
+            {isAddingCategory ? <X size={18} /> : <FolderPlus size={18} />}
+          </button>
+        )}
       </div>
       
-      {isAddingCategory && (
-        <div className="mb-6 flex gap-2">
+      {/* 新增目錄輸入框 */}
+      {isAddingCategory && isEditable && (
+        <div className="mb-4 flex gap-2">
           <input 
             type="text"
             value={newCategoryName}
@@ -79,20 +82,40 @@ export default function SettingsSidebar({
           />
           <button 
             onClick={submitNewCategory}
-            className="px-2 py-1 bg-emerald-500 text-white text-sm rounded-md hover:bg-emerald-600"
+            className="px-2 py-1 bg-emerald-500 text-white text-sm rounded-md hover:bg-emerald-600 whitespace-nowrap"
           >
             確定
           </button>
         </div>
       )}
 
-      <div className="space-y-6 overflow-y-auto flex-1 pr-2">
+      {/* 🚀 核心新增：固定掛載之「世界觀曆法設定」核心快捷入口 */}
+      <div className="mb-4">
+        <button
+          onClick={() => onSelect({ 
+            id: "project-calendar-config", 
+            name: "🌍 世界觀曆法設定", 
+            category: "calendar-config",
+            description: "" 
+          })}
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all text-left shadow-sm ${
+            selectedId === "project-calendar-config"
+              ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+              : "border-slate-100 bg-slate-50/50 text-slate-600 hover:bg-slate-50 hover:border-slate-200"
+          }`}
+        >
+          <Globe size={16} className={selectedId === "project-calendar-config" ? "text-emerald-600" : "text-slate-400"} />
+          <span className="truncate">🌍 世界觀曆法設定</span>
+        </button>
+      </div>
+
+      {/* 常規設定目錄列表 */}
+      <div className="space-y-6 overflow-y-auto flex-1 pr-1">
         {data.map((group, index) => (
           <div key={index} className="group/category">
             
             <div className="flex items-center justify-between mb-2">
               
-              {/* 🌟 條件渲染：判斷目前是否正在編輯這個目錄 */}
               {editingCategory === group.category ? (
                 <div className="flex items-center gap-1 w-full mr-2">
                   <input
@@ -116,42 +139,42 @@ export default function SettingsSidebar({
               ) : (
                 <div className="flex items-center gap-2">
                   <h3 
-                    className="text-sm font-bold text-slate-700 cursor-pointer hover:text-emerald-600 transition-colors"
+                    className={`text-sm font-bold text-slate-700 transition-colors ${isEditable ? 'cursor-pointer hover:text-emerald-600' : 'cursor-default'}`}
                     onDoubleClick={() => {
-                      // 🌟 小彩蛋：除了點鉛筆，連點兩下名字也能觸發改名
+                      if (!isEditable) return; 
                       setEditingCategory(group.category);
                       setEditName(group.category);
                     }}
-                    title="連按兩下重新命名"
+                    title={isEditable ? "連按兩下重新命名" : ""}
                   >
                     {group.category}
                   </h3>
                   
-                  {/* Hover 時顯示的工具列 (改名、刪除) */}
-                  <div className="flex opacity-0 group-hover/category:opacity-100 transition-opacity">
-                    <button 
-                      onClick={() => {
-                        setEditingCategory(group.category);
-                        setEditName(group.category);
-                      }}
-                      className="text-slate-300 hover:text-blue-500 p-1"
-                      title="重新命名目錄"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button 
-                      onClick={() => onDeleteCategory(group.category)}
-                      className="text-slate-300 hover:text-red-500 p-1"
-                      title="刪除整個目錄"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
+                  {isEditable && (
+                    <div className="flex opacity-0 group-hover/category:opacity-100 transition-opacity">
+                      <button 
+                        onClick={() => {
+                          setEditingCategory(group.category);
+                          setEditName(group.category);
+                        }}
+                        className="text-slate-300 hover:text-blue-500 p-1"
+                        title="重新命名目錄"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button 
+                        onClick={() => onDeleteCategory(group.category)}
+                        className="text-slate-300 hover:text-red-500 p-1"
+                        title="刪除整個目錄"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* 新增項目按鈕 (在編輯模式下隱藏，避免畫面太擠) */}
-              {editingCategory !== group.category && (
+              {editingCategory !== group.category && isEditable && (
                 <button 
                   onClick={() => onAdd(group.category, getTypeFromName(group.category))}
                   className="text-slate-400 hover:text-emerald-600 transition-colors p-1"
@@ -169,19 +192,21 @@ export default function SettingsSidebar({
                     onClick={() => onSelect(item)}
                     className={`flex-1 text-left px-3 py-2 rounded-md text-sm transition-colors truncate mr-1 ${
                       selectedId === item.id 
-                        ? 'bg-slate-900 text-white font-medium' 
+                        ? 'bg-slate-900 text-white font-medium shadow-sm' 
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
                     {item.name}
                   </button>
-                  <button 
-                    onClick={() => onDelete(item.id)}
-                    className="opacity-0 group-hover/item:opacity-100 text-slate-300 hover:text-red-500 p-1 transition-opacity"
-                    title="刪除項目"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {isEditable && (
+                    <button 
+                      onClick={() => onDelete(item.id)}
+                      className="opacity-0 group-hover/item:opacity-100 text-slate-300 hover:text-red-500 p-1 transition-opacity"
+                      title="刪除項目"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </li>
               ))}
               {group.items.length === 0 && (

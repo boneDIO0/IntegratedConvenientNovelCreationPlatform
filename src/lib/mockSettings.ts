@@ -5,38 +5,45 @@ export type Relation = {
   type: string;
 };
 
-// 🌟 擴充核心 Schema：加入組織與物品的專屬欄位，並加上 color 欄位防止 TS 破防
+// 🌟 核心擴充：加入雙軌制自訂文字與加權排序欄位，完美收攏數據閉環
 export type SettingItem = {
   id: string;
   name: string;
-  // 將原本寫死的 4 種型別，擴充加入 'custom' 與通用的 string
   category: 'character' | 'faction' | 'item' | 'event' | 'custom' | string;
   description?: string;
   relations?: Relation[];
   
-  // 🌟 核心新增：關係圖專屬陣營/組織色彩（選填，符合多型卡片擴充規格）
+  // 關係圖專屬色彩
   color?: string; 
 
-  // (保留人物專屬欄位)
+  // (人物專屬欄位)
   faction?: string;
   title?: string;
   
-  // (保留組織專屬欄位)
+  // (組織專屬欄位)
   leader?: string;
   territory?: string;
   hierarchy?: string[];
 
-  // (保留物品/事件專屬欄位)
+  // (物品專屬欄位)
   itemType?: "weapon" | "artifact" | "consumable" | "skill";
   resonanceEffect?: string;
-  date?: string;
+
+  // 🌐 曆法軌道 A：標準時間模式
+  date?: string; 
+
   location?: string;
 
-  // 支援所有類型的無限自訂欄位陣列！
+  // ✍️ 曆法軌道 B：純自訂紀元模式（🌟 補上這兩個選填屬性，徹底消滅 TS2339 / TS2353）
+  fantasyDisplay?: string; // 儲存手動填寫的時間字串（如 "聖曆 45 年 暮月 3 日"）
+  selectedEraName?: string;
+  sortWeight?: number;     // 當解除西元綁定時，供時間軸做物理先後排序的權重序號
+
+  // 支援所有類型的無限自訂欄位陣列
   customFields?: { label: string; value: string }[];
 };
 
-// 🌟 擴充 Mock Data：注入世界觀細節、共鳴設定與專屬關係圖色彩
+// 擴充 Mock Data：注入世界觀細節與雙軌制並存欄位
 export const mockSettings: { category: string; items: SettingItem[] }[] = [
   {
     category: "人物 (Characters)",
@@ -45,7 +52,7 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         id: "c1", 
         name: "查干不花", 
         category: 'character',
-        faction: "f2", // 💡 修正：對齊下方金帳汗國的真實 ID "f2"
+        faction: "f2", 
         title: "千戶長", 
         description: "金帳汗國的勇悍將領。作戰時習慣帶著象徵家族榮耀的彎刀，性格剛烈但對汗國極度忠誠。",
         relations: [{ targetId: "c2", type: "敬畏" }, { targetId: "f2", type: "效忠" }]
@@ -54,7 +61,7 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         id: "c2", 
         name: "薩滿長老", 
         category: 'character',
-        faction: "f1", // 💡 修正：對齊下方觀測者的真實 ID "f1"
+        faction: "f1", 
         title: "大薩滿", 
         description: "能與長生天溝通的智者，負責記錄舊日廢墟的變遷，是各方勢力都不敢輕易得罪的存在。",
         relations: [{ targetId: "c1", type: "觀察對象" }, { targetId: "i1", type: "守護" }]
@@ -73,7 +80,7 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         hierarchy: ["大汗", "萬戶長", "千戶長", "百戶長", "薩滿"],
         description: "崇尚武力與自然法則的龐大游牧帝國，以高度機動性的騎兵與薩滿的秘術統治草原。",
         relations: [{ targetId: "f1", type: "互相提防" }],
-        color: "#ef4444" // 🌟 注入專屬色彩：游牧狂暴紅
+        color: "#ef4444" 
       },
       { 
         id: "f1", 
@@ -83,7 +90,7 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         territory: "隱秘的星象塔",
         hierarchy: ["執行官", "記錄者", "大薩滿"],
         description: "中立且神秘的學者組織，致力於記錄歷史與回收危險的古代遺物。",
-        color: "#3b82f6" // 🌟 注入專屬色彩：奧術中立藍
+        color: "#3b82f6" 
       },
     ]
   },
@@ -110,6 +117,8 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         category: 'event',
         date: "2003-08-15", 
         location: "無盡大草原",
+        selectedEraName: "新紀元",
+        fantasyDisplay: "12 年 蒙昧8月 15 日",
         description: "初代大汗統合了草原上的遊牧部落，正式建立金帳汗國，並由薩滿立下血誓。",
         relations: [{ targetId: "f2", type: "建立" }]
       },
@@ -119,6 +128,9 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         category: 'event',
         date: "1995-11-03", 
         location: "舊日廢墟",
+        selectedEraName: "前網智古曆",
+        fantasyDisplay: "4 年 蒙昧11月 3 日",
+        sortWeight: 1, // weight 較小，純手動模式下時間軸會自動排在前方
         description: "觀測者首次記錄到廢墟深處傳來異常的能量波動，隨後引發了後世的大災變。",
         relations: [{ targetId: "f1", type: "觀測" }]
       }
