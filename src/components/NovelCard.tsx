@@ -7,17 +7,33 @@ export interface NovelCardProps {
     title: string;
     createdAt: string;
     coverUrl?: string;
+    status?: string; // 📍 新增：接收從資料庫來的狀態
   };
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
 export default function NovelCard({ project, onClick, onContextMenu }: NovelCardProps) {
-  // 將原本放在主頁面的日期格式化函式移進來，因為這屬於卡片的視覺呈現邏輯
+  // 將原本放在主頁面的日期格式化函式移進來
   const formatDate = (isoString: string) => {
     const date = new Date(isoString)
     return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
   }
+
+  // 📍 新增：狀態樣式對應表
+  const getStatusDisplay = (status?: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return { text: '已完結', className: 'bg-green-50 text-green-600 border-green-200' };
+      case 'SERIALIZING':
+        return { text: '連載中', className: 'bg-blue-50 text-blue-600 border-blue-200' };
+      case 'DRAFT':
+      default:
+        return { text: '未公開', className: 'bg-gray-50 text-gray-500 border-gray-200' };
+    }
+  }
+
+  const statusDisplay = getStatusDisplay(project.status);
 
   return (
     <div 
@@ -44,8 +60,14 @@ export default function NovelCard({ project, onClick, onContextMenu }: NovelCard
         <h2 className="text-lg font-bold text-gray-800 group-hover:text-blue-600 transition-colors line-clamp-1">
           {project.title}
         </h2>
-        <div className="mt-auto pt-2">
+        {/* 📍 修改：使用 flex justify-between 讓日期靠左，標籤靠右 */}
+        <div className="mt-auto pt-3 flex justify-between items-center">
           <span className="text-xs text-gray-400">建立於：{formatDate(project.createdAt)}</span>
+          
+          {/* 📍 新增：狀態標籤 */}
+          <span className={`text-[10px] px-2 py-0.5 rounded border font-medium tracking-wide ${statusDisplay.className}`}>
+            {statusDisplay.text}
+          </span>
         </div>
       </div>
     </div>

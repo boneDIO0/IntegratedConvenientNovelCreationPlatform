@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-// 移除原本的 next/image，因為主頁面不需要處理圖片了
 import NovelSetting from '@/components/NovelSetting'
-import NovelCard from '@/components/NovelCard' // 👈 引入我們新做的卡片元件
+import NovelCard from '@/components/NovelCard'
 
 export interface ProjectIndexItem {
   id: string;
   title: string;
   createdAt: string; 
   coverUrl?: string; 
+  status?: string; // 👈 修正 1：加上 status 屬性，讓 TypeScript 認得它
 }
 
 export default function NovelListPage() {
@@ -26,7 +26,8 @@ export default function NovelListPage() {
     mode: 'create' as 'create' | 'edit',
     projectId: null as string | null,
     initialTitle: '',
-    initialCoverUrl: ''
+    initialCoverUrl: '',
+    initialStatus: 'DRAFT'
   })
 
   const fetchProjects = async () => {
@@ -37,6 +38,12 @@ export default function NovelListPage() {
         alert("請先登入！")
         return
       }
+
+      if (!res.ok) {
+        const errorText = await res.text() // 讀取純文字錯誤
+        throw new Error(errorText || '伺服器發生錯誤')
+      }
+
       const data = await res.json()
       setProjects(data)
     } catch (error) {
@@ -53,10 +60,11 @@ export default function NovelListPage() {
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
-  const handleModalSubmit = async (title: string, file: File | null) => {
+  const handleModalSubmit = async (title: string, file: File | null, status?: string) => {
     const formData = new FormData()
     formData.append('title', title)
     if (file) formData.append('cover', file)
+    if (status) formData.append('status', status)
 
     if (formModal.mode === 'create') {
       const res = await fetch('/api/projects', { method: 'POST', body: formData })
@@ -103,7 +111,8 @@ export default function NovelListPage() {
           <p className="text-gray-500 mt-2">選擇一本小說開始撰寫，或點擊右鍵進行管理。</p>
         </div>
         <button 
-          onClick={() => setFormModal({ isOpen: true, mode: 'create', projectId: null, initialTitle: '', initialCoverUrl: '' })}
+          // 👈 修正 2：補上 initialStatus，確保符合 state 定義
+          onClick={() => setFormModal({ isOpen: true, mode: 'create', projectId: null, initialTitle: '', initialCoverUrl: '', initialStatus: 'DRAFT' })}
           className="bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95 flex items-center gap-2"
         >
           <span className="text-xl leading-none">+</span> 新增小說
@@ -117,7 +126,6 @@ export default function NovelListPage() {
           </div>
         ) : (
           projects.map((project) => (
-            // 👇 程式碼變得超級乾淨，只負責傳遞資料與事件
             <NovelCard 
               key={project.id}
               project={project}
@@ -133,6 +141,7 @@ export default function NovelListPage() {
         mode={formModal.mode}
         initialTitle={formModal.initialTitle}
         initialCoverUrl={formModal.initialCoverUrl}
+        initialStatus={formModal.initialStatus}
         onClose={() => setFormModal({ ...formModal, isOpen: false })}
         onSubmit={handleModalSubmit}
       />
@@ -152,7 +161,8 @@ export default function NovelListPage() {
                 mode: 'edit', 
                 projectId: contextMenu.projectId, 
                 initialTitle: targetNovel?.title || '',
-                initialCoverUrl: targetNovel?.coverUrl || ''
+                initialCoverUrl: targetNovel?.coverUrl || '',
+                initialStatus: targetNovel?.status || 'DRAFT'
               })
               setContextMenu({ visible: false, x: 0, y: 0, projectId: null })
             }}

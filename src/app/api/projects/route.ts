@@ -29,9 +29,14 @@ export async function GET() {
     return NextResponse.json(projects)
   } catch (error) {
     console.error("GET Projects Error:", error)
-    return new NextResponse("Internal Server Error", { status: 500 })
+    // 📍 修正：把 new NextResponse 純文字，改成 NextResponse.json
+    return NextResponse.json(
+      { error: "Internal Server Error" }, 
+      { status: 500 }
+    )
   }
 }
+
 
 // 📤 新增：建立一本新的「小說 (Project)」
 export async function POST(request: Request) {

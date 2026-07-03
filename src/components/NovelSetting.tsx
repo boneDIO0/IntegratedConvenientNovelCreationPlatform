@@ -7,25 +7,37 @@ export interface NovelSettingProps {
   isOpen: boolean;
   mode: 'create' | 'edit';
   initialTitle?: string;
-  initialCoverUrl?: string; // 新增：用來接收原本的封面網址
+  initialCoverUrl?: string;
+  initialStatus?: string; // 📍 新增：用來接收小說當前的狀態
   onClose: () => void;
-  onSubmit: (title: string, file: File | null) => Promise<void>;
+  // 📍 更新：送出時一併把新狀態傳出去
+  onSubmit: (title: string, file: File | null, status?: string) => Promise<void>; 
 }
 
-export default function NovelSetting({ isOpen, mode, initialTitle = '', initialCoverUrl = '', onClose, onSubmit }: NovelSettingProps) {
+export default function NovelSetting({ 
+  isOpen, 
+  mode, 
+  initialTitle = '', 
+  initialCoverUrl = '', 
+  initialStatus = 'DRAFT',
+  onClose, 
+  onSubmit 
+}: NovelSettingProps) {
   const [title, setTitle] = useState('')
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
+  const [status, setStatus] = useState('DRAFT') // 📍 新增內部狀態
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
       setTitle(initialTitle)
       setCoverFile(null)
-      setCoverPreview(initialCoverUrl || null) // 載入舊封面當預覽
+      setCoverPreview(initialCoverUrl || null)
+      setStatus(initialStatus || 'DRAFT')
       setIsSubmitting(false)
     }
-  }, [isOpen, initialTitle, initialCoverUrl])
+  }, [isOpen, initialTitle, initialCoverUrl, initialStatus])
 
   if (!isOpen) return null
 
@@ -44,7 +56,7 @@ export default function NovelSetting({ isOpen, mode, initialTitle = '', initialC
     }
     setIsSubmitting(true)
     try {
-      await onSubmit(title, coverFile)
+      await onSubmit(title, coverFile, status) // 📍 送出時帶上 status
       onClose()
     } catch (error) {
       console.error(error)
@@ -54,6 +66,9 @@ export default function NovelSetting({ isOpen, mode, initialTitle = '', initialC
   }
 
   const isCreate = mode === 'create'
+  
+  // 📍 核心判斷：如果是編輯模式，且狀態不是未公開(DRAFT)，才顯示完結選項
+  const showCompletedCheckbox = !isCreate && initialStatus !== 'DRAFT'
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={!isSubmitting ? onClose : undefined}>
@@ -75,7 +90,6 @@ export default function NovelSetting({ isOpen, mode, initialTitle = '', initialC
             />
           </div>
 
-          {/* 移除原本的 isCreate 限制，讓編輯模式也能看到圖片上傳區 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">封面圖片 (3:4)</label>
             <div className="flex flex-col items-center gap-3">
@@ -94,6 +108,27 @@ export default function NovelSetting({ isOpen, mode, initialTitle = '', initialC
               />
             </div>
           </div>
+
+          {/* 📍 新增：完結狀態勾選區塊 */}
+          {showCompletedCheckbox && (
+            <div className="pt-2">
+              <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={status === 'COMPLETED'}
+                  // 勾選變 COMPLETED，取消勾選則退回 SERIALIZING (因為它一定發布過了)
+                  onChange={(e) => setStatus(e.target.checked ? 'COMPLETED' : 'SERIALIZING')}
+                  className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  標記為「已完結」
+                  <p className="text-xs text-gray-500 font-normal mt-0.5">
+                    勾選後，讀者將會在平台上看到作品已完結的標籤。
+                  </p>
+                </span>
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100">
