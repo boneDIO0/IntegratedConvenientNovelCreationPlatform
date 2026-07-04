@@ -79,8 +79,9 @@ export function formatFantasyDate(
   currentMonth = parseInt(parts[1], 10);
   currentDay = parseInt(parts[2], 10);
 
-  const targetDayjs = dayjs(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`);
-  if (!targetDayjs.isValid()) return "時間格式錯誤";
+  // 🌟 核心破局點 1：利用你內建的純數學算式，計算當前西元時間距離西元 1 年 1 月 1 日的絕對天數
+  // 這樣能 100% 繞過 dayjs 對 0099 年自動補完為 1999 年的世紀大毒瘤！
+  const currentAbsoluteDays = getAbsoluteDaysFromAD1(currentYear, currentMonth, currentDay);
 
   const eras = config?.eras && config.eras.length > 0 ? config.eras : DEFAULT_MULTI_ERAS;
 
@@ -101,17 +102,17 @@ export function formatFantasyDate(
     // 🎬 【正向曆法】
     const startYearSafe = activeEra.startYear ?? 1;
     
-    // 🌟 核心破局點優化：如果是標準地球曆法，直接無損硬對齊，不再經過剩餘天數分配，100% 免疫閏年 2/29 累積偏移！
+    // 🌟 核心破局點優化：如果是標準地球曆法，直接無損硬對齊，100% 免疫閏年 2/29 累積偏移
     if (daysInFantasyYear === 365 && (activeEra.name === "西元" || configMonths.length === 12)) {
       fantasyYear = currentYear - startYearSafe + 1;
-      // 防止陣列越界防呆
       const safeMonthIndex = Math.min(Math.max(currentMonth - 1, 0), configMonths.length - 1);
       fantasyMonthName = configMonths[safeMonthIndex].name;
       fantasyDay = currentDay;
     } else {
-      // 奇幻自訂異世界曆法（例如一年 400 天、一個月 45 天）
-      const rootDayjs = dayjs(`${startYearSafe}-01-01`);
-      const diffDays = targetDayjs.diff(rootDayjs, 'day');
+      // 🚀 奇幻自訂異世界曆法（一年 360 天，完美實作你要的物理偏移演算法！）
+      // 利用純數學算出起錨年份（例如新紀元元年 1 月 1 日）距離西元 1 年的絕對天數
+      const rootAbsoluteDays = getAbsoluteDaysFromAD1(startYearSafe, 1, 1);
+      const diffDays = currentAbsoluteDays - rootAbsoluteDays;
       
       if (diffDays >= 0) {
         fantasyYear = Math.floor(diffDays / daysInFantasyYear) + 1;
@@ -132,13 +133,13 @@ export function formatFantasyDate(
   } else {
     // 🎬 【逆向古曆】
     const endAnchor = activeEra.endYear !== null && activeEra.endYear !== undefined ? activeEra.endYear : -1;
-    const rootDayjs = dayjs(`${endAnchor}-12-31`);
     
-    const diffDays = rootDayjs.diff(targetDayjs, 'day');
+    // 同理，逆向曆法的錨點也改用純數學絕對天數來進行扣減
+    const rootAbsoluteDays = getAbsoluteDaysFromAD1(endAnchor, 12, 31);
+    const diffDays = rootAbsoluteDays - currentAbsoluteDays;
     const absDiffDays = Math.abs(diffDays);
     
-    // 🌟 核心修正：加入 +1 天偏移防禦，解決除盡時的年份跳號與第 0 天 Bug
-    fantasyYear = Math.floor((absDiffDays) / daysInFantasyYear) + 1;
+    fantasyYear = Math.floor(absDiffDays / daysInFantasyYear) + 1;
     let scanDays = daysInFantasyYear - (absDiffDays % daysInFantasyYear);
 
     // 進行月份拆解
