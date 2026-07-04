@@ -5,7 +5,6 @@ import SettingsSidebar from "@/components/SettingsSidebar";
 import CharacterForm from "@/components/CharacterForm";
 import RelationGraph from "@/components/RelationGraph"; 
 import { SettingItem } from "@/lib/mockSettings";
-import { PLATFORM_TEMPLATES, TemplateDef } from "@/lib/templates"; 
 import FactionForm from "@/components/FactionForm";
 import ItemForm from "@/components/ItemForm";
 import EventForm from "@/components/EventForm";
@@ -36,14 +35,12 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [isSyncingChapter, setIsSyncingChapter] = useState(false); 
 
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
       
-      // 非同步拉取專案專屬的自定義世界觀曆法配置
+      // 1. 同步拉取世界觀自定義曆法
       const calendarRes = await fetch(`/api/projects/${projectId}/calendar`);
       if (calendarRes.ok) {
         const calendarResult = await calendarRes.json();
@@ -62,15 +59,34 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const data = await res.json();
       setSettingsData(data);
 
+      // 2. 拉取全域設定集資料
       const globalRes = await fetch(`/api/settings?projectId=${projectId}`);
       if (globalRes.ok) {
         const globalData = await globalRes.json();
-        setGlobalAllSettings(globalData);
         
-        if (globalData && globalData.length > 0) {
-          setIsInitialized(true);
+        // 🚀 核心核心改造：如果全域設定集的目錄完全是空的，直接在背景悄悄自動初始化小說專屬模板
+        if (!globalData || globalData.length === 0) {
+          console.log("📝 偵測到全新小說專案，正在無感自動建立小說家專屬目錄架構...");
+          
+          const initRes = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              action: 'init_novel_template', // 給後端看的 Action
+              projectId: projectId 
+            })
+          });
+
+          if (initRes.ok) {
+            // 背景自動初始化完成後，重新 reload 一次資料庫最新狀態
+            const refreshedRes = await fetch(`/api/settings?projectId=${projectId}`);
+            const refreshedData = await refreshedRes.json();
+            setGlobalAllSettings(refreshedData);
+            setSettingsData(refreshedData);
+          }
         } else {
-          setIsInitialized(false);
+          // 本來就有資料的舊專案，正常帶入
+          setGlobalAllSettings(globalData);
         }
       }
     } catch (error) {
@@ -90,23 +106,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   }, [projectId, chapterId]); 
 
-  useEffect(() => {
-    const handleHashChange = () => {
-      if (window.location.hash === '#editor') {
-        if (!chapterId) {
-          setIsInitialized(true);
-        }
-      } else if (settingsData.length === 0) {
-        setIsInitialized(false);
-      }
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
-
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [settingsData.length, chapterId]);
-
   const confirmLeave = () => {
     if (hasChanges) {
       const isUserSure = window.confirm("⚠️ 您有未儲存的變更！如果離開，目前修改的內容將會消失。確定要離開嗎？");
@@ -122,7 +121,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const handleToggleSettingToChapter = async (entityId: string, isChecked: boolean) => {
     if (!chapterId) return;
     try {
-      setIsSyncingChapter(true);
       const res = await fetch(`/api/settings`, {
         method: 'PATCH', 
         headers: { 'Content-Type': 'application/json' },
@@ -138,8 +136,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     } catch (error) {
       console.error(error);
       alert('⚠️ 關聯章節要素失敗，請確認資料庫狀態。');
-    } finally {
-      setIsSyncingChapter(false);
     }
   };
 
@@ -179,16 +175,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       });
       
       if (!res.ok) throw new Error("後端儲存失敗");
-      console.log("🎉 組織設定已成功同步至 Neon 雲端資料庫！");
     } catch (error) {
       console.error("雲端同步出錯:", error);
     }
-  };
-
-  const handleSelectTemplate = async (template: TemplateDef) => {
-    setSettingsData(template.initialData); 
-    window.location.hash = 'editor';
-    setIsInitialized(true);
   };
 
   const handleEventHighlight = (ids: string[]) => {
@@ -270,10 +259,8 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       });
 
       if (!res.ok) throw new Error("資料庫刪除失敗");
-      console.log(`🎉 ID: ${itemId} 及其所有章節登場關聯已從雲端 Neon 完美抹除！`);
     } catch (error) {
       console.error("刪除雲端同步失敗:", error);
-      alert("⚠️ 雲端刪除失敗，請重新整理網頁檢查 Neon 資料庫狀態。");
     }
   };
 
@@ -325,25 +312,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     );
   }
 
-  if (!isInitialized) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-4xl w-full space-y-8">
-          <div className="text-center space-y-2">
-            <h1 className="text-4xl font-bold text-slate-900">建立你的新專案</h1>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {PLATFORM_TEMPLATES.map((template) => (
-              <button key={template.id} onClick={() => handleSelectTemplate(template)} className="p-6 bg-white border rounded-xl text-left">
-                <h3 className="text-xl font-bold text-slate-800 mb-2">{template.name}</h3>
-                <p className="text-slate-500 text-sm">{template.description}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // 🌟 舊的 `if (!isInitialized)` 模板選擇攔截器已被全部拔除，徹底達成零摩擦 Onboarding！
 
   return (
     <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col">
@@ -369,7 +338,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
         <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col">
           <div className="mb-6 flex items-center justify-between">
-            {/* 🌟 核心修正：移除會干擾 History 的圓圈返回鈕，直接乾淨地渲染標題 */}
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-slate-800">
                 {viewMode === 'graph' ? '全域人物關係圖' : 
@@ -471,12 +439,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                     </button>
                   </div>
 
-                  {isSyncingChapter && (
-                    <div className="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg animate-pulse font-medium">
-                      ⏳ 正在同步章節關係網路至雲端 Neon...
-                    </div>
-                  )}
-
                   <div className="space-y-6 flex-1">
                     {globalAllSettings.map((group) => (
                       <div key={group.category} className="space-y-3">
@@ -498,7 +460,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                                 <input 
                                   type="checkbox"
                                   checked={isAssigned}
-                                  disabled={isSyncingChapter}
                                   onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
                                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
