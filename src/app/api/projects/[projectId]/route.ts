@@ -63,15 +63,23 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession()
-    if (!session) return new NextResponse("請先登入", { status: 401 })
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: '請先登入' }, { status: 401 })
+    }
 
     const { projectId } = await context.params
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } })
+    if (!user) return new NextResponse("找不到使用者", { status: 404 })
 
     // 這裡用「軟刪除」，也就是打上 deletedAt 的時間戳記，而不是直接從資料庫抹除
-    await prisma.project.update({
-      where: { id: projectId },
+    const result = await prisma.project.updateMany({
+      where: { id: projectId, ownerId: user.id },
       data: { deletedAt: new Date() }
     })
+
+    if (result.count === 0) {
+      return new NextResponse("沒有權限刪除或專案不存在", { status: 403 })
+    }
 
     return new NextResponse("刪除成功", { status: 200 })
   } catch (error) {

@@ -1,5 +1,6 @@
 'use client'
 
+import { useEditorUI } from '@/contexts/EditorUIContext';
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 
@@ -13,6 +14,7 @@ export default function ChapterListPage() {
   const router = useRouter()
   const params = useParams()
   const novelId = params.novelId as string
+  const { isEditable } = useEditorUI();
 
   const [novelTitle, setNovelTitle] = useState('載入中...')
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -78,20 +80,24 @@ export default function ChapterListPage() {
               ⚙️ 作品設定集
             </button>
 
-            {/* 原本的新增章節按鈕 */}
-            <button 
-              onClick={handleCreateChapter}
-              className="bg-green-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
-            >
-              + 新增章節
-            </button>
+            {/* 新增章節按鈕，僅在可編輯時顯示 */}
+            {isEditable && (
+              <button 
+                onClick={handleCreateChapter}
+                className="bg-green-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
+              >
+                + 新增章節
+              </button>
+            )}
           </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           {chapters.length === 0 ? (
             <div className="p-10 text-center text-gray-400">
-              這本小說還沒有任何章節，點擊右上角新增吧！
+              {isEditable
+              ? "這本小說還沒有任何章節，點擊右上角新增吧！"
+              : "這本小說目前還沒有任何章節。"}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -104,8 +110,14 @@ export default function ChapterListPage() {
                   <span className="font-medium text-gray-800 group-hover:text-blue-600">
                     {chapter.title}
                   </span>
-                  <button className="text-sm bg-blue-100 text-blue-600 px-3 py-1 rounded hover:bg-blue-200">
-                    進入編輯 ➜
+                  <button 
+                    className={`text-sm px-3 py-1 rounded transition-colors ${
+                      isEditable 
+                        ? "bg-blue-100 text-blue-600 hover:bg-blue-200" 
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    {isEditable ? "進入編輯 ➜" : "進入查看 ➜"}
                   </button>
                 </div>
               ))}

@@ -17,14 +17,22 @@ export async function GET() {
     const user = await prisma.user.findUnique({ where: { email: session.user.email } })
     if (!user) return new NextResponse("找不到使用者", { status: 404 })
 
-    // 撈出屬於這個人的 Project (過濾掉已刪除的)，按建立時間排序
-    const projects = await prisma.project.findMany({
-      where: { 
-        ownerId: user.id,
-        deletedAt: null 
+    // 從 ProjectMember 關聯表撈出被邀請的專案
+    const memberships = await prisma.projectMember.findMany({
+      where: { userId: user.id },
+      include: {
+        project: true
       },
-      orderBy: { createdAt: 'desc' }
-    })
+      orderBy: { project: { createdAt: 'desc' } }
+    });
+    
+    // 撈出屬於這個人的 Project (過濾掉已刪除的)，按建立時間排序
+    const projects = memberships
+      .filter(m => m.project.deletedAt === null)
+      .map(m => ({
+        ...m.project,
+        role: m.role
+      }));
 
     return NextResponse.json(projects)
   } catch (error) {
@@ -77,7 +85,13 @@ export async function POST(request: Request) {
         data: {
           title: title,       
           coverUrl: coverUrl, 
-          ownerId: user.id 
+          ownerId: user.id, 
+          members: {
+            create: {
+              userId: user.id,
+              role: 'owner'
+            }
+          }
         }
       })
       
