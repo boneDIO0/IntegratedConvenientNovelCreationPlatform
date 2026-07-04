@@ -31,8 +31,6 @@
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "@vercel/blob": "^2.5.0",
-    "@upstash/ratelimit": "^2.0.8",
-    "@upstash/redis": "^1.38.0",
     "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.1",
     "client-only": "^0.0.1",
