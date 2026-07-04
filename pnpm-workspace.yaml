@@ -3,7 +3,9 @@ allowBuilds:
   '@prisma/engines': true
   esbuild: true
   msw: true
+  onnxruntime-node: true
   prisma: true
+  protobufjs: true
   sharp: true
   unrs-resolver: true
 ignoredBuiltDependencies:
