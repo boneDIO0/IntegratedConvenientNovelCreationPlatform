@@ -14,6 +14,7 @@ import { CalendarConfig } from "@/lib/calendarEngine";
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
 import { useEditorUI } from "@/contexts/EditorUIContext";
 import { useRouter } from "next/navigation";
+import LocationForm from './LocationForm'; // 👈 已確認無縫引入
 
 interface SettingsPanelProps {
   projectId: string;
@@ -312,8 +313,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     );
   }
 
-  // 🌟 舊的 `if (!isInitialized)` 模板選擇攔截器已被全部拔除，徹底達成零摩擦 Onboarding！
-
   return (
     <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col">
       <aside className="w-full md:w-80 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
@@ -362,6 +361,8 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   <option value="faction">🏛️ 組織表單</option>
                   <option value="item">⚔️ 物品表單</option>
                   <option value="event">📜 事件表單</option>
+                  {/* 🌟 修正點 1：下拉選單正式對齊加入地點表單轉換軌道 */}
+                  <option value="location">📍 地點表單</option>
                   <option value="custom">⚙️ 通用表單</option>
                 </select>
               )}
@@ -454,7 +455,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             return (
                               <label key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${isAssigned ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
                                 <div className="flex items-center gap-3">
-                                  <div className={`w-2 h-2 rounded-full ${item.category === 'character' ? 'bg-blue-500' : item.category === 'faction' ? 'bg-orange-500' : 'bg-emerald-500'}`} />
+                                  <div className={`w-2 h-2 rounded-full ${item.category === 'character' ? 'bg-blue-500' : item.category === 'faction' ? 'bg-orange-500' : item.category === 'location' ? 'bg-blue-600' : 'bg-emerald-500'}`} />
                                   <span className="text-sm font-semibold text-slate-800">{item.name}</span>
                                 </div>
                                 <input 
@@ -523,12 +524,24 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           key={selectedItem.id} 
                           item={selectedItem} 
                           calendarConfig={calendarConfig} 
+                          allSettings={globalAllSettings}
                           onSave={handleUpdateItem} 
                           onDirty={() => setHasChanges(true)}
                         />
                       )}
+
+                      {/* 🌟 修正點 2：在渲染路由中，補上當 category 為 location 時的專屬 Form 渲染分支 */}
+                      {selectedItem.category === 'location' && (
+                        <LocationForm
+                          key={selectedItem.id}
+                          item={selectedItem}
+                          allSettings={globalAllSettings}
+                          onSave={handleUpdateItem}
+                          onDirty={() => setHasChanges(true)} // 🎯 改為傳入你的連動變更狀態，達成防退出的未儲存提示！
+                        />
+                      )}
                       
-                      {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event'].includes(selectedItem.category)) && <DynamicForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                      {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event', 'location'].includes(selectedItem.category)) && <DynamicForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
                     </>
                   )}
                 </fieldset>

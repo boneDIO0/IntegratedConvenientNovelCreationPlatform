@@ -4,40 +4,50 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { SettingItem } from "@/lib/mockSettings"
+import { SettingItem } from "@/types" // 🎯 確保維持中心型別引入
 import { formatFantasyDate, CalendarConfig } from "@/lib/calendarEngine" 
 import { useState, useEffect } from "react" 
 
 interface EventFormProps {
   item: SettingItem;
   calendarConfig?: CalendarConfig; 
+  allSettings: { category: string; items: SettingItem[] }[]; // 確保介面完全咬合
   onSave: (updatedItem: SettingItem) => void | Promise<void>; 
   onDirty?: () => void; 
 }
 
-export default function EventForm({ item, calendarConfig, onSave, onDirty }: EventFormProps) {
+// 🌟 修正點 1：確實把大腦傳進來的 allSettings 從解構參數中解放出來！
+export default function EventForm({ item, calendarConfig, allSettings, onSave, onDirty }: EventFormProps) {
   const [name, setName] = useState(item.name || "");
   const [currentDate, setCurrentDate] = useState(item.date || "");
-  const [location, setLocation] = useState(item.location || "");
+  const [locationId, setLocationId] = useState(item.locationId || "");
   const [description, setDescription] = useState(item.description || "");
   const [saveStatus, setSaveStatus] = useState("儲存事件紀錄");
+  const [relations, setRelations] = useState<{targetId: string, type: string}[]>(item.relations || []);
 
-  // 🌟 核心結構優化：將原本的死板字串拆解為連動的「紀元名稱」與「年份」狀態，徹底防呆
   const [selectedEra, setSelectedEra] = useState("");
   const [fantasyYear, setFantasyYear] = useState<number | "">("");
 
-  // 檢查當前曆法全域模式：'standard' (自動換算) | 'fantasy_only' (純自訂拖曳排序)
   const isStandardMode = calendarConfig?.mode !== "fantasy_only";
+  
+  // 🌟 修正點 2：確實將變數定義收攏在函數體內，並補上明確型別防禦
+  const availableLocations = allSettings?.find((c: any) => {
+    const currentCategory = (c.category || c.categoryName || c.name || "").toLowerCase();
+    return currentCategory.includes("location") || currentCategory.includes("地點") || currentCategory === "place";
+  })?.items || [];
 
-  // 當切換選取不同歷史事件時，同步刷新與拆解狀態值
+  const availableCharacters = allSettings?.find(
+    (c: any) => c.category?.toLowerCase().includes('character')
+  )?.items || [];
+
   useEffect(() => {
     setName(item.name || "");
     setCurrentDate(item.date || "");
-    setLocation(item.location || "");
+    setLocationId(item.locationId || "");
     setDescription(item.description || "");
+    setRelations(item.relations || []);
 
     if (!isStandardMode) {
-      // 試圖從既存的 "舊紀元 1 年" 字串中拆解出紀元與年份
       const displayStr = item.fantasyDisplay || "";
       const matched = displayStr.match(/^(.+?)\s*(\d+)\s*年$/);
       
@@ -45,7 +55,6 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
         setSelectedEra(matched[1]);
         setFantasyYear(parseInt(matched[2], 10));
       } else {
-        // 如果是全新事件，預設選取曆法中的第一個歷史紀元
         const firstEraName = calendarConfig?.eras?.[0]?.name || "";
         setSelectedEra(firstEraName);
         setFantasyYear(1);
@@ -53,33 +62,40 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
     }
   }, [item, calendarConfig, isStandardMode]);
 
-  // 🌟 動態即時合成預覽文字
   const generatedFantasyDisplay = selectedEra && fantasyYear !== "" ? `${selectedEra} ${fantasyYear} 年` : "";
   const displayDate = isStandardMode 
     ? formatFantasyDate(currentDate, calendarConfig, "")
     : generatedFantasyDisplay;
 
+  const handleCharacterToggle = (characterName: string) => {
+    onDirty?.();
+    const exists = relations.some(r => r.targetId === characterName);
+    if (exists) {
+      setRelations(relations.filter(r => r.targetId !== characterName));
+    } else {
+      setRelations([...relations, { targetId: characterName, type: '登場' }]);
+    }
+  };
+
   const handleSaveClick = async () => {
     let calculatedWeight = item.sortWeight ?? 0;
 
-    // 🌟 核心權重演算法：如果開啟了自訂曆法模式，依據目前所選紀元在曆法中的物理拖曳順序，自動權重定錨！
     if (!isStandardMode && calendarConfig?.eras) {
       const eraIndex = calendarConfig.eras.findIndex(e => e.name === selectedEra);
       const safeIndex = eraIndex !== -1 ? eraIndex : 0;
       const safeYear = fantasyYear !== "" ? fantasyYear : 1;
-      
-      // 公式：(曆法陣列排序 * 100,000) + 當前年份。保證拖曳順序永遠具有最高優先權！
       calculatedWeight = safeIndex * 100000 + safeYear;
     }
 
     const updatedItem: SettingItem = {
       ...item,
       name,
-      location,
+      locationId,
       description,
+      relations,
       date: isStandardMode ? currentDate : "", 
       fantasyDisplay: isStandardMode ? "" : generatedFantasyDisplay, 
-      sortWeight: calculatedWeight // 鎖定完美物理排序數字
+      sortWeight: calculatedWeight 
     };
 
     setSaveStatus("儲存中...");
@@ -110,7 +126,6 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
       </div>
 
       <div className="space-y-5 flex-1">
-        {/* 曆法引擎展示區塊 */}
         <div className="p-4 rounded-lg bg-slate-900 text-white shadow-inner flex flex-col gap-1 transition-colors">
           <span className="text-slate-400 text-xs">
             {isStandardMode ? "引擎自動換算日期" : "世界觀曆法時序對齊預覽"}
@@ -120,14 +135,12 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
           </span>
         </div>
 
-        {/* 事件名稱 */}
         <div className="grid gap-2">
           <Label htmlFor="name">事件名稱</Label>
           <Input id="name" value={name} onChange={(e) => { setName(e.target.value); onDirty?.(); }} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 🌟 核心重構：雙軌制連動分流 */}
           {isStandardMode ? (
             <div className="grid gap-2">
               <Label htmlFor="date">標準時間 (YYYY-MM-DD)</Label>
@@ -140,14 +153,13 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3 md:col-span-1">
-              {/* 紀元名稱下拉選單 */}
               <div className="grid gap-2 col-span-2">
                 <Label htmlFor="eraSelect">選擇歷史紀元時期</Label>
                 <select
                   id="eraSelect"
                   value={selectedEra}
                   onChange={(e) => { setSelectedEra(e.target.value); onDirty?.(); }}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer text-slate-800"
                 >
                   {calendarConfig?.eras && calendarConfig.eras.length > 0 ? (
                     calendarConfig.eras.map((era, index) => (
@@ -161,7 +173,6 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
                 </select>
               </div>
 
-              {/* 年份數字輸入框 */}
               <div className="grid gap-2 col-span-1">
                 <Label htmlFor="eraYear">發生年份</Label>
                 <Input 
@@ -182,15 +193,22 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
 
           <div className="grid gap-2">
             <Label htmlFor="location">發生地點</Label>
-            <Input 
-              id="location" 
-              value={location} 
-              onChange={(e) => { setLocation(e.target.value); onDirty?.(); }} 
-            />
+            <select
+              id="location"
+              value={locationId}
+              onChange={(e) => { setLocationId(e.target.value); onDirty?.(); }}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer text-slate-800"
+          >
+            <option value="">-- 請選取專案中的地點 --</option>
+            {availableLocations.map((loc: SettingItem) => (
+              <option key={loc.id} value={loc.id}> {/* 🎯 傳入真正的 loc.id */}
+                📍 {loc.name} {loc.climate ? `(${loc.climate})` : ''}
+              </option>
+            ))}
+          </select>
           </div>
         </div>
 
-        {/* 事件詳細經過 */}
         <div className="grid gap-2">
           <Label htmlFor="description">事件詳細經過</Label>
           <Textarea
@@ -201,18 +219,30 @@ export default function EventForm({ item, calendarConfig, onSave, onDirty }: Eve
           />
         </div>
 
-        {/* 牽涉對象顯示區塊 */}
         <div className="grid gap-2">
-          <Label className="font-bold text-slate-700">牽涉對象</Label>
-          <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50">
-            {item.relations && item.relations.length > 0 ? (
-              item.relations.map((rel, index) => (
-                <Badge key={index} variant="secondary" className="text-sm py-1 bg-white border-slate-200 shadow-sm">
-                  與 {rel.targetId} ({rel.type})
-                </Badge>
-              ))
+          <Label className="font-bold text-slate-700">牽涉對象 (勾選以綁定專案人物)</Label>
+          <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-slate-200 bg-slate-50 min-h-[80px]">
+            {availableCharacters.length > 0 ? (
+              availableCharacters.map((char: SettingItem) => {
+                const isSelected = relations.some(r => r.targetId === char.name);
+                return (
+                  <button
+                    key={char.id}
+                    type="button"
+                    onClick={() => handleCharacterToggle(char.name || "")}
+                    className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all duration-200 shadow-sm flex items-center gap-1.5 ${
+                      isSelected
+                        ? "bg-slate-900 text-white border-slate-950 scale-105"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                    }`}
+                  >
+                    <span>{isSelected ? "✅" : "👤"}</span>
+                    <span>{char.name}</span>
+                  </button>
+                );
+              })
             ) : (
-              <span className="text-sm text-slate-400">目前無牽涉其他項目</span>
+              <span className="text-sm text-slate-400 m-auto">請先至人物分頁建立世界觀角色</span>
             )}
           </div>
         </div>
