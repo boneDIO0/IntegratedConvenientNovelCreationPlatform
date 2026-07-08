@@ -509,15 +509,26 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           onDirty={() => setHasChanges(true)}
                         />
                       )}
+
                       {selectedItem.category === 'faction' && (
                         <FactionForm 
                           key={selectedItem.id} 
-                          item={selectedItem} 
+                          item={selectedItem}
+                          allSettings={globalAllSettings} // 🎯 補上這行核心接線
                           onSave={handleUpdateItem} 
                           onDirty={() => setHasChanges(true)} 
                         />
                       )}
-                      {selectedItem.category === 'item' && <ItemForm key={selectedItem.id} item={selectedItem} onSave={handleUpdateItem} />}
+                      
+                      {selectedItem.category === 'item' && (
+                        <ItemForm 
+                          key={selectedItem.id} 
+                          item={selectedItem} 
+                          allSettings={globalAllSettings} // 🎯 注入這行
+                          onSave={handleUpdateItem} 
+                          onDirty={() => setHasChanges(true)} // 同步綁定未儲存退出提示
+                        />
+                      )}
                       
                       {selectedItem.category === 'event' && (
                         <EventForm 
