@@ -1,20 +1,22 @@
-// src/components/FactionForm.tsx
+'use client'
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { SettingItem } from "@/lib/mockSettings"
-import { useState } from "react" 
+import { SettingItem } from "@/types" // 🎯 對齊核心完全體型別定義
+import { useState, useEffect } from "react" 
 
-// 🌟 1. 擴充 Interface：支援 onDirty 回呼
+// 🌟 1. 擴充 Interface：接收全域設定源 allSettings 進行跨表單聯動
 interface FactionFormProps {
-  item: SettingItem & { color?: string }; // 相容可能直接存在第一層的 color 欄位
+  item: SettingItem & { color?: string }; 
+  allSettings: { category: string; items: SettingItem[] }[]; // 注入全域大資料庫
   onSave: (updatedItem: SettingItem) => void | Promise<void>;
-  onDirty?: () => void; // 🌟 讓打字、選顏色時即時亮起 *(已修改) 標籤
+  onDirty?: () => void; 
 }
 
-export default function FactionForm({ item, onSave, onDirty }: FactionFormProps) {
-  // 🌟 2. 建立所有欄位的 state，並加入預設色彩Fallback（例如精緻的莫蘭迪灰 #64748b）
+export default function FactionForm({ item, allSettings, onSave, onDirty }: FactionFormProps) {
+  // 🌟 2. 建立所有欄位的 state 進行即時管理
   const [name, setName] = useState(item.name || "");
   const [leader, setLeader] = useState(item.leader || "");
   const [territory, setTerritory] = useState(item.territory || "");
@@ -22,6 +24,27 @@ export default function FactionForm({ item, onSave, onDirty }: FactionFormProps)
   const [color, setColor] = useState(item.color || "#64748b"); 
   const [hierarchyStr, setHierarchyStr] = useState(item.hierarchy?.join('，') || "");
   const [saveStatus, setSaveStatus] = useState("儲存組織設定");
+
+  // 🔍 全方位模糊防禦：從全域資料中撈出所有「人物」與「地點」
+  const availableCharacters = allSettings?.find((c: any) => {
+    const cat = (c.category || c.categoryName || "").toLowerCase();
+    return cat.includes("character") || cat.includes("人物") || cat.includes("角色");
+  })?.items || [];
+
+  const availableLocations = allSettings?.find((c: any) => {
+    const cat = (c.category || c.categoryName || "").toLowerCase();
+    return cat.includes("location") || cat.includes("地點");
+  })?.items || [];
+
+  // 當切換項目時同步刷新欄位
+  useEffect(() => {
+    setName(item.name || "");
+    setLeader(item.leader || "");
+    setTerritory(item.territory || "");
+    setDescription(item.description || "");
+    setColor(item.color || "#64748b");
+    setHierarchyStr(item.hierarchy?.join('，') || "");
+  }, [item]);
 
   // 將字串即時轉回陣列，支援中英文逗號，並過濾掉空白項目
   const currentHierarchy = hierarchyStr
@@ -34,35 +57,28 @@ export default function FactionForm({ item, onSave, onDirty }: FactionFormProps)
     const updatedItem: SettingItem = {
       ...item,
       name,
-      leader,
-      territory,
+      leader,        // 儲存所選取的人物品項
+      territory,     // 儲存所選取的地點品項
       description,
-      hierarchy: currentHierarchy, // 將最新的階級陣列存進去
-      color: color // 🌟 將自訂色彩包裹進 JSON 送給後端！
+      hierarchy: currentHierarchy, 
+      color: color 
     };
 
-    // 🎬 狀態 A：立刻進入儲存中
     setSaveStatus("儲存中...");
 
     try {
-      // 呼叫父層 API 並等待 Neon 資料庫寫入成功
       await onSave(updatedItem);
-      
-      // 🎬 狀態 B：寫入成功，亮起綠色勾勾
       setSaveStatus("✅ 儲存成功！");
     } catch (error) {
       console.error(error);
-      // 🎬 狀態 C：非預期破防防禦
       setSaveStatus("❌ 儲存失敗");
     }
 
-    // 🎬 狀態 D：2 秒後自動滿血重置，恢復預設文字
     setTimeout(() => {
       setSaveStatus("儲存組織設定");
     }, 2000);
   };
 
-  // 幾組幫創作者調配好的快捷世界觀推薦色（莫蘭迪色系）
   const PRESET_COLORS = [
     "#3b82f6", // 守序藍 (元風組織/正統王朝)
     "#ef4444", // 狂暴紅 (叛軍/部落)
@@ -89,12 +105,13 @@ export default function FactionForm({ item, onSave, onDirty }: FactionFormProps)
       </div>
 
       <div className="space-y-5 flex-1">
+        {/* 組織名稱 */}
         <div className="grid gap-2">
           <Label htmlFor="name">組織名稱</Label>
           <Input id="name" value={name} onChange={(e) => { setName(e.target.value); onDirty?.(); }} /> 
         </div>
 
-        {/* 🌟 核心新增：關係圖專屬色彩選擇器 */}
+        {/* 關係圖專屬色彩選擇器 */}
         <div className="grid gap-3 p-4 bg-slate-50/50 rounded-xl border border-slate-200/60">
           <div className="flex items-center justify-between">
             <Label className="font-bold text-slate-700 flex items-center gap-2">
@@ -107,7 +124,6 @@ export default function FactionForm({ item, onSave, onDirty }: FactionFormProps)
           </p>
           
           <div className="flex items-center gap-4 mt-1">
-            {/* 原生色彩調色盤 */}
             <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-slate-300 cursor-pointer shadow-sm group">
               <input 
                 type="color" 
@@ -117,7 +133,6 @@ export default function FactionForm({ item, onSave, onDirty }: FactionFormProps)
               />
             </div>
 
-            {/* 快速推薦色塊群 */}
             <div className="flex gap-2">
               {PRESET_COLORS.map((pColor) => (
                 <button
@@ -135,27 +150,46 @@ export default function FactionForm({ item, onSave, onDirty }: FactionFormProps)
           </div>
         </div>
 
+        {/* 🌟 領袖與領土：升級為雙欄連動 Dropdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 現任領袖下拉選單 */}
           <div className="grid gap-2">
             <Label htmlFor="leader">現任領袖</Label>
-            <Input 
-              id="leader" 
-              value={leader} 
-              onChange={(e) => { setLeader(e.target.value); onDirty?.(); }} 
-              placeholder="例如：大汗、未知" 
-            />
+            <select
+              id="leader"
+              value={leader}
+              onChange={(e) => { setLeader(e.target.value); onDirty?.(); }}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-400"
+            >
+              <option value="">-- 請選取陣營領袖 (人物) --</option>
+              {availableCharacters.map((char: SettingItem) => (
+                <option key={char.id} value={char.name}>
+                  👤 {char.name} {char.title ? `[${char.title}]` : ''}
+                </option>
+              ))}
+            </select>
           </div>
+
+          {/* 勢力範圍下拉選單 */}
           <div className="grid gap-2">
-            <Label htmlFor="territory">勢力範圍</Label>
-            <Input 
-              id="territory" 
-              value={territory} 
-              onChange={(e) => { setTerritory(e.target.value); onDirty?.(); }} 
-              placeholder="例如：無盡大草原" 
-            />
+            <Label htmlFor="territory">勢力範圍 (大本營/領土)</Label>
+            <select
+              id="territory"
+              value={territory}
+              onChange={(e) => { setTerritory(e.target.value); onDirty?.(); }}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-400"
+            >
+              <option value="">-- 請選取核心領土 (地點) --</option>
+              {availableLocations.map((loc: SettingItem) => (
+                <option key={loc.id} value={loc.name}>
+                  📍 {loc.name} {loc.parentId ? ' (子分區)' : ' (大分區)'}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
+        {/* 階級制度 */}
         <div className="grid gap-2">
           <Label htmlFor="hierarchy">階級制度 (請用逗號分隔)</Label>
           <Input 
@@ -177,6 +211,7 @@ export default function FactionForm({ item, onSave, onDirty }: FactionFormProps)
           </div>
         </div>
 
+        {/* 組織背景與文化 */}
         <div className="grid gap-2">
           <Label htmlFor="description">組織背景與文化</Label>
           <Textarea

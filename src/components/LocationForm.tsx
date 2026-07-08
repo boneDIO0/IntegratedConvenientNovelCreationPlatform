@@ -20,8 +20,18 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
   const [climate, setClimate] = useState(item.climate || "");
   const [territory, setTerritory] = useState(item.territory || "");
   const [description, setDescription] = useState(item.description || "");
+  const [parentId, setParentId] = useState(item.parentId || "");
   const [color, setColor] = useState(item.color || "#3b82f6");
   const [saveStatus, setSaveStatus] = useState("儲存地點紀錄");
+
+  const allLocations = allSettings?.find(
+    (c: any) => {
+      const cat = (c.category || c.categoryName || "").toLowerCase();
+      return cat.includes("location") || cat.includes("地點");
+    }
+  )?.items || [];
+  
+  const possibleParentLocations = allLocations.filter((loc: SettingItem) => loc.id !== item.id);
 
   // 當使用者在目錄點選切換不同地點時，刷新對應狀態值
   useEffect(() => {
@@ -41,6 +51,7 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
       climate,
       territory,
       description,
+      parentId: parentId || undefined,
     };
 
     setSaveStatus("儲存中...");
@@ -73,37 +84,37 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
 
       {/* 主要輸入表單欄位 */}
       <div className="space-y-5 flex-1">
-        {/* 地點名稱 */}
         <div className="grid gap-2">
-          <Label htmlFor="loc-name">地點名稱</Label>
-          <Input 
-            id="loc-name" 
-            value={name} 
-            placeholder="例如：高雄車站、清邁、浮空島"
-            onChange={(e) => { setName(e.target.value); onDirty?.(); }} 
-          />
+          <Label htmlFor="loc-name">地點/分區名稱</Label>
+          <Input id="loc-name" value={name} onChange={(e) => { setName(e.target.value); onDirty?.(); }} />
+        </div>
+
+        {/* 🌟 新增：隸屬大分區下拉選單 */}
+        <div className="grid gap-2">
+          <Label htmlFor="loc-parent">隸屬大分區 (選填)</Label>
+          <select
+            id="loc-parent"
+            value={parentId}
+            onChange={(e) => { setParentId(e.target.value); onDirty?.(); }}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors text-slate-800 cursor-pointer"
+          >
+            <option value="">-- 獨立大分區 (無上級) --</option>
+            {possibleParentLocations.map((loc: SettingItem) => (
+              <option key={loc.id} value={loc.id}>
+                🏰 {loc.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid gap-2">
           <Label htmlFor="loc-climate">風土氣候設定</Label>
-          <Input 
-            id="loc-climate" 
-            value={climate} 
-            placeholder="例如：長年積雪、核心魔力輻射區、熱帶季風氣候"
-            onChange={(e) => { setClimate(e.target.value); onDirty?.(); }} 
-          />
+          <Input id="loc-climate" value={climate} onChange={(e) => { setClimate(e.target.value); onDirty?.(); }} />
         </div>
 
-        {/* 地點簡介 / 背景故事 */}
         <div className="grid gap-2">
-          <Label htmlFor="loc-desc">地點概述 / 背景設定</Label>
-          <Textarea
-            id="loc-desc"
-            className="min-h-[180px] resize-none leading-relaxed"
-            placeholder="敘述這個地方的地理環境、人文風情或特殊規則設定..."
-            value={description}
-            onChange={(e) => { setDescription(e.target.value); onDirty?.(); }}
-          />
+          <Label htmlFor="loc-desc">地點概述</Label>
+          <Textarea id="loc-desc" value={description} onChange={(e) => { setDescription(e.target.value); onDirty?.(); }} />
         </div>
       </div>
 

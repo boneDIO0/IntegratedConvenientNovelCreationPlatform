@@ -90,6 +90,7 @@ export type SettingItem = {
   // 🌍 地點專屬欄位 (Locations) - 🌟 修正點 4：新增
   // ----------------------------------------------------
   // 當 category === 'location' 時，可使用以下專屬屬性
+  parentId?: string;
   coordinates?: { x: number; y: number }; // 未來若需要對齊大地圖系統
   climate?: string;                       // 風土氣候設定（例：常年下雪）
 

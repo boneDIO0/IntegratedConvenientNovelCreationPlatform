@@ -36,9 +36,10 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
     return currentCategory.includes("location") || currentCategory.includes("地點") || currentCategory === "place";
   })?.items || [];
 
-  const availableCharacters = allSettings?.find(
-    (c: any) => c.category?.toLowerCase().includes('character')
-  )?.items || [];
+  const availableCharacters = allSettings?.find((c: any) => {
+    const currentCategory = (c.category || c.categoryName || c.name || "").toLowerCase();
+    return currentCategory.includes("character") || currentCategory.includes("character") || currentCategory.includes("人物") || currentCategory.includes("角色");
+  })?.items || [];
 
   useEffect(() => {
     setName(item.name || "");
