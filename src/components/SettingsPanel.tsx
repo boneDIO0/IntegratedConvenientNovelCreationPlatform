@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import SettingsSidebar from "@/components/SettingsSidebar";
 import CharacterForm from "@/components/CharacterForm";
 import RelationGraph from "@/components/RelationGraph"; 
-import { SettingItem } from "@/lib/mockSettings";
+import { SettingItem } from "@/types"; // 🎯 對齊全域完全體型別引入
 import FactionForm from "@/components/FactionForm";
 import ItemForm from "@/components/ItemForm";
 import EventForm from "@/components/EventForm";
@@ -14,7 +14,7 @@ import { CalendarConfig } from "@/lib/calendarEngine";
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
 import { useEditorUI } from "@/contexts/EditorUIContext";
 import { useRouter } from "next/navigation";
-import LocationForm from './LocationForm'; // 👈 已確認無縫引入
+import LocationForm from './LocationForm'; 
 
 interface SettingsPanelProps {
   projectId: string;
@@ -37,11 +37,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 🆕 1. 新增：控制設定集單一項目歷史紀錄側邊欄的開關
   const [isLocalHistoryOpen, setIsLocalHistoryOpen] = useState(false);
 
-  // 🆕 2. 新增：處理單一設定項目歷史版本還原的後端 API 呼叫
-    const handleRestoreVersion = async (timestamp: number) => {
+  const handleRestoreVersion = async (timestamp: number) => {
     if (!selectedItem) return;
     try {
       console.log(`⏳ [時光機前端] 開始發送還原，目標時間戳記: ${timestamp}`);
@@ -59,22 +57,20 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
       const dbEntity = await res.json();
 
-      // 💡 關鍵結構平鋪優化：還原時也把 content 內的歷史屬性攤平到最外層
-      const dbContent = dbEntity.content && typeof dbEntity.content === 'object'
-        ? dbEntity.content
-        : {};
+      const dbContent = dbEntity.content && typeof dbEntity.content === 'object' ? dbEntity.content : {};
 
       const alignedItem = {
         ...dbEntity,
-        ...dbContent, // 🌟 歷史快照中的自訂屬性強制釋放回最外層！
+        ...dbContent, 
         name: dbEntity.title || dbEntity.name,
+        category: dbContent.category || dbEntity.category || 'custom', // 還原型別定錨
         content: dbEntity.content
       };
 
       alert("🎉 項目已成功還原至該歷史存檔點！");
 
       await fetchSettings();
-      setSelectedItem(alignedItem); // 🚀 表單內容、自訂欄位瞬間就地歸位！
+      setSelectedItem(alignedItem); 
 
     } catch (error: any) {
       console.error("🔴 還原執行中斷:", error);
@@ -82,36 +78,37 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-  // 處理單一歷史版本的刪除功能（精準對齊 [id]/versions/[timestamp] 動態路由）
-    const handleDeleteVersion = async (timestamp: number) => {
-        if (!selectedItem) return;
-        try {
-        // 🌟 修正點：改為符合你後端資料夾結構的 /api/settings/${id}/versions/${timestamp}
-        const res = await fetch(`/api/settings/${selectedItem.id}/versions/${timestamp}`, {
-            method: 'DELETE',
+  const handleDeleteVersion = async (timestamp: number) => {
+    if (!selectedItem) return;
+    try {
+      const res = await fetch(`/api/settings/${selectedItem.id}/versions/${timestamp}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) throw new Error("刪除失敗");
+      alert("🎉 歷史備份已成功刪除！");
+
+      await fetchSettings();
+      const updatedRes = await fetch(`/api/settings/${selectedItem.id}`);
+      if (updatedRes.ok) {
+        const latest = await updatedRes.json();
+        const latestContent = latest.content && typeof latest.content === 'object' ? latest.content : {};
+        setSelectedItem({
+          ...latest,
+          ...latestContent,
+          category: latestContent.category || latest.category || 'custom'
         });
-
-        if (!res.ok) throw new Error("刪除失敗");
-        alert("🎉 歷史備份已成功刪除！");
-
-        // 重新整理頁面大資料，並刷新當前選中的歷史紀錄狀態
-        await fetchSettings();
-        const updatedRes = await fetch(`/api/settings/${selectedItem.id}`);
-        if (updatedRes.ok) {
-            const latest = await updatedRes.json();
-            setSelectedItem(latest);
-        }
-        } catch (error) {
-        console.error("刪除版本出錯:", error);
-        alert("⚠️ 刪除歷史版本失敗。");
-        }
-    };
+      }
+    } catch (error) {
+      console.error("刪除版本出錯:", error);
+      alert("⚠️ 刪除歷史版本失敗。");
+    }
+  };
 
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
       
-      // 1. 同步拉取世界觀自定義曆法
       const calendarRes = await fetch(`/api/projects/${projectId}/calendar`);
       if (calendarRes.ok) {
         const calendarResult = await calendarRes.json();
@@ -130,33 +127,27 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const data = await res.json();
       setSettingsData(data);
 
-      // 2. 拉取全域設定集資料
       const globalRes = await fetch(`/api/settings?projectId=${projectId}`);
       if (globalRes.ok) {
         const globalData = await globalRes.json();
         
-        // 🚀 核心核心改造：如果全域設定集的目錄完全是空的，直接在背景悄悄自動初始化小說專屬模板
         if (!globalData || globalData.length === 0) {
-          console.log("📝 偵測到全新小說專案，正在無感自動建立小說家專屬目錄架構...");
-          
           const initRes = await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-              action: 'init_novel_template', // 給後端看的 Action
+              action: 'init_novel_template', 
               projectId: projectId 
             })
           });
 
           if (initRes.ok) {
-            // 背景自動初始化完成後，重新 reload 一次資料庫最新狀態
             const refreshedRes = await fetch(`/api/settings?projectId=${projectId}`);
             const refreshedData = await refreshedRes.json();
             setGlobalAllSettings(refreshedData);
             setSettingsData(refreshedData);
           }
         } else {
-          // 本來就有資料的舊專案，正常帶入
           setGlobalAllSettings(globalData);
         }
       }
@@ -210,8 +201,11 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-    const handleUpdateItem = async (updatedItem: SettingItem) => {
-    // 保持你原有的樂觀更新邏輯（更新左側目錄與全域設定）完全不動
+  const handleUpdateItem = async (updatedItem: SettingItem) => {
+    // 1. 強指定錨當前分類，阻斷非同步回彈
+    setSelectedItem(updatedItem);
+    setHasChanges(false);
+
     setSettingsData(prevData => {
       return prevData.map(group => {
         if (group.items.some(i => i.id === updatedItem.id)) {
@@ -236,9 +230,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       });
     });
 
-    setSelectedItem(updatedItem);
-    setHasChanges(false);
-
     try {
       const res = await fetch(`/api/settings/${updatedItem.id}`, {
         method: 'PUT',
@@ -249,21 +240,23 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       if (!res.ok) throw new Error("後端儲存失敗");
 
       const latestEntityFromDB = await res.json();
-
-      // 💡 關鍵結構平鋪優化：把 content 內部的自訂屬性打散、攤平到最外層
-      const dbContent = latestEntityFromDB.content && typeof latestEntityFromDB.content === 'object'
-        ? latestEntityFromDB.content
-        : {};
+      const dbContent = latestEntityFromDB.content && typeof latestEntityFromDB.content === 'object' ? latestEntityFromDB.content : {};
 
       const alignedUpdatedItem = {
         ...latestEntityFromDB,
-        ...dbContent, // 🌟 將自訂屬性欄位強制攤平到第一層，完美餵給自訂屬性元件！
+        ...dbContent, 
+        category: updatedItem.category, // 🌟 核心防禦：強制鎖定前端轉生分類，不使用後端目錄覆蓋值
         name: latestEntityFromDB.title || latestEntityFromDB.name || updatedItem.name,
-        content: latestEntityFromDB.content // 保留原 content 提供給右側時光機
+        content: latestEntityFromDB.content 
       };
 
-      await fetchSettings();
-      setSelectedItem(alignedUpdatedItem); // 🚀 即時刷新
+      // 🎯 採取時序分流：先徹底更新好當前選取的 Form 狀態，再回頭 fetch 背景大陣列
+      setSelectedItem(alignedUpdatedItem);
+      
+      setTimeout(async () => {
+        await fetchSettings();
+        setSelectedItem(alignedUpdatedItem); // 二次鎖定
+      }, 100);
 
     } catch (error) {
       console.error("雲端同步出錯:", error);
@@ -282,7 +275,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     for (const group of settingsData) {
       const found = group.items.find(item => item.id === nodeId);
       if (found) {
-      
         const alignedItem: SettingItem = {
           ...found,
           name: found.name || "未命名項目",
@@ -290,7 +282,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           description: found.description || ""
         };
 
-        setSelectedItem(alignedItem); // 餵給表單認識的乾淨資料
+        setSelectedItem(alignedItem); 
         setViewMode('form');
         setHasChanges(false);
         break;
@@ -411,6 +403,19 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     );
   }
 
+  // 輔助函式：用來將分類對齊中文字串做雙向匹配
+  const checkCategoryMatch = (groupName: string, type: string) => {
+    const gName = groupName.toLowerCase();
+    const tName = type.toLowerCase();
+    if (gName.includes(tName)) return true;
+    if (tName === 'character' && gName.includes('人物')) return true;
+    if (tName === 'faction' && gName.includes('組織')) return true;
+    if (tName === 'item' && gName.includes('物品')) return true;
+    if (tName === 'event' && gName.includes('事件')) return true;
+    if (tName === 'location' && gName.includes('地點')) return true;
+    return false;
+  };
+
   return (
     <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col">
       <aside className="w-full md:w-80 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
@@ -443,82 +448,72 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
               </h1>
 
             {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
-                  <>
-              {/* 1. 原本的下拉選單 */}
-            <select
-              value={selectedItem.category}
-              disabled={!isEditable}
-              onChange={async (e) => {
-                if (!selectedItem) return;
-                const newType = e.target.value;
-  
-                // 1. 建立完全體更新物件
-                const updated = { ...selectedItem, category: newType };
-  
-                // 2. 先把當前選取的項目完全鎖定為新分類，阻斷後續非同步蓋回
-                setSelectedItem(updated);
-
-                // 3. 同步修正它在前端 settingsData 大陣列中的物理歸屬
-                setSettingsData(prevData => {
-                  return prevData.map(group => {
-                    const filteredItems = group.items.filter(i => i.id !== selectedItem.id);
-                    if (group.category.toLowerCase().includes(newType) || (newType === 'location' && group.category === '地點')) {
-                      return {
-                        ...group,
-                        items: [...group.items.filter(i => i.id !== selectedItem.id), updated]
-                      };
-                    }
-                    return { ...group, items: filteredItems };
-                  });
-                });
-
-                // 4. 🌟【核心修復】：發送更新給後端，並將後續的 fetch 稍微延遲 100~200ms
-                // 這樣能確保雲端 Neon PostgreSQL 已經完全寫入完畢，撈回來的最新全域資料絕對不會是舊的！
-                try {
-                  // 這裡不要用 handleUpdateItem，我們直接在這裡自主 handle，確保時序安全
-                  await fetch(`/api/settings/${selectedItem.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updated),
-                  });
-
-                  // 🎯 延遲 150 毫秒再進行全域同步，給雲端資料庫一點呼吸、實體化寫入的時間
-                  setTimeout(async () => {
-                    await fetchSettings(); 
-                    // 🎯 重新 fetch 完之後，再次死死定錨當前畫面，逼迫 React 當場刷新表單組件！
+              <>
+                <select
+                  value={selectedItem.category}
+                  disabled={!isEditable}
+                  onChange={async (e) => {
+                    if (!selectedItem) return;
+                    const newType = e.target.value;
+                    const updated = { ...selectedItem, category: newType };
+      
                     setSelectedItem(updated);
-                  }, 150);
 
-                } catch (error) {
-                  console.error("轉生表單失敗:", error);
-                }
-  
-                setHasChanges(true);
-              }}
-              className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
-             >
-                <option value="character">👤 人物表單</option>
-                <option value="faction">🏛️ 組織表單</option>
-                <option value="item">⚔️ 物品表單</option>
-                <option value="event">📜 事件表單</option>
-                <option value="location">📍 地點表單</option>
-                <option value="custom">⚙️ 通用表單</option>
-            </select>
+                    // 🌟【核心修復二】：升級為 checkCategoryMatch 雙向匹配，確保樂觀更新能精準瞬移！
+                    setSettingsData(prevData => {
+                      return prevData.map(group => {
+                        const filteredItems = group.items.filter(i => i.id !== selectedItem.id);
+                        if (checkCategoryMatch(group.category, newType)) {
+                          return {
+                            ...group,
+                            items: [...group.items.filter(i => i.id !== selectedItem.id), updated]
+                          };
+                        }
+                        return { ...group, items: filteredItems };
+                      });
+                    });
 
-            {/* 2. 新增的項目歷史按鈕 */}
-            <button
-                type="button"
-                onClick={() => setIsLocalHistoryOpen(!isLocalHistoryOpen)}
-                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-1.5 shadow-sm border ${
-                isLocalHistoryOpen
-                    ? "bg-purple-600 border-purple-600 text-white hover:bg-purple-700"
-                    : "bg-purple-50 border-purple-100 text-purple-700 hover:bg-purple-100"
-                }`}
+                    try {
+                      await fetch(`/api/settings/${selectedItem.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updated),
+                      });
+
+                      setTimeout(async () => {
+                        await fetchSettings(); 
+                        setSelectedItem(updated);
+                      }, 150);
+
+                    } catch (error) {
+                      console.error("轉生表單失敗:", error);
+                    }
+      
+                    setHasChanges(true);
+                  }}
+                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
+                >
+                  <option value="character">👤 人物表單</option>
+                  <option value="faction">🏛️ 組織表單</option>
+                  <option value="item">⚔️ 物品表單</option>
+                  <option value="event">📜 事件表單</option>
+                  <option value="location">📍 地點表單</option>
+                  <option value="custom">⚙️ 通用表單</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setIsLocalHistoryOpen(!isLocalHistoryOpen)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-1.5 shadow-sm border ${
+                    isLocalHistoryOpen
+                      ? "bg-purple-600 border-purple-600 text-white hover:bg-purple-700"
+                      : "bg-purple-50 border-purple-100 text-purple-700 hover:bg-purple-100"
+                  }`}
                 >
                   ⏳ 項目歷史
                 </button>
-               </>
-              )}
+              </>
+            )}
             </div>
             
             <div className="flex gap-2">
@@ -652,9 +647,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                     />
                   ) : (
                     <>
+                      {/* 🌟 核心修正：將 category 完美焊接進 key 中，確保儲存與版本更新時絕不回彈 */}
                       {selectedItem.category === 'character' && (
                         <CharacterForm
-                          // 🎯 轉生鎖定：把 category 與版本長度綁在一起，雙重保險，絕不回彈！
                           key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           onSave={handleUpdateItem}
@@ -666,7 +661,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
                       {selectedItem.category === 'faction' && (
                         <FactionForm
-                          // 🎯 轉生鎖定
                           key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           allSettings={globalAllSettings} 
@@ -677,7 +671,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
                       {selectedItem.category === 'item' && (
                         <ItemForm
-                          // 🎯 轉生鎖定
                           key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           allSettings={globalAllSettings} 
@@ -688,7 +681,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
                       {selectedItem.category === 'event' && (
                         <EventForm
-                          // 🎯 轉生鎖定
                           key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           calendarConfig={calendarConfig}
@@ -700,7 +692,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
                       {selectedItem.category === 'location' && (
                         <LocationForm
-                          // 🎯 轉生鎖定
                           key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           allSettings={globalAllSettings}
@@ -728,11 +719,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         </div>
       </main>
 
-    {/* 🆕 1. 完全獨立實作：右側版本歷史時光機側邊欄（自帶相容性多層級抓取） */}
+      {/* 右側版本歷史時光機側邊欄 */}
       {isLocalHistoryOpen && selectedItem && (
         <aside className="w-80 border-l border-slate-200 bg-white p-4 overflow-y-auto flex flex-col h-full animate-in slide-in-from-right duration-200">
-
-          {/* 頂部標題列 */}
           <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               ⏳ 項目版本時光機
@@ -746,11 +735,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
             </button>
           </div>
 
-          {/* 歷史版本卡片清單 */}
           <div className="flex-1 space-y-3">
             {(() => {
               const itemAny = selectedItem as any;
-
               const versions =
                 Array.isArray(itemAny.content?.versions) ? itemAny.content.versions :
                 Array.isArray(itemAny.versions) ? itemAny.versions :
@@ -761,7 +748,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                   .slice()
                   .reverse()
                   .map((version: any, index: number) => {
-                    // 💡 防呆解析時間戳記，確保不會出現 Invalid Date
                     const ts = version.timestamp || version.id || version.time;
                     const dateObject = new Date(Number(ts));
                     const isValidDate = !isNaN(dateObject.getTime());
@@ -775,7 +761,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                         key={ts || index}
                         className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-purple-400 hover:shadow-md transition-all group relative"
                       >
-                        {/* 🆕 刪除按鈕（右上角絕對定位） */}
                         <button
                           type="button"
                           onClick={() => {
@@ -789,22 +774,18 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           🗑️
                         </button>
 
-                        {/* 版本時間 */}
                         <p className="text-xs font-semibold text-purple-600 mb-1">
                           {displayTime}
                         </p>
 
-                        {/* 當時的項目名稱 */}
                         <p className="text-sm font-bold text-slate-800 mb-3">
                           {version.name || selectedItem.name} - 歷史存檔點
                         </p>
 
-                        {/* 還原按鈕 */}
                         <button
                           type="button"
                           onClick={() => {
                             if (confirm(`確定要將「${selectedItem.name}」還原到此歷史版本嗎？\n目前未儲存的變更將會遺失。`)) {
-                              // 💡 確保傳進去的是絕對安全的數字型態時間戳記
                               handleRestoreVersion(Number(ts));
                             }
                           }}
@@ -827,7 +808,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           </div>
         </aside>
       )}
-
-          </div>
-        );
-      }
+    </div>
+  );
+}
