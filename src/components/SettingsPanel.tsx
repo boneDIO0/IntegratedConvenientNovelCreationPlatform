@@ -277,25 +277,24 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     setViewMode('graph'); 
   };
 
-    const handleNodeSelectFromGraph = (nodeId: string) => {
+  const handleNodeSelectFromGraph = (nodeId: string) => {
     if (nodeId === "project-calendar-config") return;
     for (const group of settingsData) {
-    const found = group.items.find(item => item.id === nodeId);
-    if (found) {
-      // 🌟【終極修正】：點擊節點選取時，也必須強迫將 content 內的動態屬性平鋪出來！
-      const dbContent = found.content && typeof found.content === 'object' ? found.content : {};
+      const found = group.items.find(item => item.id === nodeId);
+      if (found) {
+      
+        const alignedItem: SettingItem = {
+          ...found,
+          name: found.name || "未命名項目",
+          category: found.category || "custom",
+          description: found.description || ""
+        };
 
-      const alignedItem = {
-        ...found,
-        ...dbContent, // 🌟 把躲在 content 裡的自訂屬性強行拉到第一層！
-        name: found.title || found.name
-      };
-
-      setSelectedItem(alignedItem); // 餵給表單認識的乾淨資料
-      setViewMode('form');
-      setHasChanges(false);
-      break;
-        }
+        setSelectedItem(alignedItem); // 餵給表單認識的乾淨資料
+        setViewMode('form');
+        setHasChanges(false);
+        break;
+      }
     }
   };
 
