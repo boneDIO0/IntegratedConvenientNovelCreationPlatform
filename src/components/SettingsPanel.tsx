@@ -654,7 +654,8 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                     <>
                       {selectedItem.category === 'character' && (
                         <CharacterForm
-                          key={`${selectedItem.id}-${(selectedItem as any).content?.versions?.length || 0}`}
+                          // 🎯 轉生鎖定：把 category 與版本長度綁在一起，雙重保險，絕不回彈！
+                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           onSave={handleUpdateItem}
                           allSettings={globalAllSettings}
@@ -665,9 +666,10 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
                       {selectedItem.category === 'faction' && (
                         <FactionForm
-                          key={`${selectedItem.id}-${(selectedItem as any).content?.versions?.length || 0}`}
+                          // 🎯 轉生鎖定
+                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
-                          allSettings={globalAllSettings} // 🎯 補上這行核心接線
+                          allSettings={globalAllSettings} 
                           onSave={handleUpdateItem}
                           onDirty={() => setHasChanges(true)}
                         />
@@ -675,17 +677,19 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
                       {selectedItem.category === 'item' && (
                         <ItemForm
-                          key={`${selectedItem.id}-${(selectedItem as any).content?.versions?.length || 0}`}
+                          // 🎯 轉生鎖定
+                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
-                          allSettings={globalAllSettings} // 🎯 注入這行
+                          allSettings={globalAllSettings} 
                           onSave={handleUpdateItem}
-                          onDirty={() => setHasChanges(true)} // 同步綁定未儲存退出提示
+                          onDirty={() => setHasChanges(true)}
                         />
                       )}
 
                       {selectedItem.category === 'event' && (
                         <EventForm
-                          key={`${selectedItem.id}-${(selectedItem as any).content?.versions?.length || 0}`}
+                          // 🎯 轉生鎖定
+                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           calendarConfig={calendarConfig}
                           allSettings={globalAllSettings}
@@ -694,18 +698,24 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                         />
                       )}
 
-                      {/* 🌟 修正點 2：在渲染路由中，補上當 category 為 location 時的專屬 Form 渲染分支 */}
                       {selectedItem.category === 'location' && (
                         <LocationForm
-                          key={`${selectedItem.id}-${(selectedItem as any).content?.versions?.length || 0}`}
+                          // 🎯 轉生鎖定
+                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
                           item={selectedItem}
                           allSettings={globalAllSettings}
                           onSave={handleUpdateItem}
-                          onDirty={() => setHasChanges(true)} // 🎯 改為傳入你的連動變更狀態，達成防退出的未儲存提示！
+                          onDirty={() => setHasChanges(true)}
                         />
                       )}
 
-                      {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event', 'location'].includes(selectedItem.category)) && <DynamicForm key={`${selectedItem.id}-${(selectedItem as any).content?.versions?.length || 0}`} item={selectedItem} onSave={handleUpdateItem} />}
+                      {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event', 'location'].includes(selectedItem.category)) && (
+                        <DynamicForm 
+                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`} 
+                          item={selectedItem} 
+                          onSave={handleUpdateItem} 
+                        />
+                      )}
                     </>
                   )}
                 </fieldset>
