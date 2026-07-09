@@ -448,33 +448,51 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
             <select
               value={selectedItem.category}
               disabled={!isEditable}
-              onChange={(e) => {
+              onChange={async (e) => {
                 if (!selectedItem) return;
                 const newType = e.target.value;
   
                 // 1. 建立完全體更新物件
                 const updated = { ...selectedItem, category: newType };
   
-                // 2. ⚡ 核心修復：在前端「搶先」把這個 item 從舊的目錄移到新目錄的 group 裡！
-                // 這樣重新 fetch 撈回來時，它就不會因為物理目錄防禦而彈回舊表單
+                // 2. 先把當前選取的項目完全鎖定為新分類，阻斷後續非同步蓋回
+                setSelectedItem(updated);
+
+                // 3. 同步修正它在前端 settingsData 大陣列中的物理歸屬
                 setSettingsData(prevData => {
                   return prevData.map(group => {
-                    // 從所有舊群組中，把這個被修改的 id 濾掉
                     const filteredItems = group.items.filter(i => i.id !== selectedItem.id);
-      
-                    // 如果這個群組正好是創作者「新選的」目標分類目錄，把更新後的項目塞進去
                     if (group.category.toLowerCase().includes(newType) || (newType === 'location' && group.category === '地點')) {
                       return {
                         ...group,
                         items: [...group.items.filter(i => i.id !== selectedItem.id), updated]
                       };
                     }
-      
                     return { ...group, items: filteredItems };
                   });
                 });
-                setSelectedItem(updated);
-                handleUpdateItem(updated);
+
+                // 4. 🌟【核心修復】：發送更新給後端，並將後續的 fetch 稍微延遲 100~200ms
+                // 這樣能確保雲端 Neon PostgreSQL 已經完全寫入完畢，撈回來的最新全域資料絕對不會是舊的！
+                try {
+                  // 這裡不要用 handleUpdateItem，我們直接在這裡自主 handle，確保時序安全
+                  await fetch(`/api/settings/${selectedItem.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updated),
+                  });
+
+                  // 🎯 延遲 150 毫秒再進行全域同步，給雲端資料庫一點呼吸、實體化寫入的時間
+                  setTimeout(async () => {
+                    await fetchSettings(); 
+                    // 🎯 重新 fetch 完之後，再次死死定錨當前畫面，逼迫 React 當場刷新表單組件！
+                    setSelectedItem(updated);
+                  }, 150);
+
+                } catch (error) {
+                  console.error("轉生表單失敗:", error);
+                }
+  
                 setHasChanges(true);
               }}
               className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
