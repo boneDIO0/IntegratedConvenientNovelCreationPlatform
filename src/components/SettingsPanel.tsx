@@ -449,8 +449,30 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
               value={selectedItem.category}
               disabled={!isEditable}
               onChange={(e) => {
+                if (!selectedItem) return;
                 const newType = e.target.value;
+  
+                // 1. 建立完全體更新物件
                 const updated = { ...selectedItem, category: newType };
+  
+                // 2. ⚡ 核心修復：在前端「搶先」把這個 item 從舊的目錄移到新目錄的 group 裡！
+                // 這樣重新 fetch 撈回來時，它就不會因為物理目錄防禦而彈回舊表單
+                setSettingsData(prevData => {
+                  return prevData.map(group => {
+                    // 從所有舊群組中，把這個被修改的 id 濾掉
+                    const filteredItems = group.items.filter(i => i.id !== selectedItem.id);
+      
+                    // 如果這個群組正好是創作者「新選的」目標分類目錄，把更新後的項目塞進去
+                    if (group.category.toLowerCase().includes(newType) || (newType === 'location' && group.category === '地點')) {
+                      return {
+                        ...group,
+                        items: [...group.items.filter(i => i.id !== selectedItem.id), updated]
+                      };
+                    }
+      
+                    return { ...group, items: filteredItems };
+                  });
+                });
                 setSelectedItem(updated);
                 handleUpdateItem(updated);
                 setHasChanges(true);
