@@ -189,7 +189,19 @@ export default function SettingsSidebar({
               {group.items.map(item => (
                 <li key={item.id} className="flex items-center justify-between group/item">
                   <button
-                    onClick={() => onSelect(item)}
+                    onClick={() => {
+                      // 🔍 提取後端可能包裹在 content 內部的歷史屬性
+                      const dbContent = (item as any).content && typeof (item as any).content === 'object' 
+                        ? (item as any).content 
+                        : {};
+                        
+                      onSelect({
+                        ...item,
+                        ...dbContent, // 強制釋放自訂欄位
+                        category: item.category || "custom", // 🎯 鎖死它目前的真實轉生型別！
+                        name: item.name || "未命名項目"
+                      });
+                    }}
                     className={`flex-1 text-left px-3 py-2 rounded-md text-sm transition-colors truncate mr-1 ${
                       selectedId === item.id 
                         ? 'bg-slate-900 text-white font-medium shadow-sm' 
