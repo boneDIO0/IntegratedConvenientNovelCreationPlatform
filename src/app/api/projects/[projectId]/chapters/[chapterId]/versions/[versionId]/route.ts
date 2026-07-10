@@ -1,46 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/config';
+import { verifyProjectAccess } from '@/lib/auth-utils';
+import { PROJECT_ROLES } from '@/lib/roles';
 import prisma from '@/lib/prisma';
 
-// 定義 Next.js 動態路由的參數型態，明確區分三個層級
+// 定義 Next.js 動態路由的參數型態
 interface RouteParams {
-params: Promise<{
-projectId: string;
-chapterId: string;
-versionId: string;
-}>;
-}
-
-/**
-* 私有輔助函式：用於驗證使用者身份與作品所有權
-* 確保安全防護：防範 A 使用者透過惡意竄改網址 UUID，去還原或刪除 B 使用者的作品
-*/
-async function validateOwnership(projectId: string) {
-  const session = await getServerSession(authOptions);
-  if (!session || !session.user?.email) {
-    return { error: '請先登入系統', status: 401 };
-  }
-
-  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-  if (!user) {
-    return { error: '找不到該使用者', status: 404 };
-  }
-
-  // 檢查該 Project 是否存在，且屬於目前登入的使用者
-  const project = await prisma.project.findFirst({
-    where: {
-      id: projectId,
-      ownerId: user.id,
-      deletedAt: null // 排除已被軟刪除的作品
-    }
-  });
-
-  if (!project) {
-    return { error: '作品不存在或您無權限操作', status: 403 };
-  }
-
-  return { user, project };
+  params: Promise<{
+    projectId: string;
+    chapterId: string;
+    versionId: string;
+  }>;
 }
 
 /**
@@ -52,9 +23,12 @@ export async function POST(request: Request, { params }: RouteParams) {
     const { projectId, chapterId, versionId } = await params;
 
     // 進行安全與權限檢查
-    const auth = await validateOwnership(projectId);
-    if ('error' in auth) {
-      return NextResponse.json(auth.error, { status: auth.status });
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     // 1. 在資料庫中精準撈出該筆 Checkpoint 的歷史快照
@@ -104,9 +78,12 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     const { projectId, chapterId, versionId } = await params;
 
     // 進行安全與權限檢查
-    const auth = await validateOwnership(projectId);
-    if ('error' in auth) {
-      return NextResponse.json(auth.error, { status: auth.status });
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     // 1. 檢查該快照是否存在於此章節
