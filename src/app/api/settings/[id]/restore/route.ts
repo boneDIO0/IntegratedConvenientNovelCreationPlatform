@@ -1,15 +1,11 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { verifyProjectAccess } from '@/lib/auth-utils';
+import { PROJECT_ROLES } from '@/lib/roles';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const body = await request.json();
-
-    const incomingTimestamp = body.timestamp;
-    if (!incomingTimestamp) {
-      return NextResponse.json({ error: '缺少時間戳記參數' }, { status: 400 });
-    }
 
     const entity = await prisma.settingEntity.findUnique({
       where: { id }
@@ -18,6 +14,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!entity) {
       return NextResponse.json({ error: '找不到該設定項目' }, { status: 404 });
     }
+
+    // 僅限擁有者與編輯者可以還原設定
+    const auth = await verifyProjectAccess(entity.projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const body = await request.json();
+
+    const incomingTimestamp = body.timestamp;
+    if (!incomingTimestamp) {
+      return NextResponse.json({ error: '缺少時間戳記參數' }, { status: 400 });
+    }    
 
     const content = (entity.content as any) || {};
     const versions = Array.isArray(content.versions) ? content.versions : [];
