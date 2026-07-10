@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { verifyProjectAccess } from '@/lib/auth-utils';
+import { PROJECT_ROLES } from '@/lib/roles';
 
 interface VersionParams {
 params: Promise<{ id: string; timestamp: string }>;
@@ -16,6 +18,15 @@ export async function DELETE(request: Request, { params }: VersionParams) {
 
     if (!entity) {
       return NextResponse.json({ error: '找不到該設定項目' }, { status: 404 });
+    }
+
+    // 僅限擁有者與編輯者可以刪除歷史快照
+    const auth = await verifyProjectAccess(entity.projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const content = (entity.content as any) || {};
@@ -41,7 +52,7 @@ export async function DELETE(request: Request, { params }: VersionParams) {
       }
     });
 
-    return new NextResponse(null, { status: 204 });
+    return NextResponse.json({ success: true, message: '歷史紀錄已成功抹除' }, { status: 200 });
   } catch (error) {
     console.error(`刪除版本錯誤:`, error);
     return NextResponse.json({ error: '無法刪除該歷史版本' }, { status: 500 });

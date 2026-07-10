@@ -3,6 +3,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { generateEmbedding, buildEmbeddingText } from '@/lib/embedding';
+import { verifyProjectAccess } from '@/lib/auth-utils';
+import { PROJECT_ROLES } from '@/lib/roles';
 
 interface RouteParams {
 params: Promise<{ id: string }>;
@@ -23,6 +25,13 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: '找不到該設定項目' }, { status: 404 });
     }
 
+    const auth = await verifyProjectAccess(settingEntity.projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR,
+      PROJECT_ROLES.VIEWER
+    ]);
+    if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     if (settingEntity.deletedAt) {
       return NextResponse.json({ error: '該設定項目已被軟刪除' }, { status: 410 });
     }
@@ -40,11 +49,27 @@ export async function GET(request: Request, { params }: RouteParams) {
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const body = await request.json();
 
+    // 1. 先撈出目前資料庫的舊資料做歷史備份
+    const oldEntity = await prisma.settingEntity.findUnique({
+      where: { id },
+      select: { projectId: true, content: true, title: true }
+    });
+
+    if (!oldEntity) {
+      return NextResponse.json({ error: '找不到該設定項目' }, { status: 404 });
+    }
+    
+    const auth = await verifyProjectAccess(oldEntity.projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+    const body = await request.json();
     console.log("📥 [時光機後端] 收到前端原始 Body 欄位:", Object.keys(body));
 
-    // 1. 基礎解構
+    // 2. 基礎解構
     const { id: _frontendId, name, category, saveVersion, ...restData } = body;
 
     // 🌟【精準對齊修正】：撈出真正的自訂屬性表單資料
@@ -64,16 +89,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ...cleanFormFields,
       formType: category || (pureFormFields as any).formType || "custom"
     };
-
-    // 2. 先撈出目前資料庫的舊資料做歷史備份
-    const oldEntity = await prisma.settingEntity.findUnique({
-      where: { id },
-      select: { content: true, title: true }
-    });
-
-    if (!oldEntity) {
-      return NextResponse.json({ error: '找不到該設定項目' }, { status: 404 });
-    }
 
     const oldContent = (oldEntity.content as any) || {};
     let currentVersions = Array.isArray(oldContent.versions) ? [...oldContent.versions] : [];
@@ -131,6 +146,24 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
+
+    // 找出這個設定屬於哪本小說
+    const targetEntity = await prisma.settingEntity.findUnique({
+      where: { id },
+      select: { projectId: true }
+    });
+
+    if (!targetEntity) {
+      return NextResponse.json({ error: '找不到該設定項目' }, { status: 404 });
+    }
+
+    // 刪除設定僅限擁有者與編輯者
+    const auth = await verifyProjectAccess(targetEntity.projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+
+    if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
     await prisma.settingEntity.update({
       where: { id },
       data: {

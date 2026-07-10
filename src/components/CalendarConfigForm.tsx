@@ -21,11 +21,12 @@ import { Button } from "@/components/ui/button";
 interface CalendarConfigFormProps {
   projectId: string;
   initialConfig?: CalendarConfig;
+  isEditable: boolean;
   onSaveSuccess: (latestConfig?: CalendarConfig) => void;
   onDirty?: () => void;
 }
 
-export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuccess, onDirty }: CalendarConfigFormProps) {
+export default function CalendarConfigForm({ projectId, initialConfig, isEditable, onSaveSuccess, onDirty }: CalendarConfigFormProps) {
   const [mode, setMode] = useState<'standard' | 'fantasy_only'>('standard');
   const [eras, setEras] = useState<EraDefinition[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -71,6 +72,8 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
   }, [initialConfig]);
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    if (!isEditable) return;
+    
     const { active, over } = event;
     if (over && active.id !== over.id) {
       onDirty?.();
@@ -196,6 +199,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
           <label className={`flex-1 flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer bg-white ${mode === 'standard' ? 'border-emerald-500 ring-2 ring-emerald-50 shadow-sm' : 'border-slate-200 hover:border-slate-300'}`}>
             <input 
               type="radio" 
+              disabled={!isEditable} 
               name="calendarMode" 
               checked={mode === 'standard'} 
               onChange={async () => { 
@@ -214,6 +218,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
           <label className={`flex-1 flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer bg-white ${mode === 'fantasy_only' ? 'border-emerald-500 ring-2 ring-emerald-50 shadow-sm' : 'border-slate-200 hover:border-slate-300'}`}>
             <input 
               type="radio" 
+              disabled={!isEditable} 
               name="calendarMode" 
               checked={mode === 'fantasy_only'} 
               onChange={async () => { 
@@ -238,13 +243,15 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
             {mode === 'fantasy_only' ? "拖曳排定歷史紀元（越上方越古老）" : `歷史斷代切片（共 ${eras.length} 個時期）`}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={handleAddEra}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold rounded-lg transition-colors shadow-sm border border-blue-200"
-        >
-          <Plus size={14} /> 新增歷史時期
-        </button>
+        {isEditable && (
+          <button
+            type="button"
+            onClick={handleAddEra}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold rounded-lg transition-colors shadow-sm border border-blue-200"
+          >
+            <Plus size={14} /> 新增歷史時期
+          </button>
+        )}
       </div>
 
       {mode === 'fantasy_only' ? (
@@ -284,6 +291,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                   <label className="text-xs font-semibold text-slate-600">紀元名稱 / 年號</label>
                   <input
                     type="text"
+                    disabled={!isEditable} 
                     value={era.name}
                     onChange={(e) => handleEraFieldChange(eraIdx, "name", e.target.value)}
                     className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none text-slate-700 bg-white"
@@ -293,6 +301,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                   <label className="text-xs font-semibold text-slate-600">西元起始年</label>
                   <input
                     type="number"
+                    disabled={!isEditable} 
                     value={(era.startYear === -Infinity || era.startYear === null || era.startYear === undefined) ? "" : era.startYear}
                     onChange={(e) => handleEraFieldChange(eraIdx, "startYear", e.target.value ? parseInt(e.target.value, 10) : null)}
                     className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none text-slate-700 bg-white"
@@ -302,6 +311,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                   <label className="text-xs font-semibold text-slate-600">西元結束年</label>
                   <input
                     type="number"
+                    disabled={!isEditable} 
                     value={(era.endYear === null || era.endYear === undefined) ? "" : era.endYear}
                     onChange={(e) => handleEraFieldChange(eraIdx, "endYear", e.target.value ? parseInt(e.target.value, 10) : null)}
                     className="w-full rounded-lg border border-slate-200 p-2 text-xs focus:outline-none text-slate-700 bg-white"
@@ -311,6 +321,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                   <input
                     type="checkbox"
                     id={`retrograde-${era.id || eraIdx}`}
+                    disabled={!isEditable} 
                     checked={!!era.isRetrograde}
                     onChange={(e) => handleEraFieldChange(eraIdx, "isRetrograde", e.target.checked)}
                     className="h-4 w-4 rounded text-blue-600 cursor-pointer"
@@ -335,12 +346,14 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
                       <span className="font-bold text-slate-400 w-6 text-center">#{monthIdx + 1}</span>
                       <input
                         type="text"
+                        disabled={!isEditable} 
                         value={month.name}
                         onChange={(e) => handleMonthChange(eraIdx, monthIdx, "name", e.target.value)}
                         className="flex-1 rounded border border-slate-200 p-1 text-xs text-slate-700 bg-white focus:outline-none"
                       />
                       <input
                         type="number"
+                        disabled={!isEditable} 
                         value={month.days}
                         onChange={(e) => handleMonthChange(eraIdx, monthIdx, "days", parseInt(e.target.value, 10) || 30)}
                         className="w-14 rounded border border-slate-200 p-1 text-xs text-center text-slate-700 bg-white focus:outline-none"
@@ -354,15 +367,17 @@ export default function CalendarConfigForm({ projectId, initialConfig, onSaveSuc
         </div>
       )}
 
-      <div className="flex justify-end pt-4 border-t border-slate-100">
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50"
-        >
-          {isSaving ? "正在儲存變更..." : "💾 儲存多紀元曆法規則"}
-        </button>
-      </div>
+      {isEditable && (
+        <div className="flex justify-end pt-4 border-t border-slate-100">
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50"
+          >
+            {isSaving ? "正在儲存變更..." : "💾 儲存多紀元曆法規則"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

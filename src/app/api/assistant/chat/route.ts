@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { rateLimiter } from '@/lib/rate-limit'; // 導入我們的滑動視窗防護盾
 import { prisma } from '@/lib/prisma'; // 引入 Prisma
 import { generateEmbedding } from '@/lib/embedding'; // 🚀 直接借用你們寫好的強大工具！
+import { verifyProjectAccess } from '@/lib/auth-utils';
+import { PROJECT_ROLES } from '@/lib/roles';
 
 export async function POST(req: Request) {
   // 🛡️ 防禦第一線：限流檢查 (每分鐘限制 10 次) TODO:由於尚未與後端連線，因此先註解掉
@@ -27,6 +29,20 @@ export async function POST(req: Request) {
   try {
     // 🚀 1. 解析前端傳進來的 Payload (包含 projectId 與對話歷史)
     const { projectId, history, modelName } = await req.json();
+
+    if (!projectId) {
+      return NextResponse.json({ error: '缺少 projectId，無法啟動助理' }, { status: 400 });
+    }
+
+    // 這個專案的成員才能呼叫這支 API
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR,
+      PROJECT_ROLES.VIEWER
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
 
     if (!history || !Array.isArray(history)) {
       return NextResponse.json({ error: '無效的對話紀錄格式' }, { status: 400 });

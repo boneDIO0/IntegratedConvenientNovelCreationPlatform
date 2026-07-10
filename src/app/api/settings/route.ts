@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma'; 
 import { SettingCategory, SettingEntity } from '@prisma/client';
+import { verifyProjectAccess } from '@/lib/auth-utils';
+import { PROJECT_ROLES } from '@/lib/roles';
 
 interface EntityWithChapters extends SettingEntity {
   chapters?: Array<{ id: string }>;
@@ -20,6 +22,13 @@ export async function GET(request: NextRequest) {
     if (!projectId) {
       return NextResponse.json({ error: '缺少 projectId' }, { status: 400 });
     }
+
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR,
+      PROJECT_ROLES.VIEWER
+    ]);
+    if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     let categories: CategoryWithEntities[] = [];
 
@@ -93,6 +102,12 @@ export async function POST(request: NextRequest) {
     if (!projectId) {
       return NextResponse.json({ error: '缺少 projectId，無法新增設定' }, { status: 400 });
     }
+
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
     
     if (body.type === 'new_category') {
       const existingCat = await prisma.settingCategory.findFirst({
@@ -161,6 +176,12 @@ export async function PUT(request: NextRequest) {
       const projectId = body.projectId; 
       if (!projectId) return NextResponse.json({ error: '缺少 projectId' }, { status: 400 });
 
+      const auth = await verifyProjectAccess(projectId, [
+        PROJECT_ROLES.OWNER,
+        PROJECT_ROLES.EDITOR
+      ]);
+      if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
       const targetCategory = await prisma.settingCategory.findFirst({
         where: { name: body.oldName, projectId: projectId, deletedAt: null }
       });
@@ -190,6 +211,12 @@ export async function DELETE(request: NextRequest) {
     if (body.action === 'delete_category') {
       const projectId = body.projectId; 
       if (!projectId) return NextResponse.json({ error: '缺少 projectId' }, { status: 400 });
+
+      const auth = await verifyProjectAccess(projectId, [
+        PROJECT_ROLES.OWNER,
+        PROJECT_ROLES.EDITOR
+      ]);
+      if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
       const targetCategory = await prisma.settingCategory.findFirst({
         where: { name: body.categoryName, projectId: projectId, deletedAt: null }
@@ -226,6 +253,23 @@ export async function PATCH(request: NextRequest) {
     if (!chapterId || !entityId) {
       return NextResponse.json({ error: '缺少必要參數' }, { status: 400 });
     }
+
+    // 透過 chapterId 查詢 projectId
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: chapterId },
+      select: { projectId: true }
+    });
+
+    if (!chapter) {
+      return NextResponse.json({ error: '找不到對應的章節' }, { status: 404 });
+    }
+
+    // 以查詢到的 projectId 進行權限認證
+    const auth = await verifyProjectAccess(chapter.projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const targetEntity = await prisma.settingEntity.findFirst({
       where: { id: entityId, deletedAt: null }
