@@ -1,9 +1,9 @@
-// src/app/novel_list/[novelId]/settings/SettingsContainer.tsx
 "use client";
 
 import { useState } from "react";
 import { CalendarConfig } from "@/types";
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
+import { useEditorUI } from "@/contexts/EditorUIContext"; // 🎯 修正 1：引入你們專案的權限 Context
 // import EventForm from "@/components/EventForm"; 
 // import TimelineView from "@/components/TimelineView"; 
 
@@ -13,6 +13,9 @@ interface ContainerProps {
 }
 
 export default function SettingsContainer({ projectId, initialConfig }: ContainerProps) {
+  // 🎯 修正 2：從小說編輯器的上下文大腦中，精準拉出目前的 isEditable 唯讀/編輯權限狀態
+  const { isEditable } = useEditorUI();
+
   // 🏆 核心：在父層維護單一真理源（Single Source of Truth）
   // 當左側曆法被拖曳改變時，更新此狀態會同步迫使右側的時間軸視圖重新渲染 (Re-render)
   const [calendarConfig, setCalendarConfig] = useState<CalendarConfig>(initialConfig);
@@ -24,11 +27,12 @@ export default function SettingsContainer({ projectId, initialConfig }: Containe
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h2 className="text-xl font-semibold mb-4 text-slate-800">🗓️ 雙軌制曆法配置</h2>
           
-          {/* 🌟 核心修正：完全咬合 CalendarConfigForm 的真實 Props 規格，徹底消滅 TS2322 */}
+          {/* 🌟 成功串接：傳入必填的 isEditable 屬性，徹底消滅 TS2741 編譯錯誤 */}
           <CalendarConfigForm 
             projectId={projectId}
-            initialConfig={calendarConfig} // 💡 修正 1：改用正確的 initialConfig 屬性
-            onSaveSuccess={async () => {   // 💡 修正 2：改用儲存成功的回呼函式
+            initialConfig={calendarConfig} 
+            isEditable={isEditable} // 🎯 修正 3：死死焊上這個必填 Prop，大綠燈通關！
+            onSaveSuccess={async () => {   
               // 當寫手點擊大儲存鈕、切換運行模式、或者是放開滑鼠完成紀元拖曳排序時，
               // 後端 PATCH/PUT API 會執行完畢，然後進來這個區塊。
               try {
