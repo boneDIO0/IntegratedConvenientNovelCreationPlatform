@@ -6,6 +6,7 @@ import { History } from "lucide-react" // 引入漂亮的圖示
 import * as React from "react"
 import { ChevronDown, BookOpenCheck } from "lucide-react"
 import { signIn, signOut, useSession } from "next-auth/react"
+import Link from "next/link" // 🌟 引入 Next.js 的 Link 元件
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -60,20 +61,48 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-60 w-full border-b border-border/70 bg-white/95 shadow-sm shadow-slate-200/40 backdrop-blur">
-      {/* 2. 移除原先的 mx-auto 和 max-w-7xl，加入 w-full 讓內容往左右兩側靠 */}
       <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         
-        {/* 左側區塊：Logo + 標題 + 返回按鈕 */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-slate-50 text-slate-900 shadow-sm">
-            <BookOpenCheck className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-base font-semibold text-slate-950">Writer's Haven</p>
+        {/* 左側區塊：Logo + 宇宙切換 + 返回按鈕 */}
+        <div className="flex items-center gap-4 md:gap-6">
+          {/* Logo (現在可以點擊回首頁/大廳了) */}
+          <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-slate-50 text-slate-900 shadow-sm">
+              <BookOpenCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-base font-semibold text-slate-950">Writer's Haven</p>
+            </div>
+          </Link>
+          
+          {/* 🌟 宇宙切換樞紐 (探索大廳 vs 創作後台) */}
+          <div className="hidden md:flex items-center gap-5 border-l border-slate-200 pl-6 h-8">
+            <Link 
+              href="/explore" 
+              className={cn(
+                "text-sm font-medium transition-colors hover:text-slate-900",
+                pathname?.startsWith("/explore") 
+                  ? "text-blue-600 border-b-2 border-blue-600 pb-1" 
+                  : "text-slate-500"
+              )}
+            >
+              探索大廳
+            </Link>
+            <Link 
+              href="/novel_list" 
+              className={cn(
+                "text-sm font-medium transition-colors hover:text-slate-900",
+                pathname?.startsWith("/novel_list") 
+                  ? "text-blue-600 border-b-2 border-blue-600 pb-1" // 📍 這裡！把原本的 purple 統一換成 blue
+                  : "text-slate-500"
+              )}
+            >
+              創作後台
+            </Link>
           </div>
           
-          <div className="ml-6 flex items-center">
-            {/* 編輯器頁面的返回按鈕 */}
+          {/* 麵包屑返回按鈕 */}
+          <div className="ml-2 flex items-center">
             {isEditorPage && (
               <button 
                 onClick={() => router.back()}
@@ -82,7 +111,6 @@ export default function Navbar() {
                 ← 返回章節列表
               </button>
             )}
-            {/* 章節列表頁面的返回按鈕 */}
             {isChapterListPage && (
               <button 
                 onClick={() => router.back()}
@@ -94,7 +122,7 @@ export default function Navbar() {
           </div>   
         </div>
 
-        {/* 右側區塊：使用者選單與工具列 */}
+        {/* 右側區塊：使用者選單與工具列 (維持原樣) */}
         <div className="flex items-center gap-3">
           {status !== "authenticated" ? (
             pathname !== '/login' && (
@@ -119,14 +147,12 @@ export default function Navbar() {
               )}
               {isEditorPage && (
                   <div className="flex items-center gap-2 mr-4 border-r pr-4">
-                    {/* 修改後的歷史紀錄按鈕 */}
                     <button
                       onClick={() => {
                         if (activeOverlay === 'version') {
                           setActiveOverlay('none')
                         } else {
                           setActiveOverlay('version')
-                          // 點擊打開的瞬間，立刻命令去後端 Prisma 撈取最新歷史清單
                           fetchVersions(projectId, chapterId)
                         }
                       }}

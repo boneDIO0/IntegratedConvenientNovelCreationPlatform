@@ -67,6 +67,7 @@ export async function POST(request: Request) {
     if (coverFile) {
       const blob = await put(coverFile.name, coverFile, {
         access: 'public',
+        addRandomSuffix: true,
       })
       coverUrl = blob.url
     }

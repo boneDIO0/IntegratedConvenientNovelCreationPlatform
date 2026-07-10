@@ -9,7 +9,8 @@ import { Providers } from "@/components/providers/Provider";
 import { EditorUIProvider } from '@/contexts/EditorUIContext';
 import { OverlayProvider } from "@/contexts/OverlayContext";
 
-import Navbar from "@/components/Navbar";
+// 📍 這裡！把原本 import Navbar 換成我們的 ConditionalNavbar
+import ConditionalNavbar from "@/components/ConditionalNavbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +22,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 🌟 更新成你們專案的名稱
 export const metadata: Metadata = {
   title: "Writer's Haven | 整合式小說創作平台",
   description: "A distraction-free writing environment",
@@ -41,7 +41,8 @@ export default function RootLayout({
         <Providers>
           <EditorUIProvider>
             <OverlayProvider>    
-              <Navbar />
+              {/* 📍 這裡！用 ConditionalNavbar 替換原本的 Navbar */}
+              <ConditionalNavbar />
               <main className="flex-grow">
                 {children}
               </main>
@@ -50,6 +51,5 @@ export default function RootLayout({
         </Providers>
       </body>      
     </html>
-   
   );
 }
