@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma"; // 🌟 修正點 1：修正為正確的 default import，防止編譯器破防
 import { handleApiError } from "@/lib/ErrorHandler";
 import { NextResponse } from "next/server";
+import { verifyProjectAccess } from "@/lib/auth-utils";
+import { PROJECT_ROLES } from "@/lib/roles";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/config"; // 🌟 請確保此路徑與你專案的 NextAuth 配置完全對齊
 
@@ -18,6 +20,16 @@ interface RouteParams {
 export async function GET(request: Request, { params }: RouteParams) {
   try {
     const { projectId } = await params;
+
+    // 僅專案內部的成員可以讀取曆法配置
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR,
+      PROJECT_ROLES.VIEWER
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ status: "error", message: auth.error }, { status: auth.status });
+    }
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
