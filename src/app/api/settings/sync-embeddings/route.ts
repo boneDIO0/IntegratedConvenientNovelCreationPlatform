@@ -2,6 +2,11 @@
 import { prisma } from '@/lib/prisma';
 import { generateEmbedding,buildEmbeddingText } from '@/lib/embedding';
 export async function POST(request: Request) {
+  const data = await request.json(); 
+  const{password}=data;
+  if(password!==process.env.PASSWORD){
+      return NextResponse.json({ error: '權限不足，請求遭到退回' }, { status: 400 });
+  }
   try {
     console.log("🎬 [Maintenance] 開始掃描資料庫中缺失向量的設定項目...");
 
