@@ -3,8 +3,6 @@ import { handleApiError } from "@/lib/ErrorHandler";
 import { NextResponse } from "next/server";
 import { verifyProjectAccess } from "@/lib/auth-utils";
 import { PROJECT_ROLES } from "@/lib/roles";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/config"; // 🌟 請確保此路徑與你專案的 NextAuth 配置完全對齊
 
 // 定義 Next.js 動態路由的 Params 型別
 interface RouteParams {
@@ -65,13 +63,17 @@ export async function GET(request: Request, { params }: RouteParams) {
  */
 export async function PUT(request: Request, { params }: RouteParams) {
   try {
-    // 🌟 修正點 2：加入專題口試金盾防護（Session 身份與擁有者權限校驗）
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json({ status: "error", message: "🔒 未經授權，請先登入系統" }, { status: 401 });
+    const { projectId } = await params;
+    
+    // 暫定擁有者和編輯者能更新特定專案的自定義曆法設定
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ status: "error", message: auth.error }, { status: auth.status });
     }
 
-    const { projectId } = await params;
     const body = await request.json();
 
     // 基礎後端防呆校驗
@@ -92,19 +94,14 @@ export async function PUT(request: Request, { params }: RouteParams) {
       return NextResponse.json({ status: "error", message: "⚠️ 儲存失敗：曆法系統至少需包含一個紀元時期" }, { status: 400 });
     }
 
-    // 查詢原專案確認 Owner
+    // 查詢原專案
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { ownerId: true, worldSetting: true }
+      select: { worldSetting: true }
     });
 
     if (!project) {
       return NextResponse.json({ status: "error", message: "❌ 找不到對應的專案項目" }, { status: 404 });
-    }
-
-    // 垂直越權防護 (BOLA)
-    if (project.ownerId !== (session.user as any).id) {
-      return NextResponse.json({ status: "error", message: "❌ 權限不足：您並非此專案的擁有者" }, { status: 403 });
     }
 
     // 🌟 修正點 3：雙軌制資料嚴密清洗與熔斷 (Data Sanitization)

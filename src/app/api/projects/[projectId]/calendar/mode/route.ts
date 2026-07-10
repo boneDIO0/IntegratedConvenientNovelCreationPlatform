@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/config"; // 🌟 請確認這行路徑對齊你專案的 NextAuth 核心配置
+import { verifyProjectAccess } from "@/lib/auth-utils";
+import { PROJECT_ROLES } from "@/lib/roles";
 
 interface RouteParams {
   params: Promise<{ projectId: string }>;
@@ -13,13 +13,17 @@ interface RouteParams {
  */
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   try {
-    // 1. 🏆 專題評審最愛：口試安全性圍欄 (Session 權限防護)
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json({ error: "🔒 未經授權，請先登入系統" }, { status: 401 });
+    const { projectId } = await params;
+
+    // 僅擁有者和編輯者可以進行曆法模式切換與時期排序
+    const auth = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ]);
+    if (!auth.isAuthorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { projectId } = await params;
     const body = await req.json();
     const { mode, sortedEraIds } = body;
 
@@ -31,24 +35,18 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     // 3. 撈出該專案目前儲存在資料庫的舊曆法設定 (避免覆蓋到使用者之前辛辛苦苦打的月份名字)
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { worldSetting: true, ownerId: true }
+      select: { worldSetting: true }
     });
 
     if (!project) {
       return NextResponse.json({ error: "❌ 找不到對應的專案項目" }, { status: 404 });
     }
 
-    // 4. 安全性校驗：確保修改曆法的人真的是該專案的主人 (Owner)
-    // 註：這行能完全抵禦評審口試問「如果別人拿 Postman 惡意串改你的 API 怎麼辦？」
-    if (project.ownerId !== (session.user as any).id) {
-      return NextResponse.json({ error: "❌ 權限不足：您並非此專案的擁有者" }, { status: 403 });
-    }
-
-    // 5. 解析現有的 World Setting 結構 (Prisma JsonB 解析安全熔斷)
+    // 4. 解析現有的 World Setting 結構 (Prisma JsonB 解析安全熔斷)
     const currentConfig = (project.worldSetting as any) || { mode: "standard", eras: [] };
     let currentEras = Array.isArray(currentConfig.eras) ? currentConfig.eras : [];
 
-    // 🌟 6. 核心精隨：如果前端有傳入拖曳後的「新 id 順序對齊陣列 (sortedEraIds)」
+    // 🌟 5. 核心精隨：如果前端有傳入拖曳後的「新 id 順序對齊陣列 (sortedEraIds)」
     if (sortedEraIds && Array.isArray(sortedEraIds)) {
       // 依據前端排好的 ID 齒輪，原地重新洗牌資料庫中的時期陣列順序
       currentEras = sortedEraIds
@@ -56,14 +54,14 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         .filter(Boolean); // 排除無效的空元素
     }
 
-    // 7. 組裝全新的輕量 Payload
+    // 6. 組裝全新的輕量 Payload
     const updatedConfig = {
       ...currentConfig,
       mode: mode,
       eras: currentEras
     };
 
-    // 8. 實時推送到雲端 Neon Postgres
+    // 7. 實時推送到雲端 Neon Postgres
     const updatedProject = await prisma.project.update({
       where: { id: projectId },
       data: {

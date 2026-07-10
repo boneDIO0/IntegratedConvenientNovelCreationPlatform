@@ -609,6 +609,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                                 <input 
                                   type="checkbox"
                                   checked={isAssigned}
+                                  disabled={!isEditable}
                                   onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
                                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
@@ -635,6 +636,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                     <CalendarConfigForm
                       projectId={projectId}
                       initialConfig={calendarConfig as any}
+                      isEditable={isEditable}
                       onSaveSuccess={(latestConfigFromBackend) => {
                         if (latestConfigFromBackend) {
                           setCalendarConfig(latestConfigFromBackend as any);
