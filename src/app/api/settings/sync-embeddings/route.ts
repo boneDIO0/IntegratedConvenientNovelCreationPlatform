@@ -2,10 +2,25 @@
 import { prisma } from '@/lib/prisma';
 import { generateEmbedding,buildEmbeddingText } from '@/lib/embedding';
 export async function POST(request: Request) {
-  const data = await request.json(); 
-  const{password}=data;
-  if(password!==process.env.PASSWORD){
-      return NextResponse.json({ error: '權限不足，請求遭到退回' }, { status: 400 });
+  let isValid = false;
+  let data: any = null;
+
+  // 1. 第一個 try...catch：純粹搞定密碼，絕不跟後面混在一起
+  try {
+    const cloneRequest = request.clone(); 
+    data = await cloneRequest.json();
+    
+    if (data && data.password === process.env.PASSWORD) {
+      isValid = true; // 密碼對了，改標籤，不急著 return
+    }
+  } catch (error) {
+    console.error("【密碼驗證區】解析 JSON 失敗:", error);
+    // 失敗了也沒關係，isValid 維持 false，會被下面擋住
+  }
+
+  // 密碼檢查哨：不對就直接送他離開
+  if (!isValid) {
+    return Response.json({ error: '權限不足，請求遭到退回' }, { status: 403 });
   }
   try {
     console.log("🎬 [Maintenance] 開始掃描資料庫中缺失向量的設定項目...");
