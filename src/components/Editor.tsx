@@ -6,32 +6,33 @@ import Underline from '@tiptap/extension-underline'
 import { useState, useCallback, useEffect } from 'react'
 import { useEditorUI } from '@/contexts/EditorUIContext'
 import AssistantChat from './AssistantChat'
+import 'katex/dist/katex.min.css'
+import { MathExtension } from '@aarkue/tiptap-math-extension'
 
+// 📍 整合 Props：同時接收 isEditable (唯讀控制) 與 initialStatus (狀態控制)
 interface EditorProps {
   novelId: string;
   chapterId: string;
   initialTitle: string;
   initialContent: any;
-  isEditable: boolean;
+  isEditable?: boolean; 
+  initialStatus?: string; 
 }
 
-export default function Editor({ novelId, chapterId, initialTitle, initialContent, isEditable }: EditorProps) {
-  // 核心修正：儲存按鈕狀態管理
+export default function Editor({ novelId, chapterId, initialTitle, initialContent, isEditable = true, initialStatus = 'DRAFT' }: EditorProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [, setTick] = useState(0)
   const forceUpdate = useCallback(() => setTick(tick => tick + 1), [])
-  
-  // 存檔狀態顯示
   const [saveStatus, setSaveStatus] = useState('已儲存')
+  const [chapterStatus, setChapterStatus] = useState(initialStatus) // 📍 管理當前的發布狀態
 
   const editor = useEditor({
-    extensions: [StarterKit, Underline],
+    extensions: [StarterKit, Underline, MathExtension.configure({ evaluation: false })],
     immediatelyRender: false,
     editable: isEditable,
     content: initialContent || '<p>開始撰寫你的偉大故事...</p>',
     editorProps: {
       attributes: {
-        // 🌟 優化：寬度撐滿，聚焦時不產生原生框線
         class: 'prose max-w-none focus:outline-none min-h-[800px] text-[20px] leading-relaxed',
       },
     },
@@ -45,25 +46,27 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
   const { latestRestoredContent, setLatestRestoredContent, fetchVersions } = useEditorUI()
 
-  // 監聽時光機還原訊號
   useEffect(() => {
     if (editor && latestRestoredContent) {
       editor.commands.setContent(latestRestoredContent)
       setLatestRestoredContent(null)
-      setSaveStatus('● 已儲存') // 還原成功後自動歸位
+      setSaveStatus('● 已儲存') 
     }
   }, [latestRestoredContent, editor, setLatestRestoredContent])
 
-  // 🌟 核心修正：完整接通 isSaving 狀態鏈，並對齊變淡特效
-  const handleSave = async () => {
+  // 📍 接收 newStatus 並傳給後端
+  const handleSave = useCallback(async (newStatus?: string) => {
     if (!editor || isSaving) return
     
-    setIsSaving(true) // 🎬 進入處理中
+    setIsSaving(true) 
     setSaveStatus('儲存中...')
 
     const titleInput = document.getElementById('doc-title') as HTMLInputElement
     const currentTitle = titleInput ? titleInput.value : initialTitle
     const currentContent = editor.getJSON()
+    
+    // 如果沒有傳入新狀態，就維持原本的狀態
+    const targetStatus = typeof newStatus === 'string' ? newStatus : chapterStatus
 
     try {
       const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
@@ -73,22 +76,36 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           title: currentTitle,
           content: currentContent,
           saveVersion: true,
-          commitMsg: `${currentTitle || '未命名章節'} - 手動存檔點`
+          commitMsg: `${currentTitle || '未命名章節'} - 手動存檔點`,
+          status: targetStatus // 📍 把狀態一併送給後端
         })
       })
 
       if (!res.ok) throw new Error("儲存失敗")
 
       setSaveStatus('● 已儲存')
+      setChapterStatus(targetStatus) // 儲存成功後，更新本地的按鈕狀態
       await fetchVersions(novelId, chapterId)
 
     } catch (error) {
       console.error(error)
       setSaveStatus('❌ 儲存失敗')
     } finally {
-      setIsSaving(false) // 🎬 解除鎖定
+      setIsSaving(false) 
     }
-  };
+  }, [editor, isSaving, novelId, chapterId, initialTitle, fetchVersions, chapterStatus])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault(); 
+        handleSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave]);
 
   if (!editor) return null
 
@@ -143,24 +160,39 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             </div>
           </div>
 
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-3">
+            {/* 📍 整合：只有在 isEditable (作者模式) 時，才顯示發布與儲存按鈕 */}
             {isEditable && (
-              <button 
-                onClick={handleSave}
-                disabled={editor.isEmpty || isSaving}
-                className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
-              >
-                {isSaving ? '處理中...' : '儲存章節'}
-              </button>
+              <>
+                <button 
+                  onClick={() => handleSave(chapterStatus === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED')}
+                  disabled={editor.isEmpty || isSaving}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed border ${
+                    chapterStatus === 'PUBLISHED' 
+                      ? 'bg-white text-red-500 border-red-200 hover:bg-red-50' 
+                      : 'bg-emerald-500 text-white border-transparent hover:bg-emerald-600'
+                  }`}
+                >
+                  {isSaving ? '處理中...' : (chapterStatus === 'PUBLISHED' ? '隱藏此章節' : '公開發布')}
+                </button>
+
+                <button 
+                  onClick={() => handleSave()}
+                  disabled={editor.isEmpty || isSaving}
+                  className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  {isSaving ? '處理中...' : '儲存草稿'}
+                </button>
+              </>
             )}
 
-            <div className="w-9 h-9 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold cursor-pointer border-2 border-white shadow-sm text-sm select-none">
+            <div className="w-9 h-9 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold cursor-pointer border-2 border-white shadow-sm text-sm select-none ml-2">
               U
             </div>
           </div>
         </div>
 
-        {/* B / I / U 快捷列 */}
+        {/* 📍 整合：只有在 isEditable 時才顯示樣式編輯快捷列 */}
         {isEditable && (
           <div className="flex gap-1.5 px-3 py-1.5 bg-[#edf2fa] rounded-lg mx-6 mb-3 w-max border border-blue-100/50 shadow-sm">
             <button type="button" onClick={() => handleToggle('bold')} className={getButtonClass('bold')} title="粗體 (Ctrl+B)">B</button>
@@ -174,21 +206,15 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         )}
       </div>
 
-      {/* 🌟 修正點一：承載白紙卡片的局部滾動層 */}
-      {/* 移除原本的 py-10，改由內部卡片的上下邊距 padding 來推開，這樣滾到最底部時才不會被硬生生截斷！ */}
       <div className="flex-1 w-full overflow-y-auto bg-[#f8f9fa] flex flex-col items-center px-4 custom-scrollbar">
-        
-        {/* 🌟 修正點二：白紙卡片本體 */}
-        {/* 加上 my-10 確保卡片上下與視窗邊緣有完美留白 */}
-        {/* 核心巨變：加入 h-auto 與 shrink-0，強制瀏覽器不准壓縮白紙，讓它隨小說字數動態長高！ */}
         <div className="w-full max-w-[816px] h-auto shrink-0 bg-white border border-gray-200 shadow-[0_4px_25px_rgba(0,0,0,0.04)] p-[60px] min-h-[1100px] rounded-2xl my-10 transition-all">
-          
-          {/* Tiptap 核心本文 */}
           <EditorContent editor={editor} />
-          
         </div>
       </div>
-      <AssistantChat projectId={novelId} />
+      
+      {/* 📍 整合：救回了 AI 小幫手組件，並加上 isEditable 判斷，確保讀者看不到 */}
+      {isEditable && <AssistantChat projectId={novelId} />}
+      
     </div>
   )
 }

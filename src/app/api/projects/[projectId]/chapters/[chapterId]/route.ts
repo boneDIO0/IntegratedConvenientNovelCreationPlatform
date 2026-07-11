@@ -6,13 +6,11 @@ import { PROJECT_ROLES } from '@/lib/roles'
 // 📥 讀取：撈出這個章節的標題與內容
 export async function GET(
   request: Request,
-  context: { params: Promise<{ projectId: string; chapterId: string }> }
+  context: { params: Promise<{ projectId: string; chapterId: string }> } // 📍 修正：完全對應資料夾名稱 [projectId]
 ) {
   try {
-    // 🌟 記取教訓：一定要加 await
-    const { projectId, chapterId } = await context.params
+    const { projectId, chapterId } = await context.params // 📍 正確解構出 projectId
 
-    // 🛡️ RBAC 防禦：所有專案成員 (OWNER, EDITOR, VIEWER) 皆可讀取
     const authCheck = await verifyProjectAccess(projectId, [
       PROJECT_ROLES.OWNER,
       PROJECT_ROLES.EDITOR,
@@ -37,7 +35,6 @@ export async function GET(
 }
 
 // ✏️ 儲存：更新章節的標題與編輯器內容，並同時建立 Checkpoint 歷史紀錄
-// 🌟 修正 1：將 PATCH 改為 PUT，與前端 Editor.tsx 保持一致
 export async function PUT(
   request: Request,
   context: { params: Promise<{ projectId: string; chapterId: string }> }
@@ -45,10 +42,9 @@ export async function PUT(
   try {
     const { projectId, chapterId } = await context.params
 
-    // 🛡️ RBAC 邊界防禦：只有 OWNER 和 EDITOR 可以修改章節
     const authCheck = await verifyProjectAccess(projectId, [
-      PROJECT_ROLES.OWNER,
-      PROJECT_ROLES.EDITOR
+      'OWNER',
+      'EDITOR'
     ])
 
     if (!authCheck.isAuthorized || !authCheck.userId) {
@@ -56,33 +52,54 @@ export async function PUT(
     }
 
     const body = await request.json()
+    const { title, content, saveVersion, commitMsg, status } = body
 
-    // 🌟 核心修改：使用 Prisma Transaction，確保「更新」與「備份」同時成功
-    const [updatedChapter, newCheckpoint] = await prisma.$transaction([
-
-      // 動作 1：更新目前的章節內容
+    // 📍 建立一個「資料庫操作陣列」，把要同時執行的任務放進來
+    const dbOperations: any[] = [
+      // 動作 1：更新目前的章節內容與發布狀態
       prisma.chapter.update({
         where: { id: chapterId },
         data: {
-          title: body.title,
-          content: body.content,
+          title: title,
+          content: content,
+          ...(status && { status }),
+          ...(status === 'PUBLISHED' && { publishedAt: new Date() }) 
         }
       }),
 
       // 動作 2：同步生出一份 Checkpoint 快照留底
       prisma.checkpoint.create({
         data: {
-          // 🌟 修正 2：確保欄位型態能正確與 PostgreSQL @db.Uuid 對接
           projectId: projectId,
           authorId: authCheck.userId,
-          targetType: "CHAPTER", // 建議改用大寫，與你版本獲取 API 的 CHAPTER 一致
+          targetType: "CHAPTER",
           targetId: chapterId,
-          content: body.content as any, // 強制斷言符合 Prisma Json 型態
-          commitMsg: body.commitMsg || "編輯器手動存檔" // 🌟 修正 3：改用前端傳進來的自訂備註（例如：第幾章 - 手動存檔點）
+          content: content as any, 
+          commitMsg: commitMsg || "編輯器手動存檔"
         }
       })
+    ];
 
-    ])
+    // 📍 動作 3 (新增)：如果是發布操作，自動將整本小說升級為「連載中」
+    if (status === 'PUBLISHED') {
+      dbOperations.push(
+        prisma.project.updateMany({
+          where: { 
+            id: projectId,
+            status: 'DRAFT' // 只有當小說目前是「未公開 (DRAFT)」時，才幫它自動升級
+          },
+          data: { 
+            status: 'SERIALIZING' 
+          }
+        })
+      );
+    }
+
+    // 將所有任務一起丟給資料庫執行，確保它們「要嘛全成功，要嘛全失敗」
+    const results = await prisma.$transaction(dbOperations)
+    
+    // results[0] 就是我們在陣列裡放的第一個任務 (chapter.update) 的回傳值
+    const updatedChapter = results[0] 
 
     return NextResponse.json(updatedChapter)
   } catch (error) {

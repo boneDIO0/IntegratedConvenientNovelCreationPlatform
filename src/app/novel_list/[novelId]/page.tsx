@@ -8,6 +8,7 @@ interface Chapter {
   id: string;
   title: string;
   updatedAt: string;
+  status?: string; // 📍 補上 status 型別，這樣 TypeScript 才會認得
 }
 
 export default function ChapterListPage() {
@@ -19,6 +20,31 @@ export default function ChapterListPage() {
   const [novelTitle, setNovelTitle] = useState('載入中...')
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // 根據章節狀態回傳對應的 UI 標籤
+  const renderStatusBadge = (status?: string) => {
+    switch (status) {
+      case 'PUBLISHED':
+        return (
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+            已公開
+          </span>
+        );
+      case 'HIDDEN':
+        return (
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200">
+            已隱藏
+          </span>
+        );
+      case 'DRAFT':
+      default:
+        return (
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+            草稿
+          </span>
+        );
+    }
+  };
 
   // 從 API 獲取資料
   const fetchData = async () => {
@@ -40,6 +66,7 @@ export default function ChapterListPage() {
     if (novelId) {
       fetchData()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [novelId])
 
   // 新增章節的邏輯
@@ -47,13 +74,10 @@ export default function ChapterListPage() {
     try {
       const res = await fetch(`/api/projects/${novelId}/chapters`, { method: 'POST' })
       if (!res.ok) throw new Error("新增失敗")
-      const newChapter = await res.json()
       
       // 新增後重新整理列表
       fetchData()
       
-      // 或者直接跳轉到編輯器
-      // router.push(`/novel_list/${novelId}/editor/${newChapter.id}`)
     } catch (error) {
       alert("新增章節失敗")
     }
@@ -110,15 +134,11 @@ export default function ChapterListPage() {
                   <span className="font-medium text-gray-800 group-hover:text-blue-600">
                     {chapter.title}
                   </span>
-                  <button 
-                    className={`text-sm px-3 py-1 rounded transition-colors ${
-                      isEditable 
-                        ? "bg-blue-100 text-blue-600 hover:bg-blue-200" 
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    }`}
-                  >
-                    {isEditable ? "進入編輯 ➜" : "進入查看 ➜"}
-                  </button>
+                  
+                  {/* 📍 這裡！用狀態徽章取代了原本的按鈕 */}
+                  <div>
+                    {renderStatusBadge(chapter.status)}
+                  </div>
                 </div>
               ))}
             </div>
