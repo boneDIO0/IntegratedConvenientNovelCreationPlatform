@@ -2,12 +2,12 @@
 
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { generateEmbedding, buildEmbeddingText } from '@/lib/embedding';
+import { generateEmbedding, buildEmbeddingText } from '@/lib/embedding'; // 🎯 確保引入向量工具
 import { verifyProjectAccess } from '@/lib/auth-utils';
 import { PROJECT_ROLES } from '@/lib/roles';
 
 interface RouteParams {
-params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>;
 }
 
 // ==========================================
@@ -73,7 +73,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id: _frontendId, name, category, saveVersion, ...restData } = body;
 
     // 🌟【精準對齊修正】：撈出真正的自訂屬性表單資料
-    // 如果前端把很臭、真的等欄位包在 body.content 裡，我們就取 body.content；否則取其餘欄位
     let pureFormFields = {};
     if (restData.content && typeof restData.content === 'object') {
       pureFormFields = restData.content;
@@ -97,8 +96,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const shouldSaveVersion = saveVersion === true || saveVersion === 'true' || currentVersions.length === 0;
 
     if (shouldSaveVersion) {
-      // 歷史版本快照，必須百分之百存入「這一次使用者在網頁上修改後的最新內容 (finalContent)」！
-      // 絕不能再去撈資料庫裡的舊 pureOldContentData，否則會永遠定格在上一個版本
       const backupContent = { ...finalContent };
 
       currentVersions.push({
@@ -125,11 +122,40 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
     });
 
-    // 5. AI 向量化完全隔離防死
+    // 🌟 5. AI 向量化完全隔離防死（完美接回先前被誤刪的核心邏輯）
     try {
-      // 你的 buildEmbeddingText 邏輯...
+      // 調用工具函式組裝預計用來向量化的文字主體
+      const embeddingText = buildEmbeddingText(name || oldEntity.title, finalContent);
+      
+      if (embeddingText && embeddingText.length > 5) {
+        console.log(`🚀 [AI 向量中心] 正確認估內容中，長度: ${embeddingText.length}，開始生成 1024 維度向量...`);
+        
+        // 呼叫外部 OpenAI 模型生成 Embedding 陣列
+        const vector = await generateEmbedding(embeddingText);
+        
+        if (vector && vector.length === 1024) {
+          const vectorJsonString = JSON.stringify(vector);
+          
+          // 透過原生 SQL 與 pgvector 直接對 Neon 資料庫進行強制向量覆蓋
+          await prisma.$executeRaw`
+            UPDATE "setting_entities" 
+            SET "embedding" = ${vectorJsonString}::vector
+            WHERE "id" = ${id}::uuid
+          `;
+          console.log(`🎯 [AI 向量中心] 要素 ID ${id} 向量權重更新成功！`);
+        }
+      } else {
+        // 🔒 情況 B：作者把內容清空了，強制把資料庫的 embedding 欄位洗成 NULL
+        // 確保未來 AI 在 RAG 檢索流程中不會誤抓到這條過期或空無一物的髒資料！
+        await prisma.$executeRaw`
+          UPDATE "setting_entities" 
+          SET "embedding" = NULL
+          WHERE "id" = ${id}::uuid
+        `;
+        console.log(`🫙 [AI 向量中心] 內文過短或已清空，向量欄位已安全重置為 NULL。`);
+      }
     } catch (e) {
-      console.warn("⚠️ AI 向量化跳過");
+      console.warn("⚠️ AI 向量化管線執行跳過或發生非致命異常，已進行防死隔离:", e);
     }
 
     return NextResponse.json(updatedEntity, { status: 200 });
@@ -147,7 +173,6 @@ export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
 
-    // 找出這個設定屬於哪本小說
     const targetEntity = await prisma.settingEntity.findUnique({
       where: { id },
       select: { projectId: true }
@@ -157,13 +182,13 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: '找不到該設定項目' }, { status: 404 });
     }
 
-    // 刪除設定僅限擁有者與編輯者
     const auth = await verifyProjectAccess(targetEntity.projectId, [
       PROJECT_ROLES.OWNER,
       PROJECT_ROLES.EDITOR
     ]);
 
     if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    
     await prisma.settingEntity.update({
       where: { id },
       data: {
