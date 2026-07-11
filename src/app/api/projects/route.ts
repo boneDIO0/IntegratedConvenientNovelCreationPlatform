@@ -8,36 +8,42 @@ import { authOptions } from '@/lib/auth/config' // 🌟 優化點：帶入你們
 // 讀取：撈出目前使用者的所有「小說 (Project)」
 export async function GET() {
   try {
-    // 🌟 優化點：傳入 authOptions，確保在雲端能正確解析完整的 session 資訊
     const session = await getServerSession(authOptions)
     if (!session || !session.user?.email) {
-      return new NextResponse("請先登入", { status: 401 })
+      return NextResponse.json({ error: "請先登入" }, { status: 401 })
     }
 
     const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-    if (!user) return new NextResponse("找不到使用者", { status: 404 })
+    if (!user) return NextResponse.json({ error: "找不到使用者" }, { status: 404 })
 
-    // 從 ProjectMember 關聯表撈出被邀請的專案
-    const memberships = await prisma.projectMember.findMany({
-      where: { userId: user.id },
-      include: {
-        project: true
+    // 🌟 核心修正：直接從 Project 表撈取，包容新舊資料架構
+    const projects = await prisma.project.findMany({
+      where: {
+        deletedAt: null, // 沒被刪除的
+        OR: [
+          { ownerId: user.id }, // 條件 A：我是擁有者 (涵蓋舊版資料)
+          { members: { some: { userId: user.id } } } // 條件 B：我是協作成員 (涵蓋新版資料)
+        ]
       },
-      orderBy: { project: { createdAt: 'desc' } }
+      include: {
+        // 順便把成員角色拉出來，供前端顯示使用
+        members: {
+          where: { userId: user.id },
+          select: { role: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
     });
     
-    // 撈出屬於這個人的 Project (過濾掉已刪除的)，按建立時間排序
-    const projects = memberships
-      .filter(m => m.project.deletedAt === null)
-      .map(m => ({
-        ...m.project,
-        role: m.role
-      }));
+    // 整理資料格式，讓前端依然可以拿到正確的 role (如果沒有 member 紀錄但 owner 是自己，就預設為 owner)
+    const formattedProjects = projects.map(p => ({
+      ...p,
+      role: p.ownerId === user.id ? 'owner' : (p.members[0]?.role || 'member')
+    }));
 
-    return NextResponse.json(projects)
+    return NextResponse.json(formattedProjects)
   } catch (error) {
     console.error("GET Projects Error:", error)
-    // 📍 修正：把 new NextResponse 純文字，改成 NextResponse.json
     return NextResponse.json(
       { error: "Internal Server Error" }, 
       { status: 500 }
