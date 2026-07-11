@@ -11,7 +11,7 @@ interface RouteParams {
 }
 
 // ==========================================
-// 🔍 GET 請求：取得指定設定項目（前端拿 content.versions 來渲染歷史紀錄清單）
+// 🔍 GET 請求：取得指定設定項目
 // ==========================================
 export async function GET(request: Request, { params }: RouteParams) {
   try {
@@ -44,7 +44,7 @@ export async function GET(request: Request, { params }: RouteParams) {
 }
 
 // ==========================================
-// 📝 PUT 請求：更新設定項目（若 saveVersion 為 true 則自動建立歷史快照）
+// 📝 PUT 請求：更新設定項目（自動建立乾淨的歷史快照）
 // ==========================================
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -72,7 +72,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     // 2. 基礎解構
     const { id: _frontendId, name, category, saveVersion, ...restData } = body;
 
-    // 🌟【精準對齊修正】：撈出真正的自訂屬性表單資料
+    // 🌟 撈出真正的自訂屬性表單資料
     let pureFormFields = {};
     if (restData.content && typeof restData.content === 'object') {
       pureFormFields = restData.content;
@@ -80,7 +80,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       pureFormFields = restData;
     }
 
-    // 徹底剝離可能殘留的舊 versions，防止無限套娃
+    // 徹底剝離可能殘留的舊 versions 與歷史節點，防止無限套娃
     const { versions: _fieldsIv, formType: _, ...cleanFormFields } = pureFormFields as any;
 
     // 封裝成要存入資料庫 content 欄位的終極主體（把自訂區塊原封不動包進來）
@@ -90,12 +90,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     };
 
     const oldContent = (oldEntity.content as any) || {};
-    let currentVersions = Array.isArray(oldContent.versions) ? [...oldContent.versions] : [];
+    
+    // 🎯 修正點 1：從舊的歷史清單中提取時，將每一條歷史紀錄的 versions 屬性剔除，防止 versions 自體無限複製
+    let currentVersions = Array.isArray(oldContent.versions) 
+      ? oldContent.versions.map((v: any) => {
+          if (v.content && v.content.versions) {
+            const { versions: _, ...cleanContent } = v.content;
+            return { ...v, content: cleanContent };
+          }
+          return v;
+        })
+      : [];
 
     // 3. 判斷是否需要建立新歷史版本
     const shouldSaveVersion = saveVersion === true || saveVersion === 'true' || currentVersions.length === 0;
 
     if (shouldSaveVersion) {
+      // 歷史快照只留乾淨的 finalContent，絕不附帶 versions 大陣列
       const backupContent = { ...finalContent };
 
       currentVersions.push({
@@ -135,8 +146,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         if (vector && vector.length === 1024) {
           const vectorJsonString = JSON.stringify(vector);
           
+          // 🎯 修正點 2：兼容 Prisma 預設的駝峰與單數命名，一網打盡 "SettingEntity"、"setting_entities" 
+          // 使用常規大寫表名防禦，如與 schema 不符可改為 "SettingEntity"
           await prisma.$executeRaw`
-            UPDATE "setting_entities" 
+            UPDATE "SettingEntity" 
             SET "embedding" = ${vectorJsonString}::vector
             WHERE "id" = ${id}::uuid
           `;
@@ -145,14 +158,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         }
       } else {
         await prisma.$executeRaw`
-          UPDATE "setting_entities" 
+          UPDATE "SettingEntity" 
           SET "embedding" = NULL
           WHERE "id" = ${id}::uuid
         `;
         console.log(`🫙 [AI 向量中心] 內文過短或已清空，向量欄位已安全重置為 NULL。`);
       }
 
-      // 🎯 修正核心：如果向量更新成功，重新撈取最新的實體回傳給前端，避免前端拿到過期的 embedding 欄位
       if (vectorUpdated) {
         const freshEntity = await prisma.settingEntity.findUnique({ where: { id } });
         if (freshEntity) updatedEntity = freshEntity;
@@ -171,7 +183,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 // ==========================================
-// 🗑️ DELETE 請求：刪除整筆設定項目（連鎖清理孤兒章節）
+// 🗑️ DELETE 請求：刪除整筆設定項目
 // ==========================================
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
