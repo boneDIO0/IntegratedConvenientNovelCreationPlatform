@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { generateEmbedding, buildEmbeddingText } from '@/lib/embedding'; // 🎯 確保引入向量工具
+import { generateEmbedding, buildEmbeddingText } from '@/lib/embedding'; 
 import { verifyProjectAccess } from '@/lib/auth-utils';
 import { PROJECT_ROLES } from '@/lib/roles';
 
@@ -101,7 +101,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       currentVersions.push({
         timestamp: Date.now(),
         name: name || oldEntity.title || "未命名版本",
-        content: backupContent // 🌟 確保時光機存下的是當下最新的改動！
+        content: backupContent 
       });
       console.log(`✅ [時光機後端] 已將本次最新改動寫入歷史快照。目前版本總數: ${currentVersions.length}`);
     }
@@ -112,41 +112,38 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       versions: currentVersions
     };
 
-    // 4. 正式強制更新回資料庫
-    const updatedEntity = await prisma.settingEntity.update({
+    // 4. 正式強制更新回資料庫的主體欄位
+    let updatedEntity = await prisma.settingEntity.update({
       where: { id },
       data: {
         title: name || oldEntity.title,
-        content: JSON.parse(JSON.stringify(contentToSave)), // 強制純化 JSON 寫入
+        content: JSON.parse(JSON.stringify(contentToSave)), 
         updatedAt: new Date(),
       }
     });
 
-    // 🌟 5. AI 向量化完全隔離防死（完美接回先前被誤刪的核心邏輯）
+    // 🌟 5. AI 向量化完全隔離防死
+    let vectorUpdated = false;
     try {
-      // 調用工具函式組裝預計用來向量化的文字主體
       const embeddingText = buildEmbeddingText(name || oldEntity.title, finalContent);
       
       if (embeddingText && embeddingText.length > 5) {
         console.log(`🚀 [AI 向量中心] 正確認估內容中，長度: ${embeddingText.length}，開始生成 1024 維度向量...`);
         
-        // 呼叫外部 OpenAI 模型生成 Embedding 陣列
         const vector = await generateEmbedding(embeddingText);
         
         if (vector && vector.length === 1024) {
           const vectorJsonString = JSON.stringify(vector);
           
-          // 透過原生 SQL 與 pgvector 直接對 Neon 資料庫進行強制向量覆蓋
           await prisma.$executeRaw`
             UPDATE "setting_entities" 
             SET "embedding" = ${vectorJsonString}::vector
             WHERE "id" = ${id}::uuid
           `;
+          vectorUpdated = true;
           console.log(`🎯 [AI 向量中心] 要素 ID ${id} 向量權重更新成功！`);
         }
       } else {
-        // 🔒 情況 B：作者把內容清空了，強制把資料庫的 embedding 欄位洗成 NULL
-        // 確保未來 AI 在 RAG 檢索流程中不會誤抓到這條過期或空無一物的髒資料！
         await prisma.$executeRaw`
           UPDATE "setting_entities" 
           SET "embedding" = NULL
@@ -154,6 +151,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         `;
         console.log(`🫙 [AI 向量中心] 內文過短或已清空，向量欄位已安全重置為 NULL。`);
       }
+
+      // 🎯 修正核心：如果向量更新成功，重新撈取最新的實體回傳給前端，避免前端拿到過期的 embedding 欄位
+      if (vectorUpdated) {
+        const freshEntity = await prisma.settingEntity.findUnique({ where: { id } });
+        if (freshEntity) updatedEntity = freshEntity;
+      }
+
     } catch (e) {
       console.warn("⚠️ AI 向量化管線執行跳過或發生非致命異常，已進行防死隔离:", e);
     }
