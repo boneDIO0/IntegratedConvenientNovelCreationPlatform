@@ -1,11 +1,9 @@
 ﻿// src/lib/embedding.ts
-import { pipeline } from '@huggingface/transformers';
-import path from 'path';
-//這邊使用本地模型進行embedding相關的流程
-// 使用 Singleton 模式，確保模型在 Next.js 運行期間只被載入記憶體一次，避免記憶體洩漏
+
+// 🎯 修正 1：移除沒用到的 @huggingface/transformers 本地模型 import，精簡 Serverless 體積
 
 /**
- * 內部函式：初始化並獲取本地 BGE-M3 模型執行實例
+ * 內部函式：初始化並獲取線上 API 管道檢查
  */
 let pipeInstance: boolean = false; 
 
@@ -27,9 +25,7 @@ async function getPipeline() {
 }
 
 /**
- * 【核心工具】全域通用文字向量化函式
- * @param text 需要轉成向量的小說內文、角色設定、或是 RAG 搜尋關鍵字
- * @returns 承諾返回一個長度固定為 1024 的 number[] 陣列
+ * 內部工具：提取 JSON 欄位中的實質文字內容
  */
 function extractSemanticText(obj: any): string {
   if (!obj) return '';
@@ -62,8 +58,14 @@ export function buildEmbeddingText(mainTitle: string, contentObj: any): string {
   if (!dynamicText && (!mainTitle || mainTitle.trim().length <= 1)) return '';
   return `項目：${mainTitle}。設定細節：${dynamicText || '暫無詳細描述'}`.trim();
 }
+
+/**
+ * 【核心工具】全域通用文字向量化函式
+ * @param text 需要轉成向量的小說內文、角色設定、或是 RAG 搜尋關鍵字
+ * @returns 返回一個長度固定為 1024 的 number[] 陣列
+ */
 export async function generateEmbedding(text: string): Promise<number[]> {
-  // 防呆機制：如果傳進來的是空字串、純空格或 Null，直接回傳空陣列或報錯，避免浪費算力
+  // 防呆機制：如果傳進來的是空字串、純空格或 Null，直接回傳空陣列，避免浪費算力
   if (!text || text.trim() === '') {
     console.warn("⚠️ [Embedding System] 偵測到空文字輸入，跳過向量化。");
     return [];
@@ -73,10 +75,13 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     // 依然維持 getPipeline 的呼叫，確保初始化檢查機制正常運作
     await getPipeline();
     
-    // 呼叫 Hugging Face 官方託管的 BGE-M3 模型 API
     const modelId = "BAAI/bge-m3"; 
+    
+    // 🎯 修正 2：升級補上 /v1/ 路由，徹底解決 Vercel 環境下的 ENOTFOUND 解析地雷
+    const apiUrl = `https://api-inference.huggingface.co/v1/models/${modelId}`;
+    
     const response = await fetch(
-      `https://api-inference.huggingface.co/models/${modelId}`,
+      apiUrl,
       {
         headers: {
           Authorization: `Bearer ${process.env.HF_TOKEN}`,
@@ -94,16 +99,27 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
     const result = await response.json();
     
-    // 將線上 API 回傳的數據，轉換為你原本指定的標準 JavaScript 浮點數陣列
-    // 註：Hugging Face BGE-M3 預設會做 Mean Pooling + Normalize 並直出 1024 維陣列
-    const embeddingArray = Array.isArray(result[0]) ? (result[0] as number[]) : (result as number[]);
+    // 🎯 修正 3：強化型別防禦，增加多維度陣列安全拆包機制（避免 API 回傳三維或畸形資料崩潰）
+    let embeddingArray: any = result;
     
-    // 安全檢查：驗證產出的維度是否為 BGE-M3 指定的 1024 維（完全保留你原本的邏輯）
-    if (embeddingArray.length !== 1024) {
-      throw new Error(`向量維度異常：預期 1024，實際產出 ${embeddingArray.length}`);
+    // 如果回傳的是陣列套陣列（例如 [[0.1, 0.2, ...]]），向下遞迴拆包直到拿到純數字陣列
+    while (Array.isArray(embeddingArray) && embeddingArray.length > 0 && Array.isArray(embeddingArray[0])) {
+      embeddingArray = embeddingArray[0];
     }
     
-    return embeddingArray;
+    // 終極防線：如果拆完包後發現結構不對或被伺服器冷啟動物件覆蓋
+    if (!Array.isArray(embeddingArray)) {
+      throw new Error(`API 回傳資料格式不符合預期陣列，收到原始內容: ${JSON.stringify(result)}`);
+    }
+    
+    const finalVector = embeddingArray as number[];
+
+    // 安全檢查：驗證產出的維度是否為 BGE-M3 指定的 1024 維
+    if (finalVector.length !== 1024) {
+      throw new Error(`向量維度異常：預期 1024，實際產出 ${finalVector.length}`);
+    }
+    
+    return finalVector;
   } catch (error) {
     console.error("❌ [Embedding System] 文字向量化過程中發生異常:", error);
     throw error;
