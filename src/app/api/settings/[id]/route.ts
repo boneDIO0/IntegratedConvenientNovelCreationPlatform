@@ -127,7 +127,29 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     // 5. AI 向量化完全隔離防死
     try {
-      // 你的 buildEmbeddingText 邏輯...
+      // 🌟 2. 評估更新後的文字，是否具備 RAG 檢索價值
+    const embeddingText = buildEmbeddingText(name, finalContent);
+    
+    if (embeddingText && embeddingText.length > 5) {
+      // 🚀 情況 A：有實質內容！重新計算 1024 維度向量並覆蓋舊資料
+      const vector = await generateEmbedding(embeddingText);
+      if (vector && vector.length === 1024) {
+        const vectorJsonString = JSON.stringify(vector);
+        await prisma.$executeRaw`
+          UPDATE "setting_entities" 
+          SET "embedding" = ${vectorJsonString}::vector
+          WHERE "id" = ${id}::uuid
+        `;
+      }
+    } else {
+      // 🔒 情況 B：作者把內容清空了、或只留下時間/數字。
+      // 強制把資料庫的 embedding 欄位洗成 NULL，確保未來 AI 流程不會誤抓這條空資料！
+      await prisma.$executeRaw`
+        UPDATE "setting_entities" 
+        SET "embedding" = NULL
+        WHERE "id" = ${id}::uuid
+      `;
+      }
     } catch (e) {
       console.warn("⚠️ AI 向量化跳過");
     }
