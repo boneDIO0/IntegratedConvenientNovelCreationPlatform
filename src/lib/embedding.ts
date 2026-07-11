@@ -78,7 +78,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const modelId = "BAAI/bge-m3"; 
     
     // 🎯 修正 2：升級補上 /v1/ 路由，徹底解決 Vercel 環境下的 ENOTFOUND 解析地雷
-    const apiUrl = `https://api-inference.huggingface.co/v1/models/${modelId}`;
+    const apiUrl = `https://api.huggingface.co/v1/embeddings`;
     
     const response = await fetch(
       apiUrl,
@@ -88,7 +88,10 @@ export async function generateEmbedding(text: string): Promise<number[]> {
           "Content-Type": "application/json",
         },
         method: "POST",
-        body: JSON.stringify({ inputs: text }),
+        body: JSON.stringify({ 
+          model: modelId, // 👈 將模型名稱移到 Body 裡面（相容標準 v1 規格）
+          input: text     // 👈 注意：標準 v1 端點的參數名稱是 input (單數)，不是 inputs
+        }),
       }
     );
 
