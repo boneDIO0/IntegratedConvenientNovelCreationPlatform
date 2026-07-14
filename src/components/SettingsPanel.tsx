@@ -555,11 +555,7 @@ return (
           </div>
           
           {/* 🎯 下方核心展示大容器：加入 gap 與 w-full min-w-0，開啟雙欄硬抗擠壓防禦 */}
-          <div className={`flex-1 w-full min-w-0 ${
-            viewMode === 'chapter_manager' 
-              ? 'flex flex-col items-center justify-start w-full' 
-              : 'flex gap-6 items-start'
-          }`}>
+          <div className="flex-1 w-full min-w-0 flex flex-col gap-6 items-start">
             
             {/* 🎯 左大區：中央編輯表單主舞台 - 灌入 flex-1 min-w-0，允許內文有 LaTeX 公式時在內部安全寬度內渲染，決不向外撐爆父層！ */}
             <div className="flex-1 min-w-0 h-full">
@@ -574,7 +570,7 @@ return (
                     <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
                 ) : viewMode === 'chapter_manager' ? (
                     /* 🌟 核心修正：加入 w-full 與 max-w-5xl，使其與上方控制列完美對齊且置中 */
-                    <div className="w-full max-w-5xl rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
+                    <div className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
                       <div className="flex items-start justify-between border-b border-slate-100 pb-4 flex-shrink-0">
                         <div>
                           <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
@@ -606,7 +602,6 @@ return (
                           <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
                             {group.category}
                           </h4>
-                          {/* 🌟 加上 min-w-0，防止 Grid 被內部的長文字硬撐開 */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                             {group.items.map((item) => {
                               const isAssigned = settingsData
@@ -622,7 +617,6 @@ return (
                                       : 'border-slate-200 bg-white hover:border-slate-300'
                                   }`}
                                 >
-                                  {/* 🌟 min-w-0 是關鍵！ */}
                                   <div className="flex items-center gap-3 min-w-0 flex-1">
                                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                                       item.category === 'character' ? 'bg-blue-500' : 
@@ -630,7 +624,6 @@ return (
                                       item.category === 'location' ? 'bg-blue-600' : 
                                       'bg-emerald-500'
                                     }`} />
-                                    {/* 🌟 加上 truncate，長文字（如言峰綺禮聖堂教會）太長時會自動變成 ...，絕對不撐寬網格！ */}
                                     <span className="text-sm font-semibold text-slate-800 truncate block">
                                       {item.name}
                                     </span>
