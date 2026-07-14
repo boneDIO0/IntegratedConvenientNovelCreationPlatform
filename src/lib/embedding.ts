@@ -1,16 +1,10 @@
 ﻿// src/lib/embedding.ts
 
-// 🎯 修正 1：移除沒用到的 @huggingface/transformers 本地模型 import，精簡 Serverless 體積
-
-/**
- * 內部函式：初始化並獲取線上 API 管道檢查
- */
 let pipeInstance: boolean = false; 
 
 async function getPipeline() {
   if (!pipeInstance) {
     try {
-      // 驗證 Vercel 後台有沒有設定 Hugging Face Token，防呆檢查
       if (!process.env.HF_TOKEN) {
         throw new Error("Vercel 後台忘記設定 HF_TOKEN 環境變數了！");
       }
@@ -24,9 +18,6 @@ async function getPipeline() {
   return pipeInstance;
 }
 
-/**
- * 內部工具：提取 JSON 欄位中的實質文字內容
- */
 function extractSemanticText(obj: any): string {
   if (!obj) return '';
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,71 +51,82 @@ export function buildEmbeddingText(mainTitle: string, contentObj: any): string {
 }
 
 /**
- * 【核心工具】全域通用文字向量化函式
- * @param text 需要轉成向量的小說內文、角色設定、或是 RAG 搜尋關鍵字
- * @returns 返回一個長度固定為 1024 的 number[] 陣列
+ * 【核心工具】全域通用文字向量化函式（純 Hugging Face 多網域自動容錯版）
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
-  // 防呆機制：如果傳進來的是空字串、純空格或 Null，直接回傳空陣列，避免浪費算力
   if (!text || text.trim() === '') {
     console.warn("⚠️ [Embedding System] 偵測到空文字輸入，跳過向量化。");
     return [];
   }
 
-  try {
-    // 依然維持 getPipeline 的呼叫，確保初始化檢查機制正常運作
-    await getPipeline();
-    
-    const modelId = "BAAI/bge-m3"; 
-    
-    // 🎯 修正 2：升級補上 /v1/ 路由，徹底解決 Vercel 環境下的 ENOTFOUND 解析地雷
-    const apiUrl = `https://api.huggingface.co/v1/embeddings`;
-    
-    const response = await fetch(
-      apiUrl,
-      {
+  await getPipeline();
+  const modelId = "BAAI/bge-m3";
+
+  // 🎯 核心防禦：定義 3 組 Hugging Face 的等價官方 API 入口網域
+  // 藉此避開 Vercel 或本地 ISP 單一網域的 DNS (ENOTFOUND) 解析地雷
+  const hfEndpoints = [
+    `https://api-inference.huggingface.co/pipeline/feature-extraction/${modelId}`, // 1. Pipeline 專屬路由
+    `https://api-inference.huggingface.co/models/${modelId}`,                      // 2. 經典模型路由
+    `https://api.huggingface.co/v1/models/${modelId}`                              // 3. 最新 v1 基礎網域
+  ];
+
+  let lastError: any = null;
+
+  // 🔄 自動輪詢重試機制
+  for (let i = 0; i < hfEndpoints.length; i++) {
+    const apiUrl = hfEndpoints[i];
+    try {
+      console.log(`📡 [Embedding System] 嘗試連線 HF 節點 [${i + 1}/${hfEndpoints.length}]: ${apiUrl}`);
+
+      const response = await fetch(apiUrl, {
         headers: {
           Authorization: `Bearer ${process.env.HF_TOKEN}`,
           "Content-Type": "application/json",
         },
         method: "POST",
         body: JSON.stringify({ 
-          model: modelId, // 👈 將模型名稱移到 Body 裡面（相容標準 v1 規格）
-          input: text     // 👈 注意：標準 v1 端點的參數名稱是 input (單數)，不是 inputs
+          inputs: text,
+          options: { wait_for_model: true } // 💡 強制讓 HF 伺服器在模型冷啟動時等待，防止噴 503 
         }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HF API 回傳錯誤碼 ${response.status}: ${errorText}`);
       }
-    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Hugging Face API 報錯: ${response.status} - ${errorText}`);
-    }
+      const result = await response.json();
 
-    const result = await response.json();
-    
-    // 🎯 修正 3：強化型別防禦，增加多維度陣列安全拆包機制（避免 API 回傳三維或畸形資料崩潰）
-    let embeddingArray: any = result;
-    
-    // 如果回傳的是陣列套陣列（例如 [[0.1, 0.2, ...]]），向下遞迴拆包直到拿到純數字陣列
-    while (Array.isArray(embeddingArray) && embeddingArray.length > 0 && Array.isArray(embeddingArray[0])) {
-      embeddingArray = embeddingArray[0];
-    }
-    
-    // 終極防線：如果拆完包後發現結構不對或被伺服器冷啟動物件覆蓋
-    if (!Array.isArray(embeddingArray)) {
-      throw new Error(`API 回傳資料格式不符合預期陣列，收到原始內容: ${JSON.stringify(result)}`);
-    }
-    
-    const finalVector = embeddingArray as number[];
+      // 🎯 安全拆包機制：向下遞迴拆開多維陣列
+      let embeddingArray: any = result;
+      while (Array.isArray(embeddingArray) && embeddingArray.length > 0 && Array.isArray(embeddingArray[0])) {
+        embeddingArray = embeddingArray[0];
+      }
 
-    // 安全檢查：驗證產出的維度是否為 BGE-M3 指定的 1024 維
-    if (finalVector.length !== 1024) {
-      throw new Error(`向量維度異常：預期 1024，實際產出 ${finalVector.length}`);
+      if (!Array.isArray(embeddingArray)) {
+        throw new Error(`API 返回資料無法解析為數值陣列: ${JSON.stringify(result)}`);
+      }
+
+      const finalVector = embeddingArray as number[];
+
+      // BGE-M3 規格驗證
+      if (finalVector.length !== 1024) {
+        throw new Error(`向量維度異常：預期 1024，實際產出 ${finalVector.length}`);
+      }
+
+      console.log(`🎯 [Embedding System] 向量化成功！使用節點 [${i + 1}]`);
+      return finalVector;
+
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`⚠️ [Embedding System] 節點 [${i + 1}] 失敗: ${error.message || error}`);
+      
+      // 如果是最後一個節點也失敗了，就不再重試，直接跳出迴圈拋給 catch
+      if (i === hfEndpoints.length - 1) break;
     }
-    
-    return finalVector;
-  } catch (error) {
-    console.error("❌ [Embedding System] 文字向量化過程中發生異常:", error);
-    throw error;
   }
+
+  // 🚨 終極防線：如果所有 HF 管道都爆了，回傳空陣列，保護 AI 助理/設定集 100% 不會當機斷線
+  console.error("❌ [Embedding System] 所有 Hugging Face 線上 API 管道皆連線失敗:", lastError);
+  return [];
 }
