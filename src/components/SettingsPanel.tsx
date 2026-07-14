@@ -555,8 +555,10 @@ return (
           </div>
           
           {/* 🎯 下方核心展示大容器：加入 gap 與 w-full min-w-0，開啟雙欄硬抗擠壓防禦 */}
-          <div className={`flex-1 w-full min-w-0 items-start ${
-            viewMode === 'chapter_manager' ? 'block mx-auto max-w-5xl' : 'flex gap-6'
+          <div className={`flex-1 w-full min-w-0 ${
+            viewMode === 'chapter_manager' 
+              ? 'flex flex-col items-center justify-start w-full' 
+              : 'flex gap-6 items-start'
           }`}>
             
             {/* 🎯 左大區：中央編輯表單主舞台 - 灌入 flex-1 min-w-0，允許內文有 LaTeX 公式時在內部安全寬度內渲染，決不向外撐爆父層！ */}
@@ -568,13 +570,14 @@ return (
                     filterTargetId={selectedItem?.id}     
                     onEventClick={handleEventHighlight}   
                   />
-               ) : viewMode === 'graph' ? (
-                  <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
-               ) : viewMode === 'chapter_manager' ? (
-                  <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
-                    <div className="flex items-start justify-between border-b border-slate-100 pb-4 flex-shrink-0">
-                      <div>
-                        <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
+                ) : viewMode === 'graph' ? (
+                    <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
+                ) : viewMode === 'chapter_manager' ? (
+                    /* 🌟 核心修正：加入 w-full 與 max-w-5xl，使其與上方控制列完美對齊且置中 */
+                    <div className="w-full max-w-5xl rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
+                      <div className="flex items-start justify-between border-b border-slate-100 pb-4 flex-shrink-0">
+                        <div>
+                          <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
                         <p className="text-sm text-slate-500">
                           勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏。
                         </p>
