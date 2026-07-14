@@ -55,14 +55,19 @@ export async function POST(req: Request) {
     // 🚀 2. 【核心 RAG 處理：向量化 + Neon pgvector 相似度檢索】
     if (projectId && userMessage) {
       try {
-        // 調用我們做過多網域自動容錯與防死隔離的生力軍 generateEmbedding
-        const userVector = await generateEmbedding(userMessage);
+        console.log("📡 [助理大腦] 正在請求文字向量化...");
+
+        // 🎯 修正 2：在呼叫端灌入二重沙盒防護，阻斷任何可能外溢的非同步執行期異常
+        const userVector = await generateEmbedding(userMessage).catch((e: any) => {
+          const errMsg = e?.message || (typeof e === 'string' ? e : "向量庫非同步阻斷");
+          console.warn(`⚠️ [助理大腦] 向量生成器外溢捕獲: ${errMsg}`);
+          return [];
+        });
 
         // 防呆並確保算出來的向量維度跟資料庫限制的 1024 吻合
         if (userVector && userVector.length === 1024) {
           const vectorString = `[${userVector.join(',')}]`;
           
-          // 🎯 修正 2：將表名與欄位改為對齊 Prisma 與 PostgreSQL 底層的駝峰式雙引號命名，100% 確保 SQL 通過！
           const matchedEntities: any[] = await prisma.$queryRaw`
             SELECT "title", "content" 
             FROM "SettingEntity" 
@@ -81,9 +86,10 @@ export async function POST(req: Request) {
             }).join('\n');
           }
         }
-      } catch (err) {
-        // Fail-safe 機制：即使 RAG 失敗，也 log 紀錄並放行，避免聊天功能死點
-        console.error('⚠️ RAG 檢索失敗，將採取降級直接對話:', err);
+      } catch (err: any) {
+        // 🎯 修正 3：絕對不要直接將 err 物件傳入 console.error，只提取其文字訊息，防止 Vercel 序列化崩潰！
+        const safeMsg = err?.message || (typeof err === 'string' ? err : "未知檢索異常");
+        console.error(`⚠️ RAG 檢索失敗，採取降級直接對話: ${safeMsg}`);
       }
     }
 
@@ -152,8 +158,10 @@ export async function POST(req: Request) {
     // 🚀 6. 成功返回資料給前端
     return NextResponse.json({ reply: replyText });
 
-  } catch (error) {
-    console.error('[Assistant Chat Route Error]:', error);
+  } catch (error: any) {
+    // 🎯 修正 4：同理，最外層 catch 的日誌也進行文字純化，確保雙保險
+    const outerErrorMsg = error?.message || (typeof error === 'string' ? error : "未知核心內部錯誤");
+    console.error(`[Assistant Chat Route Error]: ${outerErrorMsg}`);
     return NextResponse.json({ error: '伺服器內部錯誤' }, { status: 500 });
   }
 }

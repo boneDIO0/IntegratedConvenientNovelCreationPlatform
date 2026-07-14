@@ -127,6 +127,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   // 🚨 終極防線：如果所有 HF 管道都爆了，回傳空陣列，保護 AI 助理/設定集 100% 不會當機斷線
-  console.error("❌ [Embedding System] 所有 Hugging Face 線上 API 管道皆連線失敗:", lastError);
+  const safeErrorMessage = lastError?.message || (typeof lastError === 'string' ? lastError : "未知網路阻斷");
+  console.error(`❌ [Embedding System] 所有 Hugging Face 管道皆解析失敗: ${safeErrorMessage}`);
   return [];
 }
