@@ -50,9 +50,8 @@ export function buildEmbeddingText(mainTitle: string, contentObj: any): string {
   return `項目：${mainTitle}。設定細節：${dynamicText || '暫無詳細描述'}`.trim();
 }
 
-/**
- * 【核心工具】全域通用文字向量化函式（純 Hugging Face 多網域自動容錯版）
- */
+// src/lib/embedding.ts 內部的 generateEmbedding 函式
+
 export async function generateEmbedding(text: string): Promise<number[]> {
   if (!text || text.trim() === '') {
     console.warn("⚠️ [Embedding System] 偵測到空文字輸入，跳過向量化。");
@@ -62,19 +61,21 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   await getPipeline();
   const modelId = "BAAI/bge-m3";
 
-  // 🎯 核心防禦：定義 3 組 Hugging Face 的等價官方 API 入口網域
-  // 藉此避開 Vercel 或本地 ISP 單一網域的 DNS (ENOTFOUND) 解析地雷
   const hfEndpoints = [
-    `https://api-inference.huggingface.co/pipeline/feature-extraction/${modelId}`, // 1. Pipeline 專屬路由
-    `https://api-inference.huggingface.co/models/${modelId}`,                      // 2. 經典模型路由
-    `https://api.huggingface.co/v1/models/${modelId}`                              // 3. 最新 v1 基礎網域
+    `https://api-inference.huggingface.co/pipeline/feature-extraction/${modelId}`, 
+    `https://api-inference.huggingface.co/models/${modelId}`,                      
+    `https://api.huggingface.co/v1/models/${modelId}`                              
   ];
 
   let lastError: any = null;
 
-  // 🔄 自動輪詢重試機制
   for (let i = 0; i < hfEndpoints.length; i++) {
     const apiUrl = hfEndpoints[i];
+    
+    // 🎯 核心防禦：為每一次 fetch 裝載 1.5 秒的定時炸彈，逾期直接 Abort
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500); 
+
     try {
       console.log(`📡 [Embedding System] 嘗試連線 HF 節點 [${i + 1}/${hfEndpoints.length}]: ${apiUrl}`);
 
@@ -86,9 +87,13 @@ export async function generateEmbedding(text: string): Promise<number[]> {
         method: "POST",
         body: JSON.stringify({ 
           inputs: text,
-          options: { wait_for_model: true } // 💡 強制讓 HF 伺服器在模型冷啟動時等待，防止噴 503 
+          options: { wait_for_model: true } 
         }),
+        signal: controller.signal // 🎯 將控制訊號綁定給 fetch
       });
+
+      // 順利回應，清除計時器
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -97,7 +102,6 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
       const result = await response.json();
 
-      // 🎯 安全拆包機制：向下遞迴拆開多維陣列
       let embeddingArray: any = result;
       while (Array.isArray(embeddingArray) && embeddingArray.length > 0 && Array.isArray(embeddingArray[0])) {
         embeddingArray = embeddingArray[0];
@@ -109,7 +113,6 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
       const finalVector = embeddingArray as number[];
 
-      // BGE-M3 規格驗證
       if (finalVector.length !== 1024) {
         throw new Error(`向量維度異常：預期 1024，實際產出 ${finalVector.length}`);
       }
@@ -118,16 +121,21 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       return finalVector;
 
     } catch (error: any) {
-      lastError = error;
-      console.warn(`⚠️ [Embedding System] 節點 [${i + 1}] 失敗: ${error.message || error}`);
+      clearTimeout(timeoutId); // 發生錯誤也清除計時器
       
-      // 如果是最後一個節點也失敗了，就不再重試，直接跳出迴圈拋給 catch
+      // 判定是否為逾時中斷
+      const isTimeout = error.name === 'AbortError';
+      const errorMessage = isTimeout ? "連線超時 1.5 秒被強行熔斷" : (error.message || error);
+      
+      lastError = new Error(errorMessage);
+      console.warn(`⚠️ [Embedding System] 節點 [${i + 1}] 失敗: ${errorMessage}`);
+      
       if (i === hfEndpoints.length - 1) break;
     }
   }
 
-  // 🚨 終極防線：如果所有 HF 管道都爆了，回傳空陣列，保護 AI 助理/設定集 100% 不會當機斷線
-  const safeErrorMessage = lastError?.message || (typeof lastError === 'string' ? lastError : "未知網路阻斷");
+  // 🎯 安全列印：只列印安全字串，防止 Vercel 序列化崩潰
+  const safeErrorMessage = lastError?.message || "未知網路阻斷";
   console.error(`❌ [Embedding System] 所有 Hugging Face 管道皆解析失敗: ${safeErrorMessage}`);
   return [];
 }
