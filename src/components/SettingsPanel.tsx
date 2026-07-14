@@ -556,7 +556,7 @@ return (
           
           {/* 🎯 下方核心展示大容器：加入 gap 與 w-full min-w-0，開啟雙欄硬抗擠壓防禦 */}
           <div className={`flex-1 w-full min-w-0 items-start ${
-            viewMode === 'chapter_manager' ? 'block' : 'flex gap-6'
+            viewMode === 'chapter_manager' ? 'block mx-auto max-w-5xl' : 'flex gap-6'
           }`}>
             
             {/* 🎯 左大區：中央編輯表單主舞台 - 灌入 flex-1 min-w-0，允許內文有 LaTeX 公式時在內部安全寬度內渲染，決不向外撐爆父層！ */}
