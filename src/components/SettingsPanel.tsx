@@ -416,9 +416,10 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     return false;
   };
 
-  return (
-    <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col">
-      <aside className="w-full md:w-80 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
+return (
+    <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col overflow-hidden">
+      {/* 🎯 左側：獨立固定目錄側邊欄 - 加裝 flex-shrink-0，不論右方內容多長，絕對不准縮水變窄！ */}
+      <aside className="w-full md:w-80 flex-shrink-0 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
         <h2 className="text-xl font-bold mb-4 text-slate-800">設定集目錄</h2>
         <SettingsSidebar 
           data={settingsData}
@@ -437,86 +438,88 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         />
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
-        <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col">
-          <div className="mb-6 flex items-center justify-between">
+      {/* 🎯 右側主舞台：包含上方導覽與下方雙欄區 - 使用 min-w-0 隔絕任何內部溢出撐開 */}
+      <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-8 flex flex-col h-full">
+        <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col h-full min-w-0">
+          
+          {/* 上方導覽控制列 */}
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4 flex-shrink-0 w-full min-w-0">
             <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold text-slate-800">
+              <h1 className="text-2xl font-bold text-slate-800 truncate">
                 {viewMode === 'graph' ? '全域人物關係圖' : 
                  viewMode === 'chapter_manager' ? '🎬 本章登場要素配置' :
                  selectedItem ? `${selectedItem.name} ${hasChanges ? '*(已修改)' : '(編輯中)'}` : "未選取項目"}
               </h1>
 
-            {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
-              <>
-                <select
-                  value={selectedItem.category}
-                  disabled={!isEditable}
-                  onChange={async (e) => {
-                    if (!selectedItem) return;
-                    const newType = e.target.value;
-                    const updated = { ...selectedItem, category: newType };
-      
-                    setSelectedItem(updated);
+              {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
+                <>
+                  <select
+                    value={selectedItem.category}
+                    disabled={!isEditable}
+                    onChange={async (e) => {
+                      if (!selectedItem) return;
+                      const newType = e.target.value;
+                      const updated = { ...selectedItem, category: newType };
+        
+                      setSelectedItem(updated);
 
-                    // 🌟【核心修復二】：升級為 checkCategoryMatch 雙向匹配，確保樂觀更新能精準瞬移！
-                    setSettingsData(prevData => {
-                      return prevData.map(group => {
-                        const filteredItems = group.items.filter(i => i.id !== selectedItem.id);
-                        if (checkCategoryMatch(group.category, newType)) {
-                          return {
-                            ...group,
-                            items: [...group.items.filter(i => i.id !== selectedItem.id), updated]
-                          };
-                        }
-                        return { ...group, items: filteredItems };
-                      });
-                    });
-
-                    try {
-                      await fetch(`/api/settings/${selectedItem.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(updated),
+                      setSettingsData(prevData => {
+                        return prevData.map(group => {
+                          const filteredItems = group.items.filter(i => i.id !== selectedItem.id);
+                          if (checkCategoryMatch(group.category, newType)) {
+                            return {
+                              ...group,
+                              items: [...group.items.filter(i => i.id !== selectedItem.id), updated]
+                            };
+                          }
+                          return { ...group, items: filteredItems };
+                        });
                       });
 
-                      setTimeout(async () => {
-                        await fetchSettings(); 
-                        setSelectedItem(updated);
-                      }, 150);
+                      try {
+                        await fetch(`/api/settings/${selectedItem.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(updated),
+                        });
 
-                    } catch (error) {
-                      console.error("轉生表單失敗:", error);
-                    }
-      
-                    setHasChanges(true);
-                  }}
-                  className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
-                >
-                  <option value="character">👤 人物表單</option>
-                  <option value="faction">🏛️ 組織表單</option>
-                  <option value="item">⚔️ 物品表單</option>
-                  <option value="event">📜 事件表單</option>
-                  <option value="location">📍 地點表單</option>
-                  <option value="custom">⚙️ 通用表單</option>
-                </select>
+                        setTimeout(async () => {
+                          await fetchSettings(); 
+                          setSelectedItem(updated);
+                        }, 150);
 
-                <button
-                  type="button"
-                  onClick={() => setIsLocalHistoryOpen(!isLocalHistoryOpen)}
-                  className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-1.5 shadow-sm border ${
-                    isLocalHistoryOpen
-                      ? "bg-purple-600 border-purple-600 text-white hover:bg-purple-700"
-                      : "bg-purple-50 border-purple-100 text-purple-700 hover:bg-purple-100"
-                  }`}
-                >
-                  ⏳ 項目歷史
-                </button>
-              </>
-            )}
+                      } catch (error) {
+                        console.error("轉生表單失敗:", error);
+                      }
+        
+                      setHasChanges(true);
+                    }}
+                    className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
+                  >
+                    <option value="character">👤 人物表單</option>
+                    <option value="faction">🏛️ 組織表單</option>
+                    <option value="item">⚔️ 物品表單</option>
+                    <option value="event">📜 事件表單</option>
+                    <option value="location">📍 地點表單</option>
+                    <option value="custom">⚙️ 通用表單</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsLocalHistoryOpen(!isLocalHistoryOpen)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-1.5 shadow-sm border ${
+                      isLocalHistoryOpen
+                        ? "bg-purple-600 border-purple-600 text-white hover:bg-purple-700"
+                        : "bg-purple-50 border-purple-100 text-purple-700 hover:bg-purple-100"
+                    }`}
+                  >
+                    ⏳ 項目歷史
+                  </button>
+                </>
+              )}
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-1.5 flex-shrink-0 items-center">
               <button 
                 onClick={() => { if (!confirmLeave()) return; setViewMode('timeline'); setHighlightedIds(null); }}
                 className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${viewMode === 'timeline' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
@@ -551,265 +554,289 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
             </div>
           </div>
           
-          <div className="flex-1 min-h-[600px] flex">
-             {viewMode === 'timeline' ? (
-                <TimelineView 
-                  allSettings={globalAllSettings}       
-                  calendarConfig={calendarConfig}       
-                  filterTargetId={selectedItem?.id}     
-                  onEventClick={handleEventHighlight}   
-                />
-             ) : viewMode === 'graph' ? (
-                <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
-             ) : viewMode === 'chapter_manager' ? (
-                <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[700px]">
-                  <div className="flex items-start justify-between border-b border-slate-100 pb-4">
-                    <div>
-                      <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
-                      <p className="text-sm text-slate-500">
-                        勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏。
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setSelectedItem(null);
-                        const firstItem = settingsData.flatMap(g => g.items)[0];
-                        if (firstItem) {
-                          setSelectedItem(firstItem);
-                          setViewMode('form');
-                          setHasChanges(false);
-                        } else {
-                          setViewMode('form'); 
-                        }
-                      }}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg shadow-sm transition-all whitespace-nowrap"
-                    >
-                      ✨ 完成配置
-                    </button>
-                  </div>
-
-                  <div className="space-y-6 flex-1">
-                    {globalAllSettings.map((group) => (
-                      <div key={group.category} className="space-y-3">
-                        <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
-                          {group.category}
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {group.items.map((item) => {
-                            const isAssigned = settingsData
-                              .flatMap((g) => g.items)
-                              .some((i) => i.id === item.id);
-
-                            return (
-                              <label key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${isAssigned ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                <div className="flex items-center gap-3">
-                                  <div className={`w-2 h-2 rounded-full ${item.category === 'character' ? 'bg-blue-500' : item.category === 'faction' ? 'bg-orange-500' : item.category === 'location' ? 'bg-blue-600' : 'bg-emerald-500'}`} />
-                                  <span className="text-sm font-semibold text-slate-800">{item.name}</span>
-                                </div>
-                                <input 
-                                  type="checkbox"
-                                  checked={isAssigned}
-                                  disabled={!isEditable}
-                                  onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
-                                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
+          {/* 🎯 下方核心展示大容器：加入 gap 與 w-full min-w-0，開啟雙欄硬抗擠壓防禦 */}
+          <div className={`flex-1 w-full min-w-0 items-start ${
+            viewMode === 'chapter_manager' ? 'block' : 'flex gap-6'
+          }`}>
+            
+            {/* 🎯 左大區：中央編輯表單主舞台 - 灌入 flex-1 min-w-0，允許內文有 LaTeX 公式時在內部安全寬度內渲染，決不向外撐爆父層！ */}
+            <div className="flex-1 min-w-0 h-full">
+               {viewMode === 'timeline' ? (
+                  <TimelineView 
+                    allSettings={globalAllSettings}       
+                    calendarConfig={calendarConfig}       
+                    filterTargetId={selectedItem?.id}     
+                    onEventClick={handleEventHighlight}   
+                  />
+               ) : viewMode === 'graph' ? (
+                  <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
+               ) : viewMode === 'chapter_manager' ? (
+                  <div className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
+                    <div className="flex items-start justify-between border-b border-slate-100 pb-4 flex-shrink-0">
+                      <div>
+                        <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
+                        <p className="text-sm text-slate-500">
+                          勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏。
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                </div>
-             ) : selectedItem ? (
-                <fieldset 
-                  disabled={!isEditable}
-                  className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
-                >
-                  {!isEditable && (
-                    <div className="mb-6 flex items-center gap-2 rounded-md bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600">
-                      🔒 <span className="font-medium">唯讀模式</span>：你目前正在檢視此設定集，沒有編輯權限。
+                      <button
+                        onClick={() => {
+                          setSelectedItem(null);
+                          const firstItem = settingsData.flatMap(g => g.items)[0];
+                          if (firstItem) {
+                            setSelectedItem(firstItem);
+                            setViewMode('form');
+                            setHasChanges(false);
+                          } else {
+                            setViewMode('form'); 
+                          }
+                        }}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg shadow-sm transition-all whitespace-nowrap"
+                      >
+                        ✨ 完成配置
+                      </button>
                     </div>
-                  )}
 
-                  {selectedItem.id === "project-calendar-config" ? (
-                    <CalendarConfigForm
-                      projectId={projectId}
-                      initialConfig={calendarConfig as any}
-                      isEditable={isEditable}
-                      onSaveSuccess={(latestConfigFromBackend) => {
-                        if (latestConfigFromBackend) {
-                          setCalendarConfig(latestConfigFromBackend as any);
-                        } else {
-                          fetchSettings();
-                        }
-                        setHasChanges(false);
-                      }}
-                      onDirty={() => setHasChanges(true)}
-                    />
-                  ) : (
-                    <>
-                      {/* 🌟 核心修正：將 category 完美焊接進 key 中，確保儲存與版本更新時絕不回彈 */}
-                      {selectedItem.category === 'character' && (
-                        <CharacterForm
-                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
-                          item={selectedItem}
-                          onSave={handleUpdateItem}
-                          allSettings={globalAllSettings}
-                          currentChapterSettings={settingsData}
-                          onDirty={() => setHasChanges(true)}
-                        />
-                      )}
+                    <div className="space-y-6 flex-1 overflow-y-auto pr-1">
+                      {globalAllSettings.map((group) => (
+                        <div key={group.category} className="space-y-3 min-w-0"> {/* 🌟 補上 min-w-0 */}
+                          <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
+                            {group.category}
+                          </h4>
+                          {/* 🌟 加上 min-w-0，防止 Grid 被內部的長文字硬撐開 */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+                            {group.items.map((item) => {
+                              const isAssigned = settingsData
+                                .flatMap((g) => g.items)
+                                .some((i) => i.id === item.id);
 
-                      {selectedItem.category === 'faction' && (
-                        <FactionForm
-                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
-                          item={selectedItem}
-                          allSettings={globalAllSettings} 
-                          onSave={handleUpdateItem}
-                          onDirty={() => setHasChanges(true)}
-                        />
-                      )}
+                              return (
+                                <label 
+                                  key={item.id} 
+                                  className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none min-w-0 ${
+                                    isAssigned 
+                                      ? 'border-blue-500 bg-blue-50/40 shadow-sm' 
+                                      : 'border-slate-200 bg-white hover:border-slate-300'
+                                  }`}
+                                >
+                                  {/* 🌟 min-w-0 是關鍵！ */}
+                                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                      item.category === 'character' ? 'bg-blue-500' : 
+                                      item.category === 'faction' ? 'bg-orange-500' : 
+                                      item.category === 'location' ? 'bg-blue-600' : 
+                                      'bg-emerald-500'
+                                    }`} />
+                                    {/* 🌟 加上 truncate，長文字（如言峰綺禮聖堂教會）太長時會自動變成 ...，絕對不撐寬網格！ */}
+                                    <span className="text-sm font-semibold text-slate-800 truncate block">
+                                      {item.name}
+                                    </span>
+                                  </div>
+                                  <input 
+                                    type="checkbox"
+                                    checked={isAssigned}
+                                    disabled={!isEditable}
+                                    onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
+                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0 ml-2"
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+               ) : selectedItem ? (
+                  <fieldset 
+                    disabled={!isEditable}
+                    className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm overflow-x-auto"
+                  >
+                    {!isEditable && (
+                      <div className="mb-6 flex items-center gap-2 rounded-md bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600">
+                        🔒 <span className="font-medium">唯讀模式</span>：你目前正在檢視此設定集，沒有編輯權限。
+                      </div>
+                    )}
 
-                      {selectedItem.category === 'item' && (
-                        <ItemForm
-                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
-                          item={selectedItem}
-                          allSettings={globalAllSettings} 
-                          onSave={handleUpdateItem}
-                          onDirty={() => setHasChanges(true)}
-                        />
-                      )}
+                    {selectedItem.id === "project-calendar-config" ? (
+                      <CalendarConfigForm
+                        projectId={projectId}
+                        initialConfig={calendarConfig as any}
+                        isEditable={isEditable}
+                        onSaveSuccess={(latestConfigFromBackend) => {
+                          if (latestConfigFromBackend) {
+                            setCalendarConfig(latestConfigFromBackend as any);
+                          } else {
+                            fetchSettings();
+                          }
+                          setHasChanges(false);
+                        }}
+                        onDirty={() => setHasChanges(true)}
+                      />
+                    ) : (
+                      <>
+                        {selectedItem.category === 'character' && (
+                          <CharacterForm
+                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            item={selectedItem}
+                            onSave={handleUpdateItem}
+                            allSettings={globalAllSettings}
+                            currentChapterSettings={settingsData}
+                            onDirty={() => setHasChanges(true)}
+                          />
+                        )}
 
-                      {selectedItem.category === 'event' && (
-                        <EventForm
-                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
-                          item={selectedItem}
-                          calendarConfig={calendarConfig}
-                          allSettings={globalAllSettings}
-                          onSave={handleUpdateItem}
-                          onDirty={() => setHasChanges(true)}
-                        />
-                      )}
+                        {selectedItem.category === 'faction' && (
+                          <FactionForm
+                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            item={selectedItem}
+                            allSettings={globalAllSettings} 
+                            onSave={handleUpdateItem}
+                            onDirty={() => setHasChanges(true)}
+                          />
+                        )}
 
-                      {selectedItem.category === 'location' && (
-                        <LocationForm
-                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
-                          item={selectedItem}
-                          allSettings={globalAllSettings}
-                          onSave={handleUpdateItem}
-                          onDirty={() => setHasChanges(true)}
-                        />
-                      )}
+                        {selectedItem.category === 'item' && (
+                          <ItemForm
+                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            item={selectedItem}
+                            allSettings={globalAllSettings} 
+                            onSave={handleUpdateItem}
+                            onDirty={() => setHasChanges(true)}
+                          />
+                        )}
 
-                      {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event', 'location'].includes(selectedItem.category)) && (
-                        <DynamicForm 
-                          key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`} 
-                          item={selectedItem} 
-                          onSave={handleUpdateItem} 
-                        />
-                      )}
-                    </>
-                  )}
-                </fieldset>
-             ) : (
-                <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200">
-                  <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
+                        {selectedItem.category === 'event' && (
+                          <EventForm
+                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            item={selectedItem}
+                            calendarConfig={calendarConfig}
+                            allSettings={globalAllSettings}
+                            onSave={handleUpdateItem}
+                            onDirty={() => setHasChanges(true)}
+                          />
+                        )}
+
+                        {selectedItem.category === 'location' && (
+                          <LocationForm
+                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            item={selectedItem}
+                            allSettings={globalAllSettings}
+                            onSave={handleUpdateItem}
+                            onDirty={() => setHasChanges(true)}
+                          />
+                        )}
+
+                        {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event', 'location'].includes(selectedItem.category)) && (
+                          <DynamicForm 
+                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`} 
+                            item={selectedItem} 
+                            onSave={handleUpdateItem} 
+                          />
+                        )}
+                      </>
+                    )}
+                  </fieldset>
+               ) : (
+                  <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200 min-h-[400px]">
+                    <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
+                  </div>
+               )}
+            </div>
+
+            {/* 🎯 右小區：獨立時光機歷史面板 - 焊死 w-80 flex-shrink-0 雙保險，無論左邊公式推擠力道多強，在此處絕對不動如山！ */}
+            {isLocalHistoryOpen && selectedItem && (
+              <aside className="w-80 flex-shrink-0 border-l border-slate-200 bg-white p-4 overflow-y-auto flex flex-col h-full max-h-[calc(100vh-160px)] animate-in slide-in-from-right duration-200 shadow-sm rounded-xl">
+                <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2 flex-shrink-0">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    ⏳ 項目版本時光機
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsLocalHistoryOpen(false)}
+                    className="text-slate-400 hover:text-slate-600 text-sm font-semibold p-1"
+                  >
+                    ✕
+                  </button>
                 </div>
-             )}
+
+                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                  {(() => {
+                    const itemAny = selectedItem as any;
+                    const versions =
+                      Array.isArray(itemAny.content?.versions) ? itemAny.content.versions :
+                      Array.isArray(itemAny.versions) ? itemAny.versions :
+                      [];
+
+                    if (versions.length > 0) {
+                      return versions
+                        .slice()
+                        .reverse()
+                        .map((version: any, index: number) => {
+                          const ts = version.timestamp || version.id || version.time;
+                          const dateObject = new Date(Number(ts));
+                          const isValidDate = !isNaN(dateObject.getTime());
+
+                          const displayTime = isValidDate
+                            ? dateObject.toLocaleString('zh-TW', { hour12: true })
+                            : "未知儲存時間";
+
+                          return (
+                            <div
+                              key={ts || index}
+                              className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-purple-400 hover:shadow-md transition-all group relative"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`確定要刪除此條歷史備份嗎？此動作無法復原。`)) {
+                                    handleDeleteVersion(Number(ts));
+                                  }
+                                }}
+                                className="absolute top-3 right-3 text-xs text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-1"
+                                title="刪除此版本"
+                              >
+                                🗑️
+                              </button>
+
+                              <p className="text-xs font-semibold text-purple-600 mb-1">
+                                {displayTime}
+                              </p>
+
+                              <p className="text-sm font-bold text-slate-800 mb-3 truncate">
+                                {version.name || selectedItem.name} - 歷史存檔點
+                              </p>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`確定要將「${selectedItem.name}」還原到此歷史版本嗎？\n目前未儲存的變更將會遺失。`)) {
+                                    handleRestoreVersion(Number(ts));
+                                  }
+                                }}
+                                className="w-full py-1.5 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 rounded-lg text-xs font-semibold text-slate-600 hover:text-purple-700 transition-colors"
+                              >
+                                🔄 還原至此版本
+                              </button>
+                            </div>
+                          );
+                        });
+                    }
+
+                    return (
+                      <div className="h-40 flex flex-col items-center justify-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl flex-shrink-0">
+                        <span>此項目尚無任何歷史變動紀錄</span>
+                        <p className="text-[10px] text-slate-400 mt-1">（每次儲存時後端將自動建立）</p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </aside>
+            )}
+
           </div>
         </div>
       </main>
-
-      {/* 右側版本歷史時光機側邊欄 */}
-      {isLocalHistoryOpen && selectedItem && (
-        <aside className="w-80 border-l border-slate-200 bg-white p-4 overflow-y-auto flex flex-col h-full animate-in slide-in-from-right duration-200">
-          <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-              ⏳ 項目版本時光機
-            </h3>
-            <button
-              type="button"
-              onClick={() => setIsLocalHistoryOpen(false)}
-              className="text-slate-400 hover:text-slate-600 text-sm font-semibold p-1"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="flex-1 space-y-3">
-            {(() => {
-              const itemAny = selectedItem as any;
-              const versions =
-                Array.isArray(itemAny.content?.versions) ? itemAny.content.versions :
-                Array.isArray(itemAny.versions) ? itemAny.versions :
-                [];
-
-              if (versions.length > 0) {
-                return versions
-                  .slice()
-                  .reverse()
-                  .map((version: any, index: number) => {
-                    const ts = version.timestamp || version.id || version.time;
-                    const dateObject = new Date(Number(ts));
-                    const isValidDate = !isNaN(dateObject.getTime());
-
-                    const displayTime = isValidDate
-                      ? dateObject.toLocaleString('zh-TW', { hour12: true })
-                      : "未知儲存時間";
-
-                    return (
-                      <div
-                        key={ts || index}
-                        className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-purple-400 hover:shadow-md transition-all group relative"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`確定要刪除此條歷史備份嗎？此動作無法復原。`)) {
-                              handleDeleteVersion(Number(ts));
-                            }
-                          }}
-                          className="absolute top-3 right-3 text-xs text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-1"
-                          title="刪除此版本"
-                        >
-                          🗑️
-                        </button>
-
-                        <p className="text-xs font-semibold text-purple-600 mb-1">
-                          {displayTime}
-                        </p>
-
-                        <p className="text-sm font-bold text-slate-800 mb-3">
-                          {version.name || selectedItem.name} - 歷史存檔點
-                        </p>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`確定要將「${selectedItem.name}」還原到此歷史版本嗎？\n目前未儲存的變更將會遺失。`)) {
-                              handleRestoreVersion(Number(ts));
-                            }
-                          }}
-                          className="w-full py-1.5 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 rounded-lg text-xs font-semibold text-slate-600 hover:text-purple-700 transition-colors"
-                        >
-                          🔄 還原至此版本
-                        </button>
-                      </div>
-                    );
-                  });
-              }
-
-              return (
-                <div className="h-40 flex flex-col items-center justify-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
-                  <span>此項目尚無任何歷史變動紀錄</span>
-                  <p className="text-[10px] text-slate-400 mt-1">（每次儲存時後端將自動建立）</p>
-                </div>
-              );
-            })()}
-          </div>
-        </aside>
-      )}
     </div>
   );
 }
