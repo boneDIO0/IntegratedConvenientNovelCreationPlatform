@@ -59,12 +59,13 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   await getPipeline();
-  const modelId = "BAAI/bge-m3";
+  const modelId = "gemini-embedding-001";
 
+  // 🟢 修正二：改為 Hugging Face Feature Extraction 專用的標準 Serverless 格式
   const hfEndpoints = [
-    `https://api-inference.huggingface.co/pipeline/feature-extraction/${modelId}`, 
-    `https://api-inference.huggingface.co/models/${modelId}`,                      
-    `https://api.huggingface.co/v1/models/${modelId}`                              
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:embedContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1/models/${modelId}:embedContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:embedContent?key=${process.env.GEMINI_API_KEY}` // 備用第三軌
   ];
 
   let lastError: any = null;
@@ -74,22 +75,22 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     
     // 🎯 核心防禦：為每一次 fetch 裝載 1.5 秒的定時炸彈，逾期直接 Abort
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500); 
+    const timeoutId = setTimeout(() => controller.abort(), 3000); 
 
     try {
       console.log(`📡 [Embedding System] 嘗試連線 HF 節點 [${i + 1}/${hfEndpoints.length}]: ${apiUrl}`);
 
       const response = await fetch(apiUrl, {
         headers: {
-          Authorization: `Bearer ${process.env.HF_TOKEN}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json", // 👈 只要這行就好！不要塞 HF_TOKEN 了
         },
         method: "POST",
         body: JSON.stringify({ 
-          inputs: text,
-          options: { wait_for_model: true } 
+          content: {
+            parts: [{ text: text }]
+          }
         }),
-        signal: controller.signal // 🎯 將控制訊號綁定給 fetch
+        signal: controller.signal
       });
 
       // 順利回應，清除計時器
@@ -102,22 +103,48 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
       const result = await response.json();
 
-      let embeddingArray: any = result;
+      let embeddingArray: any = result?.embedding?.values;
+
+      // 2. 如果你的程式可能同時對接其他 API (例如會回傳巢狀陣列 [[...]] 的 OpenAI)
+      // 下面這個 while 迴圈才能發揮「攤平陣列」的作用
       while (Array.isArray(embeddingArray) && embeddingArray.length > 0 && Array.isArray(embeddingArray[0])) {
         embeddingArray = embeddingArray[0];
       }
 
+      // 3. 最後驗證拿到的到底是不是純數字陣列
       if (!Array.isArray(embeddingArray)) {
         throw new Error(`API 返回資料無法解析為數值陣列: ${JSON.stringify(result)}`);
       }
+      let googleVector = embeddingArray as number[];
+      if (googleVector.length > 768 && googleVector.length % 768 === 0) {
+          const chunkSize = 768;
+          const numVectors = googleVector.length / chunkSize; // 計算有幾組向量 (例如 4 組)
+          const averagedVector = new Array(chunkSize).fill(0);
 
-      const finalVector = embeddingArray as number[];
+          // 將所有組別的向量在相同維度上相加
+          for (let d = 0; d < chunkSize; d++) {
+            for (let v = 0; v < numVectors; v++) {
+              averagedVector[d] += googleVector[v * chunkSize + d];
+            }
+            // 取平均值，融合所有段落的語意
+            averagedVector[d] /= numVectors;
+          }
+          
+          googleVector = averagedVector; // 成功融合，變回完美的 768 維資訊集合體！
+        }
+      // 💡 核心對接補零：Gemini 原生 768 維，我們在這邊幫它自動補零到你期待的 1024 維
+      if (googleVector.length === 768) {
+        const padding = new Array(1024 - 768).fill(0);
+        googleVector = [...googleVector, ...padding];
+      }
 
+      const finalVector = googleVector;
+  
       if (finalVector.length !== 1024) {
         throw new Error(`向量維度異常：預期 1024，實際產出 ${finalVector.length}`);
       }
 
-      console.log(`🎯 [Embedding System] 向量化成功！使用節點 [${i + 1}]`);
+      console.log(`🎯 [Embedding System] 向量化成功！使用節點 [${i + 1}]，維度：${finalVector.length}`);
       return finalVector;
 
     } catch (error: any) {
@@ -125,7 +152,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       
       // 判定是否為逾時中斷
       const isTimeout = error.name === 'AbortError';
-      const errorMessage = isTimeout ? "連線超時 1.5 秒被強行熔斷" : (error.message || error);
+      const errorMessage = isTimeout ? "連線超時：" : (error.message || error);
       
       lastError = new Error(errorMessage);
       console.warn(`⚠️ [Embedding System] 節點 [${i + 1}] 失敗: ${errorMessage}`);

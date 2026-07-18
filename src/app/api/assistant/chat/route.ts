@@ -70,9 +70,9 @@ export async function POST(req: Request) {
           
           const matchedEntities: any[] = await prisma.$queryRaw`
             SELECT "title", "content" 
-            FROM "SettingEntity" 
-            WHERE "projectId" = ${projectId}::uuid 
-              AND "deletedAt" IS NULL
+            FROM "setting_entities" 
+            WHERE "project_id" = ${projectId}::uuid 
+              AND "deleted_at" IS NULL
               AND "embedding" IS NOT NULL
             ORDER BY "embedding" <=> ${vectorString}::vector
             LIMIT 3;
