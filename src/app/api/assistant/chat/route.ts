@@ -110,7 +110,7 @@ export async function POST(req: Request) {
     }
 
     // 🚀 4. 檢查環境變數
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || globalThis.process?.env?.GEMINI_API_KEY;;
     if (!apiKey) {
       return NextResponse.json({ error: '後端未設定 GEMINI_API_KEY' }, { status: 500 });
     }
