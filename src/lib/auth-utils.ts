@@ -5,11 +5,20 @@ import { authOptions } from '@/lib/auth/config';
 export async function verifyProjectAccess(projectId: string, allowedRoles: string[]) {
   const session = await getServerSession(authOptions);
   
-  if (!session?.user?.id) {
-    return { isAuthorized: false, error: 'Unauthorized', status: 401 };
+  if (!session?.user?.email) {
+    return { isAuthorized: false, error: '未登入或 Session 授權已過期', status: 401 };
   }
 
-  const userId = session.user.id;
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true }
+  });
+
+  if (!user) {
+    return { isAuthorized: false, error: '找不到該使用者帳號', status: 404 };
+  }
+
+  const userId = user.id;
 
   // 📍 步驟 1：先檢查目前使用者是不是這本小說的「直接建立者 (Owner)」
   const project = await prisma.project.findUnique({
@@ -24,10 +33,9 @@ export async function verifyProjectAccess(projectId: string, allowedRoles: strin
   // 📍 修正：統一轉換為大寫進行比對，避免大小寫造成的誤判
   const normalizedRoles = allowedRoles.map(r => r.toUpperCase());
   const isOwner = project.ownerId === userId;
-  const hasOwnerRoleAllowed = normalizedRoles.includes('OWNER');
 
-  // 如果他是建立者，且這次操作允許 Owner 執行，就直接放行
-  if (isOwner && hasOwnerRoleAllowed) {
+  // 如果他是建立者就直接放行
+  if (isOwner) {
     return { isAuthorized: true, userId, role: 'OWNER' };
   }
 
