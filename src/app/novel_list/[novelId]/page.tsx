@@ -1,6 +1,5 @@
 'use client'
 
-import { useEditorUI } from '@/contexts/EditorUIContext';
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 
@@ -8,14 +7,13 @@ interface Chapter {
   id: string;
   title: string;
   updatedAt: string;
-  status?: string; // 📍 補上 status 型別，這樣 TypeScript 才會認得
+  status?: string; 
 }
 
 export default function ChapterListPage() {
   const router = useRouter()
   const params = useParams()
   const novelId = params.novelId as string
-  const { isEditable } = useEditorUI();
 
   const [novelTitle, setNovelTitle] = useState('載入中...')
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -26,20 +24,20 @@ export default function ChapterListPage() {
     switch (status) {
       case 'PUBLISHED':
         return (
-          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm">
             已公開
           </span>
         );
       case 'HIDDEN':
         return (
-          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200">
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200 shadow-sm">
             已隱藏
           </span>
         );
       case 'DRAFT':
       default:
         return (
-          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-600 border border-slate-200 shadow-sm">
             草稿
           </span>
         );
@@ -61,7 +59,6 @@ export default function ChapterListPage() {
     }
   }
 
-  // 🌟 修正處：明確使用區塊語法包裹，防止 TS 將特定變數誤判為 Boolean 簽章呼叫
   useEffect(() => {
     if (novelId) {
       fetchData()
@@ -84,7 +81,7 @@ export default function ChapterListPage() {
   }
 
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center">載入中...</div>
+    return <div className="min-h-screen flex items-center justify-center text-slate-500 font-medium">載入中...</div>
   }
 
   return (
@@ -96,46 +93,46 @@ export default function ChapterListPage() {
           
           {/* 按鈕群組 */}
           <div className="flex items-center gap-3">
-            {/* 通往全螢幕設定集的按鈕 */}
             <button 
               onClick={() => router.push(`/novel_list/${novelId}/settings`)}
-              className="border border-green-600 text-green-600 px-5 py-2 rounded-lg font-bold hover:bg-green-50 transition-all flex items-center gap-2"
+              className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg font-semibold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2 shadow-sm"
             >
               ⚙️ 作品設定集
             </button>
 
-            {/* 新增章節按鈕，僅在可編輯時顯示 */}
-            {isEditable && (
-              <button 
-                onClick={handleCreateChapter}
-                className="bg-green-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
-              >
-                + 新增章節
-              </button>
-            )}
+            {/* 🌟 修正：移除了 isEditable 判斷，讓新增章節按鈕永遠顯示 */}
+            <button 
+              onClick={handleCreateChapter}
+              className="bg-blue-600 text-white px-5 py-2 rounded-lg font-semibold shadow-sm hover:bg-blue-700 hover:shadow transition-all flex items-center gap-1"
+            >
+              <span className="text-lg leading-none">+</span> 新增章節
+            </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           {chapters.length === 0 ? (
-            <div className="p-10 text-center text-gray-400">
-              {isEditable
-              ? "這本小說還沒有任何章節，點擊右上角新增吧！"
-              : "這本小說目前還沒有任何章節。"}
+            <div className="p-16 flex flex-col items-center justify-center text-slate-400">
+              <p className="mb-4">這本小說還沒有任何章節</p>
+              <button 
+                onClick={handleCreateChapter}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors font-medium text-sm"
+              >
+                立即建立第一章
+              </button>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-slate-100">
               {chapters.map((chapter) => (
                 <div 
                   key={chapter.id}
-                  className="p-5 hover:bg-blue-50 transition-colors flex justify-between items-center cursor-pointer group"
+                  className="p-5 hover:bg-slate-50 transition-colors flex justify-between items-center cursor-pointer group"
                   onClick={() => router.push(`/novel_list/${novelId}/editor/${chapter.id}`)}
                 >
-                  <span className="font-medium text-gray-800 group-hover:text-blue-600">
+                  <span className="font-medium text-slate-700 group-hover:text-blue-600 transition-colors">
                     {chapter.title}
                   </span>
                   
-                  {/* 📍 這裡！用狀態徽章取代了原本的按鈕 */}
                   <div>
                     {renderStatusBadge(chapter.status)}
                   </div>
