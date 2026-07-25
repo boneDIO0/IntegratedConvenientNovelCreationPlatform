@@ -20,15 +20,18 @@ export async function GET(
     const user = await prisma.user.findUnique({ where: { email: session.user.email } });
     if (!user) return NextResponse.json({ error: '找不到該使用者' }, { status: 404 });
 
-    // 只要是專案成員就能看歷史側欄
-    const membership = await prisma.projectMember.findFirst({
+    // 🌟 修正點：同時檢查「是否為作者本人(ownerId)」或是「是否為協作成員」
+    const hasAccess = await prisma.project.findFirst({
       where: {
-        projectId: projectId,
-        userId: user.id
+        id: projectId,
+        OR: [
+          { ownerId: user.id }, // 條件 A：作者本人 (兼容舊資料)
+          { members: { some: { userId: user.id } } } // 條件 B：專案成員 (新機制)
+        ]
       }
     });
 
-    if (!membership) {
+    if (!hasAccess) {
       return NextResponse.json({ error: '您不屬於此專案，無權檢視歷史紀錄' }, { status: 403 });
     }
     

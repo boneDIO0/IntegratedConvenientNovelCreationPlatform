@@ -54,9 +54,8 @@ export async function PUT(
     const body = await request.json()
     const { title, content, saveVersion, commitMsg, status } = body
 
-    // 📍 建立一個「資料庫操作陣列」，把要同時執行的任務放進來
+    // 📍 建立一個「資料庫操作陣列」，先放入一定會執行的更新章節動作
     const dbOperations: any[] = [
-      // 動作 1：更新目前的章節內容與發布狀態
       prisma.chapter.update({
         where: { id: chapterId },
         data: {
@@ -65,28 +64,32 @@ export async function PUT(
           ...(status && { status }),
           ...(status === 'PUBLISHED' && { publishedAt: new Date() }) 
         }
-      }),
-
-      // 動作 2：同步生出一份 Checkpoint 快照留底
-      prisma.checkpoint.create({
-        data: {
-          projectId: projectId,
-          authorId: authCheck.userId,
-          targetType: "CHAPTER",
-          targetId: chapterId,
-          content: content as any, 
-          commitMsg: commitMsg || "編輯器手動存檔"
-        }
       })
     ];
 
-    // 📍 動作 3 (新增)：如果是發布操作，自動將整本小說升級為「連載中」
+    // 📍 核心修改：判斷是否需要建立版本紀錄（自動存檔為 false，手動存檔為 true）
+    if (saveVersion) {
+      dbOperations.push(
+        prisma.checkpoint.create({
+          data: {
+            projectId: projectId,
+            authorId: authCheck.userId,
+            targetType: "CHAPTER",
+            targetId: chapterId,
+            content: content as any, 
+            commitMsg: commitMsg || "編輯器手動存檔"
+          }
+        })
+      );
+    }
+
+    // 動作 3：如果是發布操作，自動將整本小說升級為「連載中」
     if (status === 'PUBLISHED') {
       dbOperations.push(
         prisma.project.updateMany({
           where: { 
             id: projectId,
-            status: 'DRAFT' // 只有當小說目前是「未公開 (DRAFT)」時，才幫它自動升級
+            status: 'DRAFT' 
           },
           data: { 
             status: 'SERIALIZING' 
@@ -95,15 +98,13 @@ export async function PUT(
       );
     }
 
-    // 將所有任務一起丟給資料庫執行，確保它們「要嘛全成功，要嘛全失敗」
+    // 將所有任務一起丟給資料庫執行
     const results = await prisma.$transaction(dbOperations)
-    
-    // results[0] 就是我們在陣列裡放的第一個任務 (chapter.update) 的回傳值
     const updatedChapter = results[0] 
 
     return NextResponse.json(updatedChapter)
   } catch (error) {
-    console.error("PUT Chapter & Checkpoint Error:", error)
+    console.error("PUT Chapter Error:", error)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }
