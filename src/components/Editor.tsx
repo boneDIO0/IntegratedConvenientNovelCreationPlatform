@@ -24,8 +24,8 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const forceUpdate = useCallback(() => setTick(tick => tick + 1), [])
   const [saveStatus, setSaveStatus] = useState('已儲存')
   const [chapterStatus, setChapterStatus] = useState(initialStatus)
+  const [isOnline, setIsOnline] = useState(true) // 📍 追蹤網路狀態
 
-  // 📍 自動存檔相關變數
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const LOCAL_STORAGE_KEY = `editor_draft_${novelId}_${chapterId}`
 
@@ -54,7 +54,8 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         const currentTitle = titleInput ? titleInput.value : initialTitle
 
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ title: currentTitle, content }))
-        setSaveStatus('本機已暫存') // 提示使用者資料已不會遺失
+        // 如果目前是離線狀態，顯示離線專屬提示
+        setSaveStatus(navigator.onLine ? '本機已暫存' : '⚠️ 離線中 (內容已暫存本機)') 
       }, 3000)
     }
   })
@@ -66,8 +67,11 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     if (!isEditable) return; 
 
     const autoSaveInterval = setInterval(async () => {
+      // 🚨 如果沒有網路，或是正在手動存檔，就直接跳過這次定時器
+      if (!navigator.onLine || isSaving || !editor) return; 
+
       const draftData = localStorage.getItem(LOCAL_STORAGE_KEY)
-      if (!draftData || !editor || isSaving) return; // 如果本機沒新進度，或正在存檔，就跳過
+      if (!draftData) return; 
 
       try {
         const { title, content } = JSON.parse(draftData)
@@ -79,46 +83,43 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           body: JSON.stringify({
             title: title,
             content: content,
-            saveVersion: false, // 🌟 核心：告訴後端這只是自動存檔，不要生出歷史紀錄
+            saveVersion: false, 
             status: chapterStatus 
           })
         })
 
         if (res.ok) {
           setSaveStatus('● 已儲存')
-          localStorage.removeItem(LOCAL_STORAGE_KEY) // 存進資料庫後，清空本機暫存
+          localStorage.removeItem(LOCAL_STORAGE_KEY) 
         }
       } catch (error) {
         console.error('自動存檔失敗', error)
         setSaveStatus('⚠️ 自動存檔失敗')
       }
-    }, 3 * 60 * 1000) // 3 分鐘 (180,000 毫秒)
+    }, 3 * 60 * 1000) 
 
     return () => clearInterval(autoSaveInterval)
   }, [editor, isSaving, novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY])
 
-  // 📍 機制 3：監聽使用者「切換分頁」或「關閉網頁」的瞬間，強制發送存檔請求
+  // 📍 機制 3：監聽使用者「切換分頁」或「關閉網頁」的瞬間
   useEffect(() => {
     if (!isEditable) return;
 
     const handleVisibilityChange = () => {
-      // document.visibilityState === 'hidden' 代表使用者切換了分頁，或正在關閉視窗
-      if (document.visibilityState === 'hidden') {
+      // 如果沒網路，打了也是白打，直接放棄發送 keepalive，反正資料已在 localStorage 裡
+      if (document.visibilityState === 'hidden' && navigator.onLine) {
         const draftData = localStorage.getItem(LOCAL_STORAGE_KEY)
         
-        // 如果本機有暫存資料，代表有還沒存進資料庫的新進度
         if (draftData) {
           const { title, content } = JSON.parse(draftData)
 
-          // 🚨 注意：這裡千萬不能用普通的 async/await fetch，瀏覽器會直接砍斷請求！
-          // 必須加上 keepalive: true，瀏覽器就會在背景默默幫你把這個 API 打完
           fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               title: title,
               content: content,
-              saveVersion: true, // 🌟 視窗切換通常代表一個段落的結束，趁機生一個歷史紀錄
+              saveVersion: true, 
               commitMsg: "系統自動存檔 (離開網頁)",
               status: chapterStatus
             }),
@@ -137,6 +138,58 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     };
   }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY]);
 
+  // 📍 機制 4：監聽網路斷線與重連狀態 (斷線處理終極防護)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isEditable) return;
+
+    setIsOnline(navigator.onLine);
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSaveStatus('⚠️ 網路已斷線 (內容已安全暫存本機)');
+    };
+
+    const handleOnline = async () => {
+      setIsOnline(true);
+      
+      const draftData = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (draftData) {
+        setSaveStatus('🔄 恢復連線，同步進度中...');
+        try {
+          const { title, content } = JSON.parse(draftData);
+          const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: title,
+              content: content,
+              saveVersion: false,
+              status: chapterStatus
+            })
+          });
+
+          if (res.ok) {
+            setSaveStatus('✅ 已恢復連線並同步完成');
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+            // 3 秒後恢復一般狀態顯示
+            setTimeout(() => setSaveStatus('● 已儲存'), 3000);
+          }
+        } catch (error) {
+          setSaveStatus('⚠️ 同步失敗，請重試');
+        }
+      } else {
+        setSaveStatus('● 已儲存');
+      }
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY]);
 
   useEffect(() => {
     if (editor && latestRestoredContent) {
@@ -149,6 +202,12 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const handleSave = useCallback(async (newStatus?: string) => {
     if (!editor || isSaving) return
     
+    // 🚨 斷線阻擋機制：如果沒網路，就不讓使用者按手動存檔
+    if (!navigator.onLine) {
+      alert('目前處於離線狀態，請等網路恢復後再儲存喔！\n（別擔心，您的進度已安全暫存在瀏覽器中）');
+      return;
+    }
+
     setIsSaving(true) 
     setSaveStatus('儲存中...')
 
@@ -165,7 +224,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         body: JSON.stringify({
           title: currentTitle,
           content: currentContent,
-          saveVersion: true, // 🌟 手動存檔，要求後端生出歷史紀錄
+          saveVersion: true, 
           commitMsg: `${currentTitle || '未命名章節'} - 手動存檔點`,
           status: targetStatus 
         })
@@ -175,7 +234,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
       setSaveStatus('● 已儲存')
       setChapterStatus(targetStatus) 
-      localStorage.removeItem(LOCAL_STORAGE_KEY) // 📍 手動存檔成功後，清空本機暫存
+      localStorage.removeItem(LOCAL_STORAGE_KEY) 
       await fetchVersions(novelId, chapterId)
 
     } catch (error) {
@@ -215,6 +274,15 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     }`
   }
 
+  // 根據不同狀態決定文字顏色
+  const getStatusColor = () => {
+    if (saveStatus.includes('斷線') || saveStatus.includes('離線')) return 'text-red-500 font-bold';
+    if (saveStatus.includes('本機已暫存')) return 'text-blue-500 font-medium';
+    if (saveStatus.includes('同步') || saveStatus.includes('連線')) return 'text-purple-600 font-bold';
+    if (saveStatus.includes('已儲存')) return 'text-emerald-600 font-medium';
+    return 'text-amber-500 font-medium';
+  };
+
   return (
     <div className="flex flex-col w-full h-full bg-[#f8f9fa] overflow-hidden relative">
       <div className="w-full flex flex-col bg-white border-b border-gray-200 shadow-sm z-30 shrink-0">
@@ -238,7 +306,6 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                   disabled={!isEditable}
                   onChange={() => {
                     setSaveStatus('編輯中...');
-                    // 標題改變時也強制重置 3 秒計時器存本機
                     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
                     typingTimeoutRef.current = setTimeout(() => {
                       if (editor) {
@@ -246,7 +313,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                           title: (document.getElementById('doc-title') as HTMLInputElement).value, 
                           content: editor.getJSON() 
                         }));
-                        setSaveStatus('本機已暫存');
+                        setSaveStatus(navigator.onLine ? '本機已暫存' : '⚠️ 離線中 (內容已暫存本機)');
                       }
                     }, 3000);
                   }}
@@ -256,7 +323,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                   `}
                 />
                 {isEditable && (
-                  <span className={`text-xs font-semibold transition-colors ${saveStatus.includes('本機已暫存') ? 'text-blue-500' : saveStatus.includes('已儲存') ? 'text-emerald-600' : 'text-amber-500'}`}>
+                  <span className={`text-xs transition-colors ${getStatusColor()}`}>
                     {saveStatus}
                   </span>
                 )}
@@ -269,7 +336,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
               <>
                 <button 
                   onClick={() => handleSave(chapterStatus === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED')}
-                  disabled={editor.isEmpty || isSaving}
+                  disabled={editor.isEmpty || isSaving || !isOnline}
                   className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed border ${
                     chapterStatus === 'PUBLISHED' 
                       ? 'bg-white text-red-500 border-red-200 hover:bg-red-50' 
@@ -281,7 +348,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
                 <button 
                   onClick={() => handleSave()}
-                  disabled={editor.isEmpty || isSaving}
+                  disabled={editor.isEmpty || isSaving || !isOnline}
                   className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
                 >
                   {isSaving ? '處理中...' : '儲存草稿'}
