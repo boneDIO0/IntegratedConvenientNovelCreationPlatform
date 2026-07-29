@@ -149,7 +149,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           // 🎯 修正點 2：兼容 Prisma 預設的駝峰與單數命名，一網打盡 "SettingEntity"、"setting_entities" 
           // 使用常規大寫表名防禦，如與 schema 不符可改為 "SettingEntity"
           await prisma.$executeRaw`
-            UPDATE "SettingEntity" 
+            UPDATE "setting_entities" 
             SET "embedding" = ${vectorJsonString}::vector
             WHERE "id" = ${id}::uuid
           `;
@@ -158,7 +158,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         }
       } else {
         await prisma.$executeRaw`
-          UPDATE "SettingEntity" 
+          UPDATE "setting_entities" 
           SET "embedding" = NULL
           WHERE "id" = ${id}::uuid
         `;
@@ -171,7 +171,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
 
     } catch (e) {
-      console.warn("⚠️ AI 向量化管線執行跳過或發生非致命異常，已進行防死隔离:", e);
+      console.warn("⚠️ AI 向量化管線執行跳過或發生非致命異常，已進行防死隔離:", e);
     }
 
     return NextResponse.json(updatedEntity, { status: 200 });
