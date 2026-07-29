@@ -4,22 +4,20 @@ import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Editor from '@/components/Editor'
 import { useEditorUI } from '@/contexts/EditorUIContext'
-import { SettingsPanel } from '@/components/SettingsPanel'
 import { RotateCcw, Trash2, X, History } from "lucide-react"
 
 export default function ChapterEditorPage() {
   
   const {
-      isSettingsOpen,
       activeOverlay,
       setActiveOverlay,
       versions,
       setVersions,
       setLatestRestoredContent,
-      fetchVersions, // 🌟 Context 提供的撈取歷史版本函式
+      fetchVersions, // Context 提供的撈取歷史版本函式
       isLoadingVersions,
       isEditable
-    } = useEditorUI(); // 📍 修正：移除了底下重複宣告的 fetchVersions 與 isLoadingVersions
+    } = useEditorUI();
 
   const params = useParams()
   const novelId = params.novelId as string
@@ -101,32 +99,19 @@ export default function ChapterEditorPage() {
     <div className="h-[calc(100vh-3.5rem)] w-full bg-[#f8f9fa] flex flex-col overflow-hidden relative">
       <div className="flex-1 flex overflow-hidden relative w-full">
         
-        {/* 編輯器主要區塊 */}
-        <div className={`${isSettingsOpen ? 'w-[55%]' : 'w-full'} h-full flex flex-col border-r transition-all duration-300 min-w-0`}>
+        {/* 🚀 1. 編輯器主要區塊：全面解鎖 100% 寬度，給予作者最沉浸、寬敞的富文本寫作空間 */}
+        <div className="w-full h-full flex flex-col transition-all duration-300 min-w-0">
           <Editor
             novelId={novelId}
             chapterId={chapterId}
             initialTitle={initialData.title}
             initialContent={initialData.content}
-            isEditable={true}
+            isEditable={isEditable}
             initialStatus={initialData.status} 
           />
         </div>
 
-        {/* 設定面板區塊 */}
-        {isSettingsOpen && (
-          <div className="w-[45%] h-full bg-[#f4f5f7] flex flex-col overflow-y-auto border-l border-slate-200">
-            <div className="flex flex-col items-center p-6">
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">詳細設定區</h3>
-              <SettingsPanel 
-                projectId={novelId} 
-                chapterId={chapterId} 
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 歷史紀錄側邊欄 */}
+        {/* 🚀 2. 章節內文歷史紀錄側邊欄（保持抽屜式浮層） */}
         {activeOverlay === 'version' && (
           <aside className="fixed right-0 top-14 h-[calc(100vh-56px)] w-80 bg-white border-l border-slate-200 z-50 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
             <header className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -156,7 +141,7 @@ export default function ChapterEditorPage() {
                       {ver.commitMsg || "系統自動儲存點"}
                     </p>
 
-                    {/* 滑鼠懸停才顯現的操作按鈕，檢視者看不到 */}
+                    {/* 滑鼠懸停才顯現的操作按鈕 */}
                     {isEditable && (
                       <div className="mt-3 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button

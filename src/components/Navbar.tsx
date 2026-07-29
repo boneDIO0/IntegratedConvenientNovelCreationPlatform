@@ -1,12 +1,11 @@
 "use client"
 
 import { useParams } from "next/navigation"
-import { History } from "lucide-react" // 引入漂亮的圖示
+import { History, ChevronDown, BookOpenCheck } from "lucide-react"
 
 import * as React from "react"
-import { ChevronDown, BookOpenCheck } from "lucide-react"
 import { signIn, signOut, useSession } from "next-auth/react"
-import Link from "next/link" // 🌟 引入 Next.js 的 Link 元件
+import Link from "next/link"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -15,6 +14,8 @@ import { cn } from "@/lib/utils"
 import { useOverlay } from "@/contexts/OverlayContext"
 import { useRouter, usePathname } from "next/navigation"
 import { useEditorUI } from "@/contexts/EditorUIContext"
+// 🎯 1. 引入新打造的懸浮 Popover 設定集選單
+import { SettingsPopover } from "@/components/SettingsPopover"
 
 export default function Navbar() {
   const router = useRouter()
@@ -24,7 +25,7 @@ export default function Navbar() {
   const projectId = (params?.projectId) as string
   const chapterId = (params?.chapterId) as string
 
-  const { isSettingsOpen, toggleSettings, activeOverlay, setActiveOverlay, fetchVersions } = useEditorUI()
+  const { activeOverlay, setActiveOverlay, fetchVersions } = useEditorUI()
 
   // 🌟 1. 偵測目前在哪個頁面
   const isEditorPage = pathname?.includes('/editor');
@@ -65,7 +66,7 @@ export default function Navbar() {
         
         {/* 左側區塊：Logo + 宇宙切換 + 返回按鈕 */}
         <div className="flex items-center gap-4 md:gap-6">
-          {/* Logo (現在可以點擊回首頁/大廳了) */}
+          {/* Logo (點擊回首頁) */}
           <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-slate-50 text-slate-900 shadow-sm">
               <BookOpenCheck className="h-5 w-5" />
@@ -93,7 +94,7 @@ export default function Navbar() {
               className={cn(
                 "text-sm font-medium transition-colors hover:text-slate-900",
                 pathname?.startsWith("/novel_list") 
-                  ? "text-blue-600 border-b-2 border-blue-600 pb-1" // 📍 這裡！把原本的 purple 統一換成 blue
+                  ? "text-blue-600 border-b-2 border-blue-600 pb-1"
                   : "text-slate-500"
               )}
             >
@@ -122,7 +123,7 @@ export default function Navbar() {
           </div>   
         </div>
 
-        {/* 右側區塊：使用者選單與工具列 (維持原樣) */}
+        {/* 右側區塊：使用者選單與工具列 */}
         <div className="flex items-center gap-3">
           {status !== "authenticated" ? (
             pathname !== '/login' && (
@@ -133,7 +134,7 @@ export default function Navbar() {
           ) : (
             <div className="flex items-center gap-3">
               {currentNovelId && (
-              <button 
+                <button 
                   onClick={handleDiscussionClick} 
                   className={cn(
                     "px-3 py-1 rounded transition-colors duration-200",
@@ -145,34 +146,40 @@ export default function Navbar() {
                   {isDiscussionOpen ? "👁️‍🗨️" : "🗨️"}
                 </button>
               )}
-              {isEditorPage && (
-                  <div className="flex items-center gap-2 mr-4 border-r pr-4">
-                    <button
-                      onClick={() => {
-                        if (activeOverlay === 'version') {
-                          setActiveOverlay('none')
-                        } else {
-                          setActiveOverlay('version')
-                          fetchVersions(projectId, chapterId)
-                        }
-                      }}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium",
-                        activeOverlay === 'version'
-                          ? "bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
-                          : "bg-purple-50 hover:bg-purple-100 text-purple-700"
-                      )}
-                      title="開啟版本歷史管理"
-                    >
-                      <History className="h-4 w-4" />
-                      <span>歷史紀錄</span>
-                    </button>
 
-                    <button onClick={toggleSettings} className="px-3 py-1 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-medium text-gray-700 transition-colors">
-                      {isSettingsOpen ? '✕ 關閉設定集' : '◀ 打開設定集'}
-                    </button>
-                  </div>
-                )}
+              {isEditorPage && (
+                <div className="flex items-center gap-2 mr-4 border-r pr-4">
+                  {/* 版本歷史按鈕 */}
+                  <button
+                    onClick={() => {
+                      if (activeOverlay === 'version') {
+                        setActiveOverlay('none')
+                      } else {
+                        setActiveOverlay('version')
+                        fetchVersions(currentNovelId || projectId, chapterId)
+                      }
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium",
+                      activeOverlay === 'version'
+                        ? "bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
+                        : "bg-purple-50 hover:bg-purple-100 text-purple-700"
+                    )}
+                    title="開啟版本歷史管理"
+                  >
+                    <History className="h-4 w-4" />
+                    <span>歷史紀錄</span>
+                  </button>
+
+                  {/* 🎯 2. 無縫換成懸浮 Popover 按鈕 */}
+                  <SettingsPopover 
+                    projectId={(currentNovelId || projectId) as string} 
+                    chapterId={chapterId} 
+                  />
+                </div>
+              )}
+
+              {/* 使用者頭像與下拉選單 */}
               <div ref={menuRef} className="relative">
                 <button
                   type="button"

@@ -12,7 +12,7 @@ interface CategoryWithEntities extends SettingCategory {
   entities: EntityWithChapters[];
 }
 
-// 🌍 GET: 讀取這本小說的目錄與設定項目 (支援按章節局部過濾)
+// 🌍 GET: 讀取這本小說的目錄與設定項目 (標記本章登場關聯)
 export async function GET(request: NextRequest) { 
   try {
     const { searchParams } = new URL(request.url);
@@ -30,57 +30,43 @@ export async function GET(request: NextRequest) {
     ]);
     if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    let categories: CategoryWithEntities[] = [];
-
-    if (chapterId) {
-      const result = await prisma.settingCategory.findMany({
-        where: { 
-          projectId: projectId, 
-          deletedAt: null 
+    // 🌟【關鍵修改】：不管有沒有帶 chapterId，都拉出「全專案所有設定」，但帶上 chapters 關聯做比對
+    const categories = await prisma.settingCategory.findMany({
+      where: { 
+        projectId: projectId, 
+        deletedAt: null 
+      }, 
+      include: {
+        entities: {
+          where: { deletedAt: null }, 
+          include: {
+            // 🎯 如果有帶 chapterId，只加載匹配該 chapterId 的關聯陣列（優化效能）
+            chapters: chapterId ? { where: { id: chapterId }, select: { id: true } } : { select: { id: true } }
+          },
+          orderBy: { orderIndex: 'asc' } 
         }, 
-        include: {
-          entities: {
-            where: { 
-              deletedAt: null,
-              chapters: {
-                some: { id: chapterId } 
-              }
-            }, 
-            orderBy: { orderIndex: 'asc' } 
-          }, 
-        },
-        orderBy: { orderIndex: 'asc' }
-      });
-      categories = result as CategoryWithEntities[];
-    } else {
-      const result = await prisma.settingCategory.findMany({
-        where: { 
-          projectId: projectId, 
-          deletedAt: null 
-        }, 
-        include: {
-          entities: {
-            where: { deletedAt: null }, 
-            orderBy: { orderIndex: 'asc' } 
-          }, 
-        },
-        orderBy: { orderIndex: 'asc' }
-      });
-      categories = result as CategoryWithEntities[];
-    }
+      },
+      orderBy: { orderIndex: 'asc' }
+    }) as CategoryWithEntities[];
 
-    // 轉換成前端熟悉的格式
+    // 轉換成前端熟悉的格式，並帶上 isChapterAssigned 標記
     const formattedData = categories.map((cat: CategoryWithEntities) => ({
       category: cat.name,
       items: cat.entities.map((entity: EntityWithChapters) => {
         const contentObj = (entity.content as any) || {}; 
         
+        // 🎯 判斷該項目是否屬於目前章節
+        const isAssignedToChapter = chapterId 
+          ? Array.isArray(entity.chapters) && entity.chapters.some(c => c.id === chapterId)
+          : false;
+
         return {
           id: entity.id,
           name: entity.title, 
-          // 🌟【核心修復】：最高權重必須給予前端傳進來並儲存在資料庫最核心的 content.category！
-          // 只有當 content 內部完全沒有定義分類時，才去繼承物理資料夾的 cat.type，徹底杜絕轉生回彈 BUG！
+          // 🌟 分類權重保衛
           category: contentObj.category || contentObj.formType || cat.type || 'custom', 
+          isChapterAssigned: isAssignedToChapter,
+          isAssigned: isAssignedToChapter, // 雙重命名前端相容
           ...contentObj
         };
       })
@@ -142,7 +128,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 🌟【優化點】：新增項目的時候，在原始 content JSON 裡面也幫它把初始的 category 欄位寫死，做到雙重防禦！
     const newEntity = await prisma.settingEntity.create({
       data: {
         title: body.item.name, 
@@ -244,7 +229,7 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// ❌ PATCH 保持不變...
+// 🔀 PATCH: 同步本章登場關聯
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
@@ -254,7 +239,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '缺少必要參數' }, { status: 400 });
     }
 
-    // 透過 chapterId 查詢 projectId
     const chapter = await prisma.chapter.findUnique({
       where: { id: chapterId },
       select: { projectId: true }
@@ -264,7 +248,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '找不到對應的章節' }, { status: 404 });
     }
 
-    // 以查詢到的 projectId 進行權限認證
     const auth = await verifyProjectAccess(chapter.projectId, [
       PROJECT_ROLES.OWNER,
       PROJECT_ROLES.EDITOR
