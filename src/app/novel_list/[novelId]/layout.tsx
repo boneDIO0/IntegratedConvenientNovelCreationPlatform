@@ -18,14 +18,16 @@ export default async function NovelLayout({
   const userRole = auth.isAuthorized && auth.role ? auth.role : 'VIEWER';
 
   return (
-    <>
+    <div className="flex h-screen flex-col">
       {/* 呼叫隱形注入器，把伺服器查到的權限塞進全域 Context */}
       <RoleInitializer serverRole={userRole} />
 
       <Navbar projectId={novelId} role={userRole} />
       
       {/* 渲染原本的 Client Component (page.tsx) */}
-      {children}
-    </>
+      <main className="flex-1 overflow-auto bg-slate-50 relative">
+        {children}
+      </main>
+    </div>
   );
 }
