@@ -1,7 +1,6 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth/config";
-import prisma from "@/lib/prisma";
 import RoleInitializer from "@/components/RoleInitializer";
+import Navbar from "@/components/Navbar";
+import { verifyProjectAccess } from "@/lib/auth-utils";
 
 export default async function NovelLayout({ 
   children, 
@@ -14,34 +13,16 @@ export default async function NovelLayout({
   const resolvedParams = await params;
   const novelId = resolvedParams.novelId;
   
-  // 取得登入者資訊
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id;
-
-  // 預設唯讀權限
-  let userRole = 'viewer'; 
-  
-  if (userId) {
-    // 去資料庫查詢使用者在這本小說的權限
-    const membership = await prisma.projectMember.findUnique({
-      where: {
-        projectId_userId: {
-          projectId: novelId,
-          userId: userId,
-        }
-      },
-      select: { role: true }
-    });
-    
-    if (membership?.role) {
-      userRole = membership.role; 
-    }
-  }
+  // 查詢並取得權限
+  const auth = await verifyProjectAccess(novelId, ['OWNER', 'EDITOR', 'VIEWER']);
+  const userRole = auth.isAuthorized && auth.role ? auth.role : 'VIEWER';
 
   return (
     <>
       {/* 呼叫隱形注入器，把伺服器查到的權限塞進全域 Context */}
       <RoleInitializer serverRole={userRole} />
+
+      <Navbar projectId={novelId} role={userRole} />
       
       {/* 渲染原本的 Client Component (page.tsx) */}
       {children}
