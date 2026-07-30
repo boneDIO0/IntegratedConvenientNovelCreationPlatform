@@ -49,10 +49,17 @@ export async function verifyProjectAccess(projectId: string, allowedRoles: strin
     },
   });
 
-  // 成員表比對也一併統一轉大寫比較安全
-  if (!membership || !membership.role || !normalizedRoles.includes(membership.role.toUpperCase())) {
+  if (!membership || !membership.role) {
     return { isAuthorized: false, error: 'Forbidden: 權限不足', status: 403, role: membership?.role };
   }
 
-  return { isAuthorized: true, userId, role: membership.role };
+  const memberRole = membership.role.toUpperCase();
+
+  const hasAccess = memberRole === 'OWNER' || normalizedRoles.includes(memberRole);
+
+  if (!hasAccess) {
+    return { isAuthorized: false, error: 'Forbidden: 權限不足', status: 403, role: memberRole };
+  }
+
+  return { isAuthorized: true, userId, role: memberRole };
 }

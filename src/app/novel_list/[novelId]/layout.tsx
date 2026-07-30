@@ -15,7 +15,7 @@ export default async function NovelLayout({
   
   // 查詢並取得權限
   const auth = await verifyProjectAccess(novelId, ['OWNER', 'EDITOR', 'VIEWER']);
-  const userRole = auth.isAuthorized && auth.role ? auth.role : 'VIEWER';
+  const userRole = auth.isAuthorized && auth.role ? auth.role.toLowerCase() : 'viewer';
 
   return (
     <div className="flex h-screen flex-col">
