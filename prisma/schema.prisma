@@ -44,6 +44,7 @@ model User {
   memberships     ProjectMember[]
   projectMessages ProjectMessages[]
   projects        Project[]         @relation("ProjectOwner")
+  sentInvitations ProjectInvitation[]
   
   // --- Auth.js 的關聯 ---
   accounts      Account[]
@@ -122,6 +123,7 @@ model Project {
   owner           User              @relation("ProjectOwner", fields: [ownerId], references: [id])
   categories      SettingCategory[]
   entities        SettingEntity[]
+  invitations     ProjectInvitation[]
 
   @@index([ownerId])
   @@map("projects")
@@ -288,5 +290,26 @@ model Chapter {
 
   @@index([projectId, orderIndex])
   @@map("chapters")
+  @@schema("public")
+}
+
+model ProjectInvitation {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String    @unique
+  projectId String    @map("project_id") @db.Uuid
+  inviterId String    @map("inviter_id")
+  role      String    // 受邀者進來後的身分
+
+  email     String?   
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)    // 什麼時候被點擊使用的，用來判斷是否失效
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inviter   User      @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_invitations")
   @@schema("public")
 }
