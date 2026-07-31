@@ -1,12 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Link as LinkIcon, Copy, CheckCircle2, UserPlus, Users } from 'lucide-react';
 
 interface ManageMembersModalProps {
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
+}
+
+interface Member {
+  id: string;
+  name: string | null;
+  email: string | null;
+  image: string | null;
+  role: 'OWNER' | 'EDITOR' | 'VIEWER';
+  joinedAt: string;
 }
 
 export default function ManageMembersModal({ projectId, isOpen, onClose }: ManageMembersModalProps) {
@@ -16,6 +25,36 @@ export default function ManageMembersModal({ projectId, isOpen, onClose }: Manag
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
+  const [members, setMembers] = useState<Member[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+
+  // 開啟 Modal 時，自動撈取成員資料
+  useEffect(() => {
+    const fetchMembers = async () => {
+      if (!isOpen) return;
+      
+      setIsLoadingMembers(true);
+      setFetchError('');
+      
+      try {
+        const res = await fetch(`/api/projects/${projectId}/members`);
+        const data = await res.json();
+        
+        if (res.ok) {
+          setMembers(data.members);
+        } else {
+          setFetchError(data.error || '無法取得成員資料');
+        }
+      } catch (err) {
+        setFetchError('發生錯誤，請稍後再試');
+      } finally {
+        setIsLoadingMembers(false);
+      }
+    };
+
+    fetchMembers();
+  }, [projectId, isOpen]);
 
   if (!isOpen) return null;
 
@@ -54,6 +93,21 @@ export default function ManageMembersModal({ projectId, isOpen, onClose }: Manag
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('複製失敗:', err);
+    }
+  };
+
+  // 渲染身分標籤
+  const RoleBadge = ({ roleName }: { roleName: string }) => {
+    const normalizedRole = roleName?.toUpperCase() || 'VIEWER';
+    switch (normalizedRole) {
+      case 'OWNER':
+        return <span className="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-md text-xs font-bold border border-amber-200">管理員</span>;
+      case 'EDITOR':
+        return <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-md text-xs font-bold border border-blue-200">協作寫手</span>;
+      case 'VIEWER':
+        return <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-xs font-bold border border-slate-200">檢視者</span>;
+      default:
+        return <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md text-xs font-bold">{roleName}</span>;
     }
   };
 
@@ -155,9 +209,39 @@ export default function ManageMembersModal({ projectId, isOpen, onClose }: Manag
               )}
             </div>
           ) : (
-            <div className="h-40 flex flex-col items-center justify-center text-slate-400">
-              <Users size={32} className="mb-2 opacity-20" />
-              <p className="text-sm">現有成員清單即將開放...</p>
+            <div className="flex flex-col gap-2">
+              {members.map((member) => (
+                <div 
+                  key={member.id} 
+                  className="flex items-center justify-between p-3 border border-slate-100 rounded-xl hover:bg-slate-50/80 transition-colors"
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    {/* 頭像 */}
+                    {member.image ? (
+                      <img src={member.image} alt={member.name || 'User'} className="w-10 h-10 rounded-full border border-slate-200 shrink-0 object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0">
+                        {member.name?.charAt(0) || '?'}
+                      </div>
+                    )}
+                    
+                    {/* 姓名與信箱 */}
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">
+                        {member.name || '未知使用者'}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {member.email || '無提供信箱'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 權限標籤 */}
+                  <div className="shrink-0 ml-2">
+                    <RoleBadge roleName={member.role} />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
