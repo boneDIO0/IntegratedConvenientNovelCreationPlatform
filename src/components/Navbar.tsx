@@ -139,16 +139,16 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
               <div className="flex items-center gap-3">
                 {safeProjectId && (
                   <>
-                    {role === 'owner' && (
-                      <button 
-                        onClick={() => setIsMemberModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                        title="管理專案成員"
-                      >
-                        <Users className="h-4 w-4" />
-                        <span className="hidden sm:inline">管理成員</span>
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => setIsMemberModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                      title={role?.toUpperCase() === 'OWNER' ? "管理專案成員" : "檢視成員名單"}
+                    >
+                      <Users className="h-4 w-4" />
+                      <span className="hidden sm:inline">
+                        {role?.toUpperCase() === 'OWNER' ? '管理成員' : '成員名單'}
+                      </span>
+                    </button>
 
                     <button 
                       onClick={handleDiscussionClick} 
@@ -242,7 +242,9 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
         <ManageMembersModal 
           projectId={safeProjectId} 
           isOpen={isMemberModalOpen} 
-          onClose={() => setIsMemberModalOpen(false)} 
+          onClose={() => setIsMemberModalOpen(false)}
+          currentUserRole={role || 'viewer'}
+          currentUserId={session?.user?.id || ''} 
         />
       )}
     </>
