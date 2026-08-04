@@ -1,17 +1,34 @@
-// 檔案路徑：src/app/api/discussions/route.ts
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma'; // 🌟 召喚真實的資料庫引擎
 import { handleApiError } from '@/lib/ErrorHandler';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/config";
+import { verifyProjectAccess } from "@/lib/auth-utils";
+import { PROJECT_ROLES } from "@/lib/roles";
 
 // 讀取留言 (GET)
 export async function GET(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ status: "error", message: "未授權，請先登入" }, { status: 401 });
+    }
+    
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
     const channelId = searchParams.get('channelId') || 'general';
 
     if (!projectId || projectId === 'undefined' || projectId === 'null') {
       return NextResponse.json({ status: "error", message: "缺少有效的小說 ID" }, { status: 400 });
+    }
+
+    const access = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER, 
+      PROJECT_ROLES.EDITOR, 
+      PROJECT_ROLES.VIEWER
+    ]);
+    if (!access.isAuthorized) {
+      return NextResponse.json({ status: "error", message: "無權限查看此專案的留言" }, { status: 403 });
     }
 
     const messages = await prisma.projectMessages.findMany({
@@ -34,20 +51,34 @@ export async function GET(request: Request) {
 // 新增留言 (POST)
 export async function POST(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ status: "error", message: "未授權，請先登入" }, { status: 401 });
+    }
+
     const body = await request.json();
 
-    if (!body.content || !body.projectId || !body.authorId) {
+    if (!body.content || !body.projectId) {
       return NextResponse.json(
         { status: "error", message: "留言失敗：缺少必要資訊" },
         { status: 400 }
       );
     }
 
+    const access = await verifyProjectAccess(body.projectId, [
+      PROJECT_ROLES.OWNER, 
+      PROJECT_ROLES.EDITOR, 
+      PROJECT_ROLES.VIEWER
+    ]);
+    if (!access.isAuthorized) {
+      return NextResponse.json({ status: "error", message: "無權限在此專案留言" }, { status: 403 });
+    }
+
     const newMessage = await prisma.projectMessages.create({
       data: {
         content: body.content,
         projectId: body.projectId,
-        authorId: body.authorId,
+        authorId: session.user.id,
         channelId: body.channelId || 'general'
       }
     });
