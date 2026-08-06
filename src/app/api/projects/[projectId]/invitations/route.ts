@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { verifyProjectAccess } from '@/lib/auth-utils';
 import { PROJECT_ROLES } from '@/lib/roles';
 import crypto from 'crypto';
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface RouteParams {
   params: Promise<{ projectId: string }>;
@@ -13,7 +16,8 @@ interface RouteParams {
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const { projectId } = await params;
+    const resolvedParams = await params;
+    const { projectId } = resolvedParams;
 
     // 僅擁有者能產生邀請碼
     const auth = await verifyProjectAccess(projectId, [PROJECT_ROLES.OWNER]);
@@ -22,7 +26,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { role } = body;
+    const { role, email } = body;
 
     // 基礎參數防呆校驗
     if (!role || !['EDITOR', 'VIEWER'].includes(role)) {
@@ -44,11 +48,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         projectId: projectId,
         inviterId: auth.userId!,
         role: role,
+        email: email || null,
         expiresAt: expiresAt,
       },
       select: {
         token: true,
         role: true,
+        email: true,
         expiresAt: true,
       }
     });
@@ -58,14 +64,40 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const origin = request.nextUrl.origin;
     const inviteLink = `${origin}/invite/${newInvitation.token}`;
 
-    console.log(`✅ [邀請系統] 專案 ${projectId} 成功產生 ${role} 邀請連結，Token: ${newInvitation.token}`);
+    if (email) {
+      const [project, inviter] = await Promise.all([
+        prisma.project.findUnique({ where: { id: projectId } }),
+        prisma.user.findUnique({ where: { id: auth.userId! }, select: { name: true, email: true } })
+      ]);
+      const projectName = project?.title || '未命名專案';
+      const roleName = role === 'EDITOR' ? '協作寫手' : '檢視者';
+      const inviterName = inviter?.name || inviter?.email || '某人';
+
+      await resend.emails.send({
+        from: 'onboarding@resend.dev', // 測試階段用 Resend 的預設網域
+        to: email,
+        subject: `[邀請] 您受邀加入《${projectName}》的創作團隊`,
+        html: `
+          <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto;">
+            <h2>您收到了一份協作邀請！</h2>
+            <p style="color: #555; line-height: 1.6;">
+              <strong>${inviterName}</strong> 邀請您以「<strong>${roleName}</strong>」的身分加入專案《<strong>${projectName}</strong>》。
+            </p>
+            <p style="color: #555; line-height: 1.6;">請點擊下方按鈕接受邀請（連結將於 7 天後失效）：</p>
+            <a href="${inviteLink}" style="display: inline-block; padding: 12px 24px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 6px; margin-top: 10px;">接受邀請</a>
+            <p style="margin-top: 30px; font-size: 12px; color: #666;">如果按鈕無法點擊，請複製以下網址至瀏覽器貼上：<br>${inviteLink}</p>
+          </div>
+        `
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      message: '邀請連結產生成功！',
+      message: email ? `邀請信已成功寄送至 ${email}` : '邀請連結產生成功！',
       data: {
         inviteLink: inviteLink,
         role: newInvitation.role,
+        email: newInvitation.email,
         expiresAt: newInvitation.expiresAt,
       }
     }, { status: 201 });

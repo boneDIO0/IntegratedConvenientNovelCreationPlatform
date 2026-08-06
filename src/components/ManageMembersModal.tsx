@@ -32,6 +32,7 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
+  const [targetEmail, setTargetEmail] = useState('');
 
   // 開啟 Modal 時，自動撈取成員資料
   useEffect(() => {
@@ -79,16 +80,24 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
       const res = await fetch(`/api/projects/${projectId}/invitations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({
+          role,
+          email: targetEmail.trim() || undefined
+        }),
       });
 
       const data = await res.json();
-
       if (!res.ok) {
         throw new Error(data.error || '產生連結失敗');
       }
 
       setInviteLink(data.data.inviteLink);
+
+      if (targetEmail.trim()) {
+        alert(`已成功寄送邀請信至：${targetEmail}`);
+        setTargetEmail(''); // 發送成功後清空信箱
+      }
+
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -211,6 +220,19 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
             <div className="space-y-5">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">賦予權限身分</label>
+                
+                <div className="mt-4">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">傳送邀請至 Email (選填)</label>
+                  <input
+                    type="email"
+                    placeholder="例如: collaborator@example.com"
+                    value={targetEmail}
+                    onChange={(e) => setTargetEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm transition-all"
+                  />
+                  <p className="text-xs text-slate-400 mt-1.5">如果留空，將僅產生邀請連結供您手動複製分享。</p>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-3">
                   <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-all ${role === 'EDITOR' ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' : 'border-slate-200 hover:border-slate-300'}`}>
                     <input type="radio" name="role" value="EDITOR" checked={role === 'EDITOR'} onChange={() => setRole('EDITOR')} className="mt-0.5 h-4 w-4 text-indigo-600 focus:ring-indigo-500" />
