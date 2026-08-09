@@ -1,7 +1,7 @@
 "use client"
 
 import { useParams } from "next/navigation"
-import { History, ChevronDown, BookOpenCheck, Users } from "lucide-react" // 引入漂亮的圖示
+import { History, ChevronDown, BookOpenCheck, Users, Bell, Check } from "lucide-react" // 引入漂亮的圖示
 
 import * as React from "react"
 import { signIn, signOut, useSession } from "next-auth/react"
@@ -38,6 +38,11 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
 
   const [isMemberModalOpen, setIsMemberModalOpen] = React.useState(false)
 
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false)
+  const [notifications, setNotifications] = React.useState<any[]>([])
+  const [unreadCount, setUnreadCount] = React.useState(0)
+  const notifRef = React.useRef<HTMLDivElement | null>(null)
+
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const { data: session, status } = useSession()
 
@@ -48,6 +53,64 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
     setMenuOpen(false)
   }
 
+  // 獲取通知資料
+  const fetchNotifications = async () => {
+    if (status !== 'authenticated') return;
+    try {
+      const res = await fetch('/api/notifications');
+      const json = await res.json();
+      if (json.status === 'success') {
+        setNotifications(json.data);
+        setUnreadCount(json.data.filter((n: any) => !n.isRead).length);
+      }
+    } catch (e) {
+      console.error("無法取得通知", e);
+    }
+  }
+
+  // 點擊單筆通知：標記已讀並跳轉
+  const handleNotificationClick = async (notif: any) => {
+    if (!notif.isRead) {
+      try {
+        await fetch('/api/notifications', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notificationId: notif.id })
+        });
+        // 樂觀更新 UI
+        setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    if (notif.link) {
+      setNotificationsOpen(false);
+      router.push(notif.link);
+    }
+  }
+
+  // 全部標記為已讀
+  const handleMarkAllAsRead = async () => {
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markAll: true })
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // 登入後自動抓一次通知
+  React.useEffect(() => {
+    fetchNotifications();
+  }, [status]);
+
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -57,11 +120,13 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
       ) {
         setMenuOpen(false)
       }
+      if (notificationsOpen && notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false)
+      }
     }
-
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [menuOpen])
+  }, [menuOpen, notificationsOpen])
 
   return (
     <>
@@ -192,11 +257,104 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                     />
                     </div>
                   )}
+
+                  {/* 通知小鈴鐺區塊 */}
+                <div ref={notifRef} className="relative flex items-center mr-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotificationsOpen(!notificationsOpen);
+                      if (!notificationsOpen) fetchNotifications(); // 每次打開時刷新一次
+                      setMenuOpen(false); // 確保 User 選單關閉
+                    }}
+                    className="relative p-2 text-slate-500 hover:text-slate-900 transition-colors rounded-full hover:bg-slate-100"
+                  >
+                    <Bell size={20} />
+                    {/* 紅點 Badge */}
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white ring-2 ring-white">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* 通知下拉選單 */}
+                  {notificationsOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-80 md:w-96 overflow-hidden rounded-2xl border border-border/80 bg-white shadow-xl shadow-slate-200/50 z-50">
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                        <span className="font-bold text-slate-800">通知</span>
+                        {unreadCount > 0 && (
+                          <button 
+                            onClick={handleMarkAllAsRead}
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                          >
+                            <Check size={14} /> 全部標記已讀
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                        {notifications.length === 0 ? (
+                          <div className="py-10 text-center flex flex-col items-center">
+                            <Bell className="h-8 w-8 text-slate-200 mb-2" />
+                            <p className="text-sm text-slate-500 font-medium">目前沒有任何通知</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col">
+                            {notifications.map((notif) => (
+                              <div 
+                                key={notif.id}
+                                onClick={() => handleNotificationClick(notif)}
+                                className={cn(
+                                  "flex gap-3 px-4 py-3 border-b border-slate-50 transition-colors cursor-pointer hover:bg-slate-50",
+                                  !notif.isRead ? "bg-blue-50/30" : "bg-white"
+                                )}
+                              >
+                                {/* 觸發者的頭像 (如果有) */}
+                                {notif.actor?.image ? (
+                                  <img src={notif.actor.image} alt="User" className="w-8 h-8 rounded-full border border-slate-200 mt-0.5 object-cover shrink-0" />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-xs mt-0.5 shrink-0 border border-slate-200">
+                                    {notif.actor?.name?.charAt(0) || '系統'}
+                                  </div>
+                                )}
+                                
+                                <div className="flex-1 min-w-0">
+                                  <p className={cn(
+                                    "text-sm leading-snug",
+                                    !notif.isRead ? "text-slate-900 font-medium" : "text-slate-600"
+                                  )}>
+                                    {notif.message}
+                                  </p>
+                                  <p className="text-xs text-slate-400 mt-1">
+                                    {new Date(notif.createdAt).toLocaleString(undefined, {
+                                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                    })}
+                                  </p>
+                                </div>
+
+                                {/* 未讀小藍點 */}
+                                {!notif.isRead && (
+                                  <div className="shrink-0 mt-2">
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
                   
                 <div ref={menuRef} className="relative">
                   <button
                     type="button"
-                    onClick={() => setMenuOpen(!menuOpen)}
+                    onClick={() => {
+                      setMenuOpen(!menuOpen);
+                      setNotificationsOpen(false);
+                    }}
                     className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-3 py-2 text-sm font-medium text-slate-950 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300"
                   >
                     <Avatar size="sm">
