@@ -36,9 +36,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             return NextResponse.json({ status: "error", message: "Forbidden: 只能編輯自己的留言" }, { status: 403 });
         }
 
+        const dataToUpdate: any = { content: body.content };
+        if (body.mentions !== undefined) {
+            dataToUpdate.mentions = body.mentions;
+        }
+        
         const updatedMessage = await prisma.projectMessages.update({
             where: { id: messageId },
-            data: { content: body.content }
+            data: dataToUpdate
         });
 
         return NextResponse.json({ status: "success", message: '留言編輯成功', data: updatedMessage }, { status: 200 });

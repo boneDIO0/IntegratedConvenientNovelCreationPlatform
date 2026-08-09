@@ -3,11 +3,12 @@
 /* declare to be a client component
 useState and onClick are available */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
 import { usePathname } from 'next/navigation';
+import { Reply, X } from 'lucide-react';
 
 interface DiscussionBoardProps {
   currentUserRole?: string; 
@@ -31,6 +32,9 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  // 用來在點擊回覆時，讓畫面自動捲動到輸入框
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchMessages = async () => {
     if (!novelId || novelId === 'undefined') return;
@@ -68,13 +72,15 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
         body: JSON.stringify({
           projectId: novelId,
           content: content,
-          channelId: currentChannelId
+          channelId: currentChannelId,
+          referencedMessageId: replyingTo ? replyingTo.id : null
         }),
       });
 
       // API 回傳成功
       if (res.ok) {
         setContent(''); // 清空輸入框
+        setReplyingTo(null); // 清空回覆狀態
         fetchMessages(); // 重新抓取一次最新留言，畫面就會自動更新
       }
 
@@ -118,14 +124,38 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
     }
   }
 
+  const handleReplyClick = (msg: Message) => {
+    setReplyingTo(msg);
+    // 讓輸入框自動獲得焦點，提升體驗
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }
+
   return (
     <div className="max-w-2xl mx-auto mt-10 space-y-6">
       {/* --- 輸入區塊 --- */}
       <div className="p-6 border rounded-lg shadow-sm bg-white">
         <h2 className="text-xl font-bold mb-4">新增留言</h2>
+        
+        {replyingTo && (
+          <div className="mb-3 flex items-start justify-between bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-sm text-indigo-800 animate-in fade-in slide-in-from-top-2">
+            <div>
+              <span className="font-bold mr-2">正在回覆 {replyingTo.users?.name || '未知使用者'}：</span>
+              <span className="text-indigo-600 line-clamp-1">{replyingTo.content}</span>
+            </div>
+            <button 
+              onClick={() => setReplyingTo(null)}
+              className="text-indigo-400 hover:text-indigo-700 p-1 rounded-md transition-colors"
+              title="取消回覆"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         <textarea
-          className="w-full h-24 p-3 border rounded-md focus:ring-2 focus:ring-blue-500 resize-none mb-4"
-          placeholder="在這裡暢所欲言..."
+          ref={inputRef}
+          className="w-full h-24 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 resize-none mb-4 transition-all"
+          placeholder={replyingTo ? "寫下你的回覆..." : "在這裡暢所欲言..."}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           disabled={isLoading}
@@ -154,9 +184,21 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
             const canEdit = isAuthor; // 只有本人能改
             const canDelete = isAuthor || isOwner; // 本人或管理員能刪
 
+            // 判斷這則留言是否有回覆其他人
+            const parentMsg = msg.projectMessages;
+
             return (
               <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
-                <div className="flex justify-between items-start mb-3">
+                
+                {parentMsg && (
+                  <div className="mb-3 ml-11 flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2 rounded-md border border-slate-100">
+                    <Reply size={14} className="text-slate-400 shrink-0 transform scale-x-[-1]" />
+                    <span className="font-semibold shrink-0">回覆 {parentMsg.users?.name || '某人'}:</span>
+                    <span className="truncate opacity-80">{parentMsg.content}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-3">
                     {msg.users?.image ? (
                       <img 
@@ -185,17 +227,6 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
                   </div>
                   
                   <div className="flex items-center gap-1">
-                    {canDelete && (
-                      <Button 
-                        variant="destructive" 
-                        size="xs" 
-                        onClick={() => handleDelete(msg.id)}
-                        title="刪除留言"
-                      >
-                        🗑️
-                      </Button>
-                    )}
-                    
                     {canEdit && (
                       <Button 
                         variant="ghost" 
@@ -206,6 +237,29 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
                         🖋️
                       </Button>
                     )}
+
+                    {canDelete && (
+                      <Button 
+                        variant="destructive" 
+                        size="xs" 
+                        onClick={() => handleDelete(msg.id)}
+                        title="刪除留言"
+                      >
+                        🗑️
+                      </Button>
+                    )}
+
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="h-8 px-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
+                      onClick={() => handleReplyClick(msg)}
+                      title="回覆此留言"
+                    >
+                      <Reply size={16} className="mr-1" />
+                      <span className="text-xs font-semibold">回覆</span>
+                    </Button>
+
                   </div>
                 </div>
 
