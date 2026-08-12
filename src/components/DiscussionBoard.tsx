@@ -9,13 +9,19 @@ import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
 import { usePathname } from 'next/navigation';
 
-export function DiscussionBoard() {
+interface DiscussionBoardProps {
+  currentUserRole?: string; 
+}
+
+export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
   const { data: session } = useSession();
   const pathname = usePathname();
   const novelId = pathname?.startsWith('/novel_list/') ? pathname.split('/')[2] : null;
   const isEditor = pathname?.includes('/editor');
   const chapterId = isEditor ? pathname.split('/')[4] : null;
   const currentChannelId = chapterId || "general";
+
+  const normalizedUserRole = currentUserRole?.toUpperCase() || 'VIEWER';
 
   /* 建立狀態儲存使用者的輸入和 API 的回應
      記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
@@ -61,7 +67,6 @@ export function DiscussionBoard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: novelId,
-          authorId: session.user.id,
           content: content,
           channelId: currentChannelId
         }),
@@ -140,40 +145,72 @@ export function DiscussionBoard() {
           <p className="text-gray-500 text-center py-4">目前還沒有討論</p>
         ) : (
           // 以 map 迴圈將陣列裡的每一筆資料變成一個 UI 卡片
-          messages.map((msg) => (
-            <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-bold text-sm text-blue-600">{msg.users?.name || '未知使用者'}</span>
-                
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
-                    {new Date(msg.createdAt).toLocaleString()}
-                  </span>
-                  {/* 這裡使用危險按鈕*/}
-                  <Button 
-                    variant="destructive" 
-                    size="xs" 
-                    onClick={() => handleDelete(msg.id)}
-                  >
-                    🗑️
-                  </Button>
-                  {/* 這裡使用隱形按鈕*/}
-                  <Button 
-                    variant="ghost" 
-                    size="xs" 
-                    onClick={() => { setEditingId(msg.id); setEditContent(msg.content); }}
-                  >
-                    🖋️
-                  </Button>
+          messages.map((msg) => {
+            const currentUserId = session?.user?.id;
+            const isAuthor = currentUserId === msg.authorId; // 是不是本人寫的
+            const isOwner = normalizedUserRole === 'OWNER'; // 是不是房主
+
+            // 判斷按鈕顯示邏輯
+            const canEdit = isAuthor; // 只有本人能改
+            const canDelete = isAuthor || isOwner; // 本人或管理員能刪
+
+            return (
+              <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                    {msg.users?.image ? (
+                      <img 
+                        src={msg.users.image} 
+                        alt={msg.users.name || 'User'} 
+                        className="w-8 h-8 rounded-full border border-gray-200 object-cover shrink-0 shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-200">
+                        {msg.users?.name?.charAt(0) || '?'}
+                      </div>
+                    )}
+                    
+                    <div className="flex flex-col">
+                      <span className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                        {msg.users?.name || '未知使用者'}
+                        {isAuthor && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">你</span>}
+                      </span>
+
+                      <span className="text-[11px] text-slate-400 mt-0.5">
+                        {new Date(msg.createdAt).toLocaleString(undefined, {
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-1">
+                    {canDelete && (
+                      <Button 
+                        variant="destructive" 
+                        size="xs" 
+                        onClick={() => handleDelete(msg.id)}
+                        title="刪除留言"
+                      >
+                        🗑️
+                      </Button>
+                    )}
+                    
+                    {canEdit && (
+                      <Button 
+                        variant="ghost" 
+                        size="xs" 
+                        onClick={() => { setEditingId(msg.id); setEditContent(msg.content); }}
+                        title="編輯留言"
+                      >
+                        🖋️
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
-                <span className="text-xs text-gray-400">
-                  {new Date(msg.createdAt).toLocaleString()}
-                </span>
-              </div>
-              {/* 如果這則留言的 ID 等於正在編輯的 ID，就顯示輸入框 */}
                 {editingId === msg.id ? (
-                  <div className="mt-2">
+                  <div className="mt-2 ml-11">
                     <textarea
                       className="w-full p-2 border rounded-md"
                       value={editContent}
@@ -181,15 +218,15 @@ export function DiscussionBoard() {
                     />
                     <div className="flex justify-end gap-2 mt-2">
                       <Button size="xs" variant="ghost" onClick={() => setEditingId(null)}>取消</Button>
-                      <Button size="xs" onClick={() => handleUpdate(msg.id) } disabled={!editContent.trim()}>儲存</Button>
+                      <Button size="xs" onClick={() => handleUpdate(msg.id)} disabled={!editContent.trim()}>儲存</Button>
                     </div>
                   </div>
                 ) : (
-                  // 如果沒有在編輯，就正常顯示文字
-                  <p className="text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+                  <p className="text-gray-800 whitespace-pre-wrap ml-11">{msg.content}</p>
                 )}
-            </div>
-          ))
+              </div>
+            );
+          })
         )}
       </div>
     </div>
