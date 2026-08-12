@@ -41,6 +41,20 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   const [detailItem, setDetailItem] = useState<SettingItem | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // 🎯 即時編輯狀態管理
+  const [editingContent, setEditingContent] = useState<Record<string, any>>({});
+  const [isSavingField, setIsSavingField] = useState(false);
+
+  // 當選擇的詳情項目改變時，初始化可編輯內容
+  useEffect(() => {
+    if (detailItem) {
+      const content = (detailItem as any).content && typeof (detailItem as any).content === 'object'
+        ? (detailItem as any).content
+        : detailItem;
+      setEditingContent({ ...content });
+    }
+  }, [detailItem]);
+
   // 🎯 1. 健壯的 API 讀取與解包邏輯
   const fetchPopoverSettings = async () => {
     if (!projectId) {
@@ -64,7 +78,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         rawList = responseData.groups || responseData.settingGroups || responseData.data || responseData.items || [];
       }
 
-      // 🎯 補強解包 key：相容 entities / items / settingItems
       let flatItems: SettingItem[] = [];
       if (rawList.length > 0 && ('items' in rawList[0] || 'entities' in rawList[0] || 'settingItems' in rawList[0])) {
         flatItems = rawList.flatMap((group: any) => group.items || group.entities || group.settingItems || []);
@@ -98,7 +111,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   }, [isOpen, projectId, chapterId]);
 
-  // 🎯 2. 切換登場狀態（已對齊後端 PATCH 路由與 payload）
+  // 🎯 2. 切換登場狀態（對齊後端 PATCH 路由）
   const handleToggleChapterAssign = async (e: React.MouseEvent, itemId: string) => {
     e.stopPropagation();
     if (!chapterId || !projectId || togglingId) return;
@@ -106,7 +119,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     const isAssigned = assignedIds.has(itemId);
     const newAssigned = new Set(assignedIds);
     
-    // 樂觀 UI 更新
     if (isAssigned) {
       newAssigned.delete(itemId);
     } else {
@@ -116,7 +128,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     setTogglingId(itemId);
 
     try {
-      // 🎯 發送 PATCH 請求給 /api/settings
       const res = await fetch(`/api/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -136,7 +147,96 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   };
 
-  // 🎯 3. 過濾邏輯
+  // 🎯 失焦即時自動儲存表單欄位（支援複數關聯角色與多物件結構化解析）
+  const handleSaveField = async (updatedContent: Record<string, any>) => {
+    if (!detailItem || isSavingField) return;
+
+    try {
+      setIsSavingField(true);
+      const safeContent: Record<string, any> = { ...updatedContent };
+
+      Object.keys(safeContent).forEach((key) => {
+        const rawVal = safeContent[key];
+        const rawItemAny = detailItem as any;
+        const originalVal = rawItemAny.content?.[key] || rawItemAny[key];
+
+        // 🎯 1. 複數關聯角色/要素 (relations) 陣列解析
+        if (key === 'relations' && typeof rawVal === 'string') {
+          // 按「換行」或「逗號」切分每一條關聯紀錄
+          const lines = rawVal
+            .split(/[\n,，]/)
+            .map(s => s.trim())
+            .filter(Boolean);
+
+          // 將每一條拆解成獨立的物件，組合成複數物件陣列 [...]
+          safeContent[key] = lines.map(line => {
+            // 解析語法範例：
+            // "• [敵對] 荒耶宗蓮"  -> 關係: 敵對, 目標: 荒耶宗蓮
+            // "[同學] 兩儀式"      -> 關係: 同學, 目標: 兩儀式
+            // "淺上藤乃"           -> 關係: 關聯, 目標: 淺上藤乃
+            const match = line.match(/(?:•\s*)?(?:\[(.*?)\])?\s*(.*)/);
+            const relationType = match && match[1] ? match[1].trim() : '關聯';
+            const targetName = match && match[2] ? match[2].trim() : line.trim();
+
+            // 去全域 settings 搜尋是否有該角色的 UUID
+            const matchedTarget = settings.find(
+              s => s.name.trim().toLowerCase() === targetName.toLowerCase()
+            );
+
+            return {
+              type: relationType,
+              relation: relationType,
+              targetId: matchedTarget ? matchedTarget.id : targetName, // 有 UUID 用 UUID，沒有用原名
+              targetName: targetName,
+              name: targetName
+            };
+          });
+        }
+        // 🎯 2. 普通字串陣列型別還原（如 titles, abilities）
+        else if (Array.isArray(originalVal) && typeof rawVal === 'string') {
+          safeContent[key] = rawVal
+            .split(/[\n,，]/)
+            .map(s => s.trim())
+            .filter(Boolean);
+        }
+
+        // 🎯 3. 所屬勢力外鍵映射（組織名稱 -> UUID）
+        if ((key === 'faction' || key === 'alliances') && typeof rawVal === 'string' && rawVal.trim()) {
+          const inputName = rawVal.trim();
+          const matchedFaction = settings.find(
+            s => s.id === inputName || (s.category === 'faction' && s.name.trim().toLowerCase() === inputName.toLowerCase())
+          );
+          if (matchedFaction) {
+            safeContent[key] = matchedFaction.id;
+          }
+        }
+      });
+
+      const updatedItem = {
+        ...detailItem,
+        content: safeContent,
+      };
+
+      const res = await fetch(`/api/settings/${detailItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...updatedItem, saveVersion: false }),
+      });
+
+      if (!res.ok) throw new Error("儲存修改失敗");
+
+      setSettings(prev => prev.map(item => item.id === detailItem.id ? (updatedItem as any) : item));
+      setDetailItem(updatedItem as any);
+
+      fetchPopoverSettings();
+    } catch (err) {
+      console.error("即時儲存欄位出錯:", err);
+    } finally {
+      setIsSavingField(false);
+    }
+  };
+
+  // 🎯 4. 過濾邏輯
   const filteredSettings = useMemo(() => {
     return settings.filter(item => {
       const query = searchQuery.toLowerCase().trim();
@@ -144,12 +244,10 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         item.name?.toLowerCase().includes(query) || 
         JSON.stringify((item as any).content || item || '').toLowerCase().includes(query);
 
-      // 「🎬 本章登場」Tab：秀出全專案項目供勾選
       if (activeTab === 'chapter') {
         return matchesQuery;
       }
 
-      // 其他 Tab：只秀有勾選登場且符合類別的項目
       const isAssigned = assignedIds.has(item.id);
       const matchesCategory = activeTab === 'all' || item.category === activeTab;
 
@@ -177,14 +275,16 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     impact: '影響與結果',
     
     // 人物 (Character) 欄位
+    titles: '頭銜 / 稱號',
     age: '年齡',
     gender: '性別',
-    identity: '身分 / 稱號',
+    identity: '身分',
     appearance: '外貌特徵',
     personality: '性格特點',
     background: '背景故事',
     abilities: '能力 / 技能',
     alliances: '所屬組織',
+    faction: '所屬勢力',
 
     // 組織 (Faction) 欄位
     leader: '首領 / 領導者',
@@ -195,17 +295,17 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     rarity: '稀有度',
     owner: '持有者',
     effect: '效果 / 功能',
+    itemType: '物品類型',
 
     // 地點 (Location) 欄位
     climate: '氣候特徵',
     geography: '地理環境',
   };
 
+  // 🎯 5. 渲染可編輯的詳情欄位
   const renderDetailFields = (item: SettingItem) => {
-    const itemAny = item as any;
-    const content = itemAny.content && typeof itemAny.content === 'object' ? itemAny.content : item;
+    const content = editingContent;
     
-    // 🎯 需要隱藏的系統內部 Key
     const excludeKeys = [
       'id', 'projectId', 'category', 'formType', 'type', 'versions', 
       'createdAt', 'updatedAt', 'name', 'title', 'deletedAt', 
@@ -217,15 +317,21 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     if (entries.length === 0) return <p className="text-xs text-slate-400 py-4 text-center">尚無詳細內容</p>;
 
     return entries.map(([key, value]) => {
-      if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) return null;
-
-      // 1. 取得友善的中文 Label（找不到就以首字大寫顯示）
       const label = FIELD_LABEL_MAP[key] || (key.charAt(0).toUpperCase() + key.slice(1));
+      
+      // 🎯 外鍵 UUID 反查：若為 faction/alliances 且值為 UUID，轉成中文名稱呈現
+      let displayValue = value;
+      if ((key === 'faction' || key === 'alliances') && typeof value === 'string') {
+        const foundFaction = settings.find(s => s.id === value);
+        if (foundFaction) {
+          displayValue = foundFaction.name;
+        }
+      }
 
-      // 2. 特殊格式化：如果是關聯對象 (relations) 且為陣列，轉成好讀的文字
+      // 特殊格式化：轉成無 JSON 中括號的友善字串
       let valStr = '';
-      if (key === 'relations' && Array.isArray(value)) {
-        valStr = value.map((r: any) => {
+      if (key === 'relations' && Array.isArray(displayValue)) {
+        valStr = displayValue.map((r: any) => {
           if (typeof r === 'object') {
             const relType = r.type || r.relation || '關聯';
             const target = r.targetId || r.targetName || r.name || '未知';
@@ -233,29 +339,56 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
           }
           return `• ${r}`;
         }).join('\n');
-      } else if (typeof value === 'object') {
-        valStr = JSON.stringify(value, null, 2);
+      } else if (Array.isArray(displayValue)) {
+        valStr = displayValue.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
+      } else if (typeof displayValue === 'object' && displayValue !== null) {
+        valStr = JSON.stringify(displayValue);
       } else {
-        valStr = String(value);
+        valStr = String(displayValue || '');
       }
 
+      const isMultiLine = valStr.length > 35 || valStr.includes('\n');
+
       return (
-        <div key={key} className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-1">
+        <div key={key} className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 space-y-1 transition-all focus-within:border-blue-300 focus-within:bg-white focus-within:shadow-sm">
           <div className="flex items-center justify-between">
-            {/* 顯示轉譯後的中文名稱 */}
-            <span className="text-[11px] font-bold text-slate-600 tracking-wide">
+            <label className="text-[11px] font-bold text-slate-500 tracking-wide">
               {label}
-            </span>
+            </label>
             <button
+              type="button"
               onClick={() => handleCopyText(valStr, key)}
               className="text-[10px] text-blue-600 hover:text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer"
             >
               {copiedKey === key ? "✓ 已複製" : "複製"}
             </button>
           </div>
-          <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed select-text font-normal">
-            {valStr}
-          </p>
+
+          {isMultiLine ? (
+            <textarea
+              value={valStr}
+              placeholder="請輸入內容..."
+              onChange={(e) => {
+                const nextContent = { ...editingContent, [key]: e.target.value };
+                setEditingContent(nextContent);
+              }}
+              onBlur={() => handleSaveField(editingContent)}
+              rows={Math.min(valStr.split('\n').length + 1, 5)}
+              className="w-full text-xs text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 focus:bg-white rounded-lg p-1.5 focus:outline-none transition-all resize-y leading-relaxed"
+            />
+          ) : (
+            <input
+              type="text"
+              value={valStr}
+              placeholder="請輸入內容..."
+              onChange={(e) => {
+                const nextContent = { ...editingContent, [key]: e.target.value };
+                setEditingContent(nextContent);
+              }}
+              onBlur={() => handleSaveField(editingContent)}
+              className="w-full text-xs text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 focus:bg-white rounded-lg px-1.5 py-1 focus:outline-none transition-all font-medium"
+            />
+          )}
         </div>
       );
     });
