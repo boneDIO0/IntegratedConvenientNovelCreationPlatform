@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import { verifyProjectAccess } from "@/lib/auth-utils";
 import { PROJECT_ROLES } from "@/lib/roles";
+import { rateLimiter } from '@/lib/rate-limit';
 
 // 讀取留言 (GET)
 export async function GET(request: Request) {
@@ -58,6 +59,22 @@ export async function GET(request: Request) {
 // 新增留言 (POST)
 export async function POST(request: Request) {
   try {
+    // 同個 IP 每 60 秒最多只能發送 10 則留言
+    const rateLimitResult = await rateLimiter(request, {
+      limit: 10,
+      windowSeconds: 60
+    });
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { 
+          status: "error", 
+          message: `發言太頻繁，請休息 ${rateLimitResult.resetTime} 秒後再試。` 
+        }, 
+        { status: 429 }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ status: "error", message: "未授權，請先登入" }, { status: 401 });

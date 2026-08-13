@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/ErrorHandler';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
+import { rateLimiter } from '@/lib/rate-limit';
 
 // 讀取公開留言 (GET)
 export async function GET(request: Request) {
@@ -80,6 +81,22 @@ export async function GET(request: Request) {
 // 新增公開留言 (POST)
 export async function POST(request: Request) {
   try {
+    // 同個 IP 每 60 秒最多只能發送 5 則留言
+    const rateLimitResult = await rateLimiter(request, {
+      limit: 5,
+      windowSeconds: 60
+    });
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { 
+          status: "error", 
+          message: `發言太頻繁，請休息 ${rateLimitResult.resetTime} 秒後再試。` 
+        }, 
+        { status: 429 }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ status: "error", message: "未授權，請先登入" }, { status: 401 });
@@ -87,16 +104,6 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const channelId = body.channelId || 'explore';
-
-    console.log("👉 [Public API] 收到的 Body:", body);
-
-    if (!body.content || !body.projectId) {
-      // 🌟 裝上監視器 2：看看究竟是誰被判定為 false？
-      console.log("❌ 攔截原因:", { 
-        缺內容: !body.content, 
-        缺專案ID: !body.projectId 
-      });
-    }
 
     if (!body.content || !body.projectId) {
       return NextResponse.json({ status: "error", message: "留言失敗：缺少必要資訊" }, { status: 400 });
