@@ -16,6 +16,10 @@ type EditorUIContextType = {
   fetchVersions: (projectId: string, chapterId: string) => Promise<void>; // 撈取 DB 歷史紀錄的函式
   isLoadingVersions: boolean;                            // 載入狀態動畫提示用
 
+  // 🌟 新增：閱覽/預覽特定版本的狀態與方法
+  previewVersion: any | null;                           // 存放目前正在預覽的 checkpoint 物件
+  setPreviewVersion: (version: any | null) => void;     // 設定要預覽的版本（傳入 null 即退出預覽）
+
   // 🛡️ 新增：權限管理相關狀態
   role: string | null;                                   // 當前使用者在該專案的角色
   setRole: (role: string | null) => void;                // 設定角色的方法
@@ -33,12 +37,15 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
   const [latestRestoredContent, setLatestRestoredContent] = useState<any>(null);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
 
+  // 🌟 新增：閱覽特定版本的 State
+  const [previewVersion, setPreviewVersion] = useState<any | null>(null);
+
   // 🛡️ 新增：權限管理的 React State 與推導變數
   const [role, setRole] = useState<string | null>(null);
   // 自動推導：只要 role 是 owner 或 editor，isEditable 就會是 true
   const isEditable = role === 'owner' || role === 'editor';
 
-// 3. 非同步撈取後端 Prisma Checkpoint 列表的函式
+  // 3. 非同步撈取後端 Prisma Checkpoint 列表的函式
   const fetchVersions = async (projectId: string, chapterId: string) => {
     if (!projectId || !chapterId) return;
 
@@ -61,7 +68,7 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    
+
     <EditorUIContext.Provider value={{
       isSettingsOpen,
       toggleSettings: () => setIsSettingsOpen(!isSettingsOpen),
@@ -75,6 +82,10 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
       setLatestRestoredContent,
       fetchVersions,
       isLoadingVersions,
+
+      // 🌟 注入預覽狀態與設定方法
+      previewVersion,
+      setPreviewVersion,
 
       // 權限狀態
       role,
