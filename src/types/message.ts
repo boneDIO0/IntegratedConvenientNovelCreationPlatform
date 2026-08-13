@@ -5,6 +5,7 @@ export type Message = {
   users?: { 
     name: string | null;
     image: string | null;
+    role?: 'OWNER' | 'EDITOR' | 'VIEWER' | null;
   };
   content: string;
   createdAt: string;

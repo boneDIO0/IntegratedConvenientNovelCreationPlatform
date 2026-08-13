@@ -7,6 +7,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
 import 'katex/dist/katex.min.css'
+import { DiscussionBoard } from '@/components/DiscussionBoard'
+import { MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface PublicChapterData {
   title: string;
@@ -26,6 +28,9 @@ export default function PublicReaderPage() {
   const [chapter, setChapter] = useState<PublicChapterData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const [isDiscussionOpen, setIsDiscussionOpen] = useState(false)
+  const [userRole, setUserRole] = useState<string>('VIEWER')
 
   useEffect(() => {
     const fetchChapter = async () => {
@@ -85,6 +90,37 @@ export default function PublicReaderPage() {
           <ReadOnlyContent content={chapter.content} />
 
         </div>
+      </div>
+
+      {/* 留言板 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
+        {/* 摺疊按鈕標題列 */}
+        <button 
+          onClick={() => setIsDiscussionOpen(!isDiscussionOpen)}
+          className="w-full px-8 py-5 bg-gray-50 hover:bg-blue-50/50 flex items-center justify-between transition-colors focus:outline-none"
+        >
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg transition-colors ${isDiscussionOpen ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
+              <MessageCircle size={20} />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800">讀者討論區</h2>
+          </div>
+          <div className="text-gray-400">
+            {isDiscussionOpen ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+          </div>
+        </button>
+          
+        {/* 展開後的內容區 */}
+        {isDiscussionOpen && (
+          <div className="p-2 border-t border-gray-100 bg-gray-50/30 animate-in fade-in slide-in-from-top-2 duration-300">
+            <DiscussionBoard 
+              projectId={id} 
+              channelId={`explore_${chapterId}`}
+              mode="public"
+              currentUserRole={userRole} 
+            />
+          </div>
+        )}
       </div>
     </div>
   )

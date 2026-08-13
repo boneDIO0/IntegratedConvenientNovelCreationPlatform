@@ -11,18 +11,21 @@ import { usePathname } from 'next/navigation';
 import { Reply, X } from 'lucide-react';
 
 interface DiscussionBoardProps {
+  projectId: string;
+  channelId?: string;
+  mode?: 'private' | 'public';
   currentUserRole?: string; 
 }
 
-export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
+export function DiscussionBoard({ 
+  projectId, 
+  channelId = 'general', 
+  mode = 'private', 
+  currentUserRole 
+}: DiscussionBoardProps) {
   const { data: session } = useSession();
-  const pathname = usePathname();
-  const novelId = pathname?.startsWith('/novel_list/') ? pathname.split('/')[2] : null;
-  const isEditor = pathname?.includes('/editor');
-  const chapterId = isEditor ? pathname.split('/')[4] : null;
-  const currentChannelId = chapterId || "general";
-
   const normalizedUserRole = currentUserRole?.toUpperCase() || 'VIEWER';
+  const apiBaseUrl = mode === 'public' ? '/api/public/discussions' : '/api/discussions';
 
   /* 建立狀態儲存使用者的輸入和 API 的回應
      記住現在正在編輯哪一則留言的 ID (null 代表沒在編輯) */
@@ -37,11 +40,9 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchMessages = async () => {
-    if (!novelId || novelId === 'undefined') return;
-
+    if (!projectId || projectId === 'undefined') return;
     try {
-      const res = await fetch(`/api/discussions?projectId=${novelId}&channelId=${currentChannelId}`);
-      const json = await res.json();
+      const res = await fetch(`${apiBaseUrl}?projectId=${projectId}&channelId=${channelId}`);      const json = await res.json();
       setMessages(json.data || []);
     } catch (error) {
       console.error('抓取留言失敗', error);
@@ -51,7 +52,7 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
   // 網頁一載入時自動執行一次抓取
   useEffect(() => {
     fetchMessages();
-  }, [novelId, currentChannelId]);
+  }, [projectId, channelId, apiBaseUrl]);
 
   // 將資料給後端 API
   const handleSubmit = async () => {
@@ -66,13 +67,13 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/discussions', {
+      const res = await fetch(`${apiBaseUrl}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectId: novelId,
+          projectId: projectId,
           content: content,
-          channelId: currentChannelId,
+          channelId: channelId,
           referencedMessageId: replyingTo ? replyingTo.id : null
         }),
       });
@@ -82,8 +83,16 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
         setContent(''); // 清空輸入框
         setReplyingTo(null); // 清空回覆狀態
         fetchMessages(); // 重新抓取一次最新留言，畫面就會自動更新
+      } else {
+        const errorText = await res.text();
+        try {
+          const err = JSON.parse(errorText);
+          alert(`留言發布失敗: ${err.message}`);
+        } catch (e) {
+          console.error("API 回傳了非 JSON 格式:", errorText);
+          alert(`留言發布失敗: 伺服器錯誤 (${res.status})`);
+        }
       }
-
     } catch (error: any) {
       // 捕捉錯誤並顯示給使用者看
       alert('留言發布失敗' + error.message);
@@ -96,7 +105,7 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
   const handleUpdate = async (id: string) => {
     if (!editContent.trim()) return;
     try{
-      const res = await fetch(`/api/discussions/${id}`, {
+      const res = await fetch(`${apiBaseUrl}/${id}`, {
         method: 'PUT', 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: editContent }) 
@@ -115,7 +124,7 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
     if (!window.confirm('確認要刪除這則留言嗎？這項操作將無法復原！')) return;
 
     try{
-      const res = await fetch(`/api/discussions/${id}`, { method: 'DELETE'}, );
+      const res = await fetch(`${apiBaseUrl}/${id}`, { method: 'DELETE'}, );
       if (res.ok) {
         setMessages((prevMessages) => prevMessages.filter((msg) => msg.id !== id));
       }
@@ -131,10 +140,10 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-10 space-y-6">
+    <div className="max-w-3xl mx-auto mt-10 space-y-6">
       {/* --- 輸入區塊 --- */}
       <div className="p-6 border rounded-lg shadow-sm bg-white">
-        <h2 className="text-xl font-bold mb-4">新增留言</h2>
+        <h2 className="text-xl font-bold mb-4">{mode === 'public' ? '發表評論' : '新增留言'}</h2>
         
         {replyingTo && (
           <div className="mb-3 flex items-start justify-between bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-sm text-indigo-800 animate-in fade-in slide-in-from-top-2">
@@ -169,23 +178,25 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
 
       {/* --- 留言列表區塊 --- */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-700">留言列表 ({messages?.length || 0})</h2>
+        <h2 className="text-lg font-bold text-gray-700">
+          {mode === 'public' ? '讀者評論' : '內部討論'} ({messages?.length || 0})
+        </h2>
         
         {messages?.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">目前還沒有討論</p>
+          <p className="text-gray-500 text-center py-4">目前還沒有討論，來搶頭香吧！</p>
         ) : (
           // 以 map 迴圈將陣列裡的每一筆資料變成一個 UI 卡片
           messages.map((msg) => {
             const currentUserId = session?.user?.id;
-            const isAuthor = currentUserId === msg.authorId; // 是不是本人寫的
-            const isOwner = normalizedUserRole === 'OWNER'; // 是不是房主
-
+            const isAuthor = currentUserId === msg.authorId;
             // 判斷按鈕顯示邏輯
             const canEdit = isAuthor; // 只有本人能改
-            const canDelete = isAuthor || isOwner; // 本人或管理員能刪
+            const canDelete = isAuthor || normalizedUserRole === 'OWNER'; // 本人或管理員能刪
 
             // 判斷這則留言是否有回覆其他人
             const parentMsg = msg.projectMessages;
+
+            const authorRoleBadge = msg.users?.role;
 
             return (
               <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
@@ -215,7 +226,18 @@ export function DiscussionBoard({ currentUserRole }: DiscussionBoardProps) {
                     <div className="flex flex-col">
                       <span className="font-bold text-sm text-slate-800 flex items-center gap-2">
                         {msg.users?.name || '未知使用者'}
-                        {isAuthor && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">你</span>}
+
+                        {authorRoleBadge === 'OWNER' && (
+                          <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-bold">主作者</span>
+                        )}
+                        {authorRoleBadge === 'EDITOR' && (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">共同作者</span>
+                        )}
+
+                        {/* 本人徽章 */}
+                        {isAuthor && !authorRoleBadge && (
+                          <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-sm font-semibold">你</span>
+                        )}
                       </span>
 
                       <span className="text-[11px] text-slate-400 mt-0.5">

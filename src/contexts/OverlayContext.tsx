@@ -3,6 +3,7 @@
 
 import React, { createContext, useContext, useState } from 'react'
 import { DiscussionBoard } from '@/components/DiscussionBoard'
+import { useParams } from 'next/dist/client/components/navigation';
 
 // 定義開關中心的規格
 type OverlayContextType = {
@@ -19,6 +20,10 @@ export function OverlayProvider({ children }: { children: React.ReactNode }) {
 
   const toggleDiscussion = () => setIsDiscussionOpen(prev => !prev);
   const closeDiscussion = () => setIsDiscussionOpen(false);
+
+  const params = useParams();
+  const projectId = (params?.id || params?.novelId) as string;
+  const chapterId = (params?.chapterId as string) || 'general';
 
   return (
     <OverlayContext.Provider value={{ isDiscussionOpen, toggleDiscussion, closeDiscussion }}>
@@ -38,7 +43,13 @@ export function OverlayProvider({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            <DiscussionBoard />
+            {isDiscussionOpen && (
+                <DiscussionBoard 
+                  projectId={projectId}
+                  channelId={chapterId}
+                  mode="private" 
+                />
+            )}
           </div>
         </div>
       )}

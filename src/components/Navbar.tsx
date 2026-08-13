@@ -202,7 +202,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
               )
             ) : (
               <div className="flex items-center gap-3">
-                {safeProjectId && (
+                {safeProjectId && pathname?.startsWith('/novel_list') && (
                   <>
                     <button 
                       onClick={() => setIsMemberModalOpen(true)}
