@@ -4,10 +4,10 @@ import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Editor from '@/components/Editor'
 import { useEditorUI } from '@/contexts/EditorUIContext'
-import { RotateCcw, Trash2, X, History } from "lucide-react"
+import { RotateCcw, Trash2, X, History, Search, SearchX } from "lucide-react"
 
 export default function ChapterEditorPage() {
-  
+
   const {
       activeOverlay,
       setActiveOverlay,
@@ -16,7 +16,10 @@ export default function ChapterEditorPage() {
       setLatestRestoredContent,
       fetchVersions, // Context 提供的撈取歷史版本函式
       isLoadingVersions,
-      isEditable
+      isEditable,
+      // 🌟 取出預覽相關狀態與方法
+      previewVersion,
+      setPreviewVersion
     } = useEditorUI();
 
   const params = useParams()
@@ -31,10 +34,10 @@ export default function ChapterEditorPage() {
       try {
         const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`)
         if (!res.ok) throw new Error("讀取章節失敗")
-        
+
         const chapter = await res.json()
         const isEmptyContent = !chapter.content || Object.keys(chapter.content).length === 0
-        
+
         setInitialData({
           title: chapter.title,
           content: isEmptyContent ? '<p>開始你的創作...</p>' : chapter.content,
@@ -48,10 +51,10 @@ export default function ChapterEditorPage() {
 
     if (novelId && chapterId) {
       fetchChapterData();
-      fetchVersions(novelId, chapterId); 
+      fetchVersions(novelId, chapterId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [novelId, chapterId]) 
+  }, [novelId, chapterId])
 
   const handleRestoreVersion = async (versionId: string) => {
     if (!confirm("確定要將內文還原至此版本嗎？現有未存檔的修改將會被覆蓋。")) return;
@@ -64,7 +67,7 @@ export default function ChapterEditorPage() {
       if (res.ok) {
         const data = await res.json();
         setLatestRestoredContent(data.content);
-        setActiveOverlay('none'); 
+        setActiveOverlay('none');
         alert("章節內容已成功倒滾還原！");
       } else {
         alert("還原失敗，請稍後再試");
@@ -85,6 +88,10 @@ export default function ChapterEditorPage() {
 
       if (res.ok) {
         setVersions(versions.filter((v) => v.id !== versionId));
+        // 如果剛好刪除的是正在預覽的版本，自動退出預覽
+        if (previewVersion?.id === versionId) {
+          setPreviewVersion(null);
+        }
       } else {
         alert("刪除失敗");
       }
@@ -98,7 +105,7 @@ export default function ChapterEditorPage() {
   return (
     <div className="h-[calc(100vh-3.5rem)] w-full bg-[#f8f9fa] flex flex-col overflow-hidden relative">
       <div className="flex-1 flex overflow-hidden relative w-full">
-        
+
         {/* 🚀 1. 編輯器主要區塊：全面解鎖 100% 寬度，給予作者最沉浸、寬敞的富文本寫作空間 */}
         <div className="w-full h-full flex flex-col transition-all duration-300 min-w-0">
           <Editor
@@ -107,7 +114,7 @@ export default function ChapterEditorPage() {
             initialTitle={initialData.title}
             initialContent={initialData.content}
             isEditable={isEditable}
-            initialStatus={initialData.status} 
+            initialStatus={initialData.status}
           />
         </div>
 
@@ -132,36 +139,70 @@ export default function ChapterEditorPage() {
               ) : versions.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center mt-6">目前此章節尚無任何歷史版本點。</p>
               ) : (
-                versions.map((ver) => (
-                  <div key={ver.id} className="p-3 border border-slate-200 rounded-xl bg-white shadow-sm group hover:border-purple-300 transition-colors">
-                    <p className="text-xs font-semibold text-slate-500">
-                      {new Date(ver.createdAt).toLocaleString()}
-                    </p>
-                    <p className="text-sm font-medium text-slate-700 mt-1.5 break-all">
-                      {ver.commitMsg || "系統自動儲存點"}
-                    </p>
+                versions.map((ver) => {
+                  const isPreviewing = previewVersion?.id === ver.id;
 
-                    {/* 滑鼠懸停才顯現的操作按鈕 */}
-                    {isEditable && (
-                      <div className="mt-3 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  return (
+                    <div
+                      key={ver.id}
+                      className={`p-3 border rounded-xl bg-white shadow-sm transition-all ${
+                        isPreviewing
+                          ? 'border-purple-500 ring-2 ring-purple-100'
+                          : 'border-slate-200 hover:border-purple-300'
+                      }`}
+                    >
+                      <p className="text-xs font-semibold text-slate-500">
+                        {new Date(ver.createdAt).toLocaleString()}
+                      </p>
+                      <p className="text-sm font-medium text-slate-700 mt-1.5 break-all">
+                        {ver.commitMsg || "系統自動儲存點"}
+                      </p>
+
+                      {/* 操作按鈕區 */}
+                      <div className="mt-3 flex justify-end items-center gap-1.5 pt-2 border-t border-slate-100">
+                        {/* 🔍 閱覽/預覽按鈕 (使用放大鏡圖示) */}
                         <button
                           type="button"
-                          onClick={() => handleRestoreVersion(ver.id)}
-                          className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors font-medium"
+                          onClick={() => {
+                            if (isPreviewing) {
+                              setPreviewVersion(null); // 再按一次切回最新草稿
+                            } else {
+                              setPreviewVersion(ver);  // 設定 previewVersion 傳給 Editor.tsx 預覽
+                            }
+                          }}
+                          className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                            isPreviewing
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                          }`}
                         >
-                          <RotateCcw size={12} /> 還原
+                          {isPreviewing ? <SearchX size={12} /> : <Search size={12} />}
+                          {isPreviewing ? '退出預覽' : '閱覽'}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteVersion(ver.id)}
-                          className="flex items-center gap-1 text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium"
-                        >
-                          <Trash2 size={12} /> 刪除
-                        </button>
+
+                        {/* 還原與刪除 (僅限擁有編輯權限的使用者) */}
+                        {isEditable && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreVersion(ver.id)}
+                              className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors font-medium"
+                            >
+                              <RotateCcw size={12} /> 還原
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteVersion(ver.id)}
+                              className="flex items-center gap-1 text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium"
+                            >
+                              <Trash2 size={12} /> 刪除
+                            </button>
+                          </>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))
+                    </div>
+                  );
+                })
               )}
             </div>
           </aside>

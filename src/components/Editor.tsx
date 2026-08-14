@@ -8,14 +8,15 @@ import { useEditorUI } from '@/contexts/EditorUIContext'
 import AssistantChat from './AssistantChat'
 import 'katex/dist/katex.min.css'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
+import { Eye, EyeOff, RotateCcw } from 'lucide-react'
 
 interface EditorProps {
   novelId: string;
   chapterId: string;
   initialTitle: string;
   initialContent: any;
-  isEditable?: boolean; 
-  initialStatus?: string; 
+  isEditable?: boolean;
+  initialStatus?: string;
 }
 
 export default function Editor({ novelId, chapterId, initialTitle, initialContent, isEditable = true, initialStatus = 'DRAFT' }: EditorProps) {
@@ -25,6 +26,18 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const [saveStatus, setSaveStatus] = useState('已儲存')
   const [chapterStatus, setChapterStatus] = useState(initialStatus)
   const [isOnline, setIsOnline] = useState(true) // 📍 追蹤網路狀態
+
+  // 🌟 從 EditorUIContext 取出預覽與歷史版本相關 State
+  const {
+    latestRestoredContent,
+    setLatestRestoredContent,
+    fetchVersions,
+    previewVersion,
+    setPreviewVersion
+  } = useEditorUI()
+
+  // 🌟 暫存進入預覽前的草稿內容與標題
+  const draftBackupRef = useRef<{ title: string; content: any } | null>(null)
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const LOCAL_STORAGE_KEY = `editor_draft_${novelId}_${chapterId}`
@@ -43,35 +56,68 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
       forceUpdate()
     },
     onUpdate: ({ editor }) => {
-      setSaveStatus('編輯中...') 
-      
+      // 🌟 在預覽模式下不觸發打字暫存
+      if (previewVersion) return;
+
+      setSaveStatus('編輯中...')
+
       // 📍 機制 1：打字停頓 3 秒後，存入 LocalStorage
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-      
+
       typingTimeoutRef.current = setTimeout(() => {
         const content = editor.getJSON()
         const titleInput = document.getElementById('doc-title') as HTMLInputElement
         const currentTitle = titleInput ? titleInput.value : initialTitle
 
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ title: currentTitle, content }))
-        // 如果目前是離線狀態，顯示離線專屬提示
-        setSaveStatus(navigator.onLine ? '本機已暫存' : '⚠️ 離線中 (內容已暫存本機)') 
+        setSaveStatus(navigator.onLine ? '本機已暫存' : '⚠️ 離線中 (內容已暫存本機)')
       }, 3000)
     }
   })
 
-  const { latestRestoredContent, setLatestRestoredContent, fetchVersions } = useEditorUI()
+  // 🌟 1. 核心邏輯：監聽 previewVersion（切換歷史版本預覽模式）
+  useEffect(() => {
+    if (!editor) return
+
+    const titleInput = document.getElementById('doc-title') as HTMLInputElement
+
+    if (previewVersion) {
+      // 進入預覽：先將當前未存檔的標題與草稿內容備份起來
+      if (!draftBackupRef.current) {
+        draftBackupRef.current = {
+          title: titleInput ? titleInput.value : initialTitle,
+          content: editor.getJSON()
+        }
+      }
+
+      // 切換編輯器內容為預覽版本的 JSON 內容，並鎖定為唯讀
+      editor.commands.setContent(previewVersion.content || {})
+      editor.setEditable(false)
+
+    } else {
+      // 退出預覽：還原備份的草稿內容與標題，並解鎖編輯權限
+      if (draftBackupRef.current) {
+        editor.commands.setContent(draftBackupRef.current.content)
+        if (titleInput) {
+          titleInput.value = draftBackupRef.current.title
+        }
+        draftBackupRef.current = null // 清空備份
+      }
+
+      // 恢復為原先傳入的權限 (isEditable)
+      editor.setEditable(isEditable)
+    }
+  }, [previewVersion, editor, isEditable, initialTitle])
 
   // 📍 機制 2：每 3 分鐘自動從 LocalStorage 撈取最新資料，靜默存入 DB
   useEffect(() => {
-    if (!isEditable) return; 
+    if (!isEditable || previewVersion) return; // 🌟 預覽模式下跳過自動存檔
 
     const autoSaveInterval = setInterval(async () => {
-      // 🚨 如果沒有網路，或是正在手動存檔，就直接跳過這次定時器
-      if (!navigator.onLine || isSaving || !editor) return; 
+      if (!navigator.onLine || isSaving || !editor) return;
 
       const draftData = localStorage.getItem(LOCAL_STORAGE_KEY)
-      if (!draftData) return; 
+      if (!draftData) return;
 
       try {
         const { title, content } = JSON.parse(draftData)
@@ -83,33 +129,32 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           body: JSON.stringify({
             title: title,
             content: content,
-            saveVersion: false, 
-            status: chapterStatus 
+            saveVersion: false,
+            status: chapterStatus
           })
         })
 
         if (res.ok) {
           setSaveStatus('● 已儲存')
-          localStorage.removeItem(LOCAL_STORAGE_KEY) 
+          localStorage.removeItem(LOCAL_STORAGE_KEY)
         }
       } catch (error) {
         console.error('自動存檔失敗', error)
         setSaveStatus('⚠️ 自動存檔失敗')
       }
-    }, 3 * 60 * 1000) 
+    }, 3 * 60 * 1000)
 
     return () => clearInterval(autoSaveInterval)
-  }, [editor, isSaving, novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY])
+  }, [editor, isSaving, novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY, previewVersion])
 
   // 📍 機制 3：監聽使用者「切換分頁」或「關閉網頁」的瞬間
   useEffect(() => {
-    if (!isEditable) return;
+    if (!isEditable || previewVersion) return; // 🌟 預覽模式下不執行離線 keepalive
 
     const handleVisibilityChange = () => {
-      // 如果沒網路，打了也是白打，直接放棄發送 keepalive，反正資料已在 localStorage 裡
       if (document.visibilityState === 'hidden' && navigator.onLine) {
         const draftData = localStorage.getItem(LOCAL_STORAGE_KEY)
-        
+
         if (draftData) {
           const { title, content } = JSON.parse(draftData)
 
@@ -119,11 +164,11 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             body: JSON.stringify({
               title: title,
               content: content,
-              saveVersion: true, 
+              saveVersion: true,
               commitMsg: "系統自動存檔 (離開網頁)",
               status: chapterStatus
             }),
-            keepalive: true 
+            keepalive: true
           })
         }
       }
@@ -136,9 +181,9 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handleVisibilityChange);
     };
-  }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY]);
+  }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY, previewVersion]);
 
-  // 📍 機制 4：監聽網路斷線與重連狀態 (斷線處理終極防護)
+  // 📍 機制 4：監聽網路斷線與重連狀態
   useEffect(() => {
     if (typeof window === 'undefined' || !isEditable) return;
 
@@ -151,7 +196,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
     const handleOnline = async () => {
       setIsOnline(true);
-      
+
       const draftData = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (draftData) {
         setSaveStatus('🔄 恢復連線，同步進度中...');
@@ -171,7 +216,6 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           if (res.ok) {
             setSaveStatus('✅ 已恢復連線並同步完成');
             localStorage.removeItem(LOCAL_STORAGE_KEY);
-            // 3 秒後恢復一般狀態顯示
             setTimeout(() => setSaveStatus('● 已儲存'), 3000);
           }
         } catch (error) {
@@ -191,30 +235,33 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     };
   }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY]);
 
+  // 🌟 2. 監聽還原特定版本成功
   useEffect(() => {
     if (editor && latestRestoredContent) {
       editor.commands.setContent(latestRestoredContent)
+      draftBackupRef.current = null // 清除預覽前的備份
+      setPreviewVersion(null)        // 自動關閉預覽模式
+      editor.setEditable(isEditable) // 恢復編輯狀態
       setLatestRestoredContent(null)
-      setSaveStatus('● 已儲存') 
+      setSaveStatus('● 已還原版本並儲存')
     }
-  }, [latestRestoredContent, editor, setLatestRestoredContent])
+  }, [latestRestoredContent, editor, setLatestRestoredContent, isEditable, setPreviewVersion])
 
   const handleSave = useCallback(async (newStatus?: string) => {
-    if (!editor || isSaving) return
-    
-    // 🚨 斷線阻擋機制：如果沒網路，就不讓使用者按手動存檔
+    if (!editor || isSaving || previewVersion) return // 🌟 預覽模式下禁止儲存
+
     if (!navigator.onLine) {
       alert('目前處於離線狀態，請等網路恢復後再儲存喔！\n（別擔心，您的進度已安全暫存在瀏覽器中）');
       return;
     }
 
-    setIsSaving(true) 
+    setIsSaving(true)
     setSaveStatus('儲存中...')
 
     const titleInput = document.getElementById('doc-title') as HTMLInputElement
     const currentTitle = titleInput ? titleInput.value : initialTitle
     const currentContent = editor.getJSON()
-    
+
     const targetStatus = typeof newStatus === 'string' ? newStatus : chapterStatus
 
     try {
@@ -224,31 +271,31 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         body: JSON.stringify({
           title: currentTitle,
           content: currentContent,
-          saveVersion: true, 
+          saveVersion: true,
           commitMsg: `${currentTitle || '未命名章節'} - 手動存檔點`,
-          status: targetStatus 
+          status: targetStatus
         })
       })
 
       if (!res.ok) throw new Error("儲存失敗")
 
       setSaveStatus('● 已儲存')
-      setChapterStatus(targetStatus) 
-      localStorage.removeItem(LOCAL_STORAGE_KEY) 
+      setChapterStatus(targetStatus)
+      localStorage.removeItem(LOCAL_STORAGE_KEY)
       await fetchVersions(novelId, chapterId)
 
     } catch (error) {
       console.error(error)
       setSaveStatus('❌ 儲存失敗')
     } finally {
-      setIsSaving(false) 
+      setIsSaving(false)
     }
-  }, [editor, isSaving, novelId, chapterId, initialTitle, fetchVersions, chapterStatus, LOCAL_STORAGE_KEY])
+  }, [editor, isSaving, novelId, chapterId, initialTitle, fetchVersions, chapterStatus, LOCAL_STORAGE_KEY, previewVersion])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault(); 
+        e.preventDefault();
         handleSave();
       }
     };
@@ -268,13 +315,12 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const getButtonClass = (type: string) => {
     const isActive = editor.isActive(type)
     return `w-8 h-8 flex items-center justify-center rounded text-lg transition-all active:scale-90 ${
-      isActive 
-        ? 'bg-gray-300 text-blue-600 shadow-[inset_0_2px_4px_rgba(0,0,0,0.15)] ring-1 ring-gray-400/30' 
-        : 'bg-transparent text-gray-500 hover:bg-gray-100' 
+      isActive
+        ? 'bg-gray-300 text-blue-600 shadow-[inset_0_2px_4px_rgba(0,0,0,0.15)] ring-1 ring-gray-400/30'
+        : 'bg-transparent text-gray-500 hover:bg-gray-100'
     }`
   }
 
-  // 根據不同狀態決定文字顏色
   const getStatusColor = () => {
     if (saveStatus.includes('斷線') || saveStatus.includes('離線')) return 'text-red-500 font-bold';
     if (saveStatus.includes('本機已暫存')) return 'text-blue-500 font-medium';
@@ -285,6 +331,30 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
   return (
     <div className="flex flex-col w-full h-full bg-[#f8f9fa] overflow-hidden relative">
+
+      {/* 🌟【歷史版本預覽 Banner 提示條】 */}
+      {previewVersion && (
+        <div className="bg-purple-600 text-white px-6 py-2.5 flex items-center justify-between text-sm shadow-md z-40 animate-in slide-in-from-top duration-200 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="font-bold bg-purple-700 border border-purple-400/30 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+              <Eye className="w-3.5 h-3.5" /> 歷史版本預覽中
+            </span>
+            <span className="text-purple-100">
+              儲存時間：{new Date(previewVersion.createdAt).toLocaleString()} （{previewVersion.commitMsg || '手動存檔'}）
+            </span>
+          </div>
+
+          <button
+            onClick={() => setPreviewVersion(null)}
+            className="flex items-center gap-1.5 bg-white text-purple-700 hover:bg-purple-50 font-medium px-3 py-1 rounded-lg text-xs transition-colors shadow-sm"
+          >
+            <EyeOff className="w-3.5 h-3.5" />
+            退出預覽
+          </button>
+        </div>
+      )}
+
+      {/* 頂部工具列 */}
       <div className="w-full flex flex-col bg-white border-b border-gray-200 shadow-sm z-30 shrink-0">
         <div className="flex justify-between items-center px-6 py-3">
           <div className="flex items-center gap-4">
@@ -293,25 +363,30 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             </div>
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-2">
-                {!isEditable && (
-                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs font-bold border border-slate-200 shadow-sm flex items-center gap-1 select-none">
-                    🔒 唯讀模式
+                {(!isEditable || previewVersion) && (
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold border shadow-sm flex items-center gap-1 select-none ${
+                    previewVersion
+                      ? 'bg-purple-100 text-purple-700 border-purple-200'
+                      : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}>
+                    🔒 {previewVersion ? '預覽唯讀中' : '唯讀模式'}
                   </span>
                 )}
 
-                <input 
-                  id="doc-title" 
-                  type="text" 
-                  defaultValue={initialTitle} 
-                  disabled={!isEditable}
+                <input
+                  id="doc-title"
+                  type="text"
+                  defaultValue={initialTitle}
+                  disabled={!isEditable || !!previewVersion}
                   onChange={() => {
+                    if (previewVersion) return;
                     setSaveStatus('編輯中...');
                     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
                     typingTimeoutRef.current = setTimeout(() => {
                       if (editor) {
-                        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ 
-                          title: (document.getElementById('doc-title') as HTMLInputElement).value, 
-                          content: editor.getJSON() 
+                        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                          title: (document.getElementById('doc-title') as HTMLInputElement).value,
+                          content: editor.getJSON()
                         }));
                         setSaveStatus(navigator.onLine ? '本機已暫存' : '⚠️ 離線中 (內容已暫存本機)');
                       }
@@ -319,10 +394,10 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                   }}
                   autoComplete="off"
                   className={`text-left text-lg font-semibold text-gray-800 border-b bg-transparent px-2 py-0.5 transition-all w-64 focus:outline-none
-                    ${isEditable ? 'border-transparent hover:border-gray-300 focus:border-blue-500' : 'border-transparent opacity-80 cursor-default'}
+                    ${isEditable && !previewVersion ? 'border-transparent hover:border-gray-300 focus:border-blue-500' : 'border-transparent opacity-80 cursor-default'}
                   `}
                 />
-                {isEditable && (
+                {isEditable && !previewVersion && (
                   <span className={`text-xs transition-colors ${getStatusColor()}`}>
                     {saveStatus}
                   </span>
@@ -332,21 +407,21 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           </div>
 
           <div className="flex items-center gap-3">
-            {isEditable && (
+            {isEditable && !previewVersion && (
               <>
-                <button 
+                <button
                   onClick={() => handleSave(chapterStatus === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED')}
                   disabled={editor.isEmpty || isSaving || !isOnline}
                   className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed border ${
-                    chapterStatus === 'PUBLISHED' 
-                      ? 'bg-white text-red-500 border-red-200 hover:bg-red-50' 
+                    chapterStatus === 'PUBLISHED'
+                      ? 'bg-white text-red-500 border-red-200 hover:bg-red-50'
                       : 'bg-emerald-500 text-white border-transparent hover:bg-emerald-600'
                   }`}
                 >
                   {isSaving ? '處理中...' : (chapterStatus === 'PUBLISHED' ? '隱藏此章節' : '公開發布')}
                 </button>
 
-                <button 
+                <button
                   onClick={() => handleSave()}
                   disabled={editor.isEmpty || isSaving || !isOnline}
                   className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
@@ -362,7 +437,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           </div>
         </div>
 
-        {isEditable && (
+        {isEditable && !previewVersion && (
           <div className="flex gap-1.5 px-3 py-1.5 bg-[#edf2fa] rounded-lg mx-6 mb-3 w-max border border-blue-100/50 shadow-sm">
             <button type="button" onClick={() => handleToggle('bold')} className={getButtonClass('bold')} title="粗體 (Ctrl+B)">B</button>
             <button type="button" onClick={() => handleToggle('italic')} className={getButtonClass('italic')} title="斜體 (Ctrl+I)">
@@ -380,8 +455,8 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           <EditorContent editor={editor} />
         </div>
       </div>
-      
-      {isEditable && <AssistantChat projectId={novelId} />}
+
+      {isEditable && !previewVersion && <AssistantChat projectId={novelId} />}
       
     </div>
   )

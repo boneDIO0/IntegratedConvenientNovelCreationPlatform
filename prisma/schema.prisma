@@ -45,6 +45,8 @@ model User {
   projectMessages ProjectMessages[]
   projects        Project[]         @relation("ProjectOwner")
   sentInvitations ProjectInvitation[]
+  receivedNotifications  Notification[] @relation("ReceivedNotifications")
+  triggeredNotifications Notification[] @relation("TriggeredNotifications")
   
   // --- Auth.js 的關聯 ---
   accounts      Account[]
@@ -124,6 +126,7 @@ model Project {
   categories      SettingCategory[]
   entities        SettingEntity[]
   invitations     ProjectInvitation[]
+  notifications   Notification[]
 
   @@index([ownerId])
   @@map("projects")
@@ -311,5 +314,41 @@ model ProjectInvitation {
 
   @@index([projectId])
   @@map("project_invitations")
+  @@schema("public")
+}
+
+enum NotificationType {
+  INVITE        // 站內協作邀請
+  MENTION       // 留言板被 @ 標記
+  NEW_COMMENT   // 發布區 (Explore) 有新留言
+  SYSTEM        // 系統通知 (預留給未來使用)
+
+  @@schema("public")
+}
+
+model Notification {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipientId String           @map("recipient_id")        // 接收通知的人
+  actorId     String?          @map("actor_id")            // 觸發此通知的人 (例如標記你的人)
+  
+  type        NotificationType
+  projectId   String?          @map("project_id") @db.Uuid // 關聯的專案 (點擊可跳轉)
+  targetId    String?          @map("target_id")           // 關聯的實體 ID (邀請碼 ID 或 留言 ID)
+  
+  message     String           @db.Text                    // 通知顯示的文字摘要
+  link        String?                                      // 點擊通知後要跳轉的相對路徑 URL
+  
+  isRead      Boolean          @default(false) @map("is_read")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // --- 關聯 ---
+  recipient   User             @relation("ReceivedNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor       User?            @relation("TriggeredNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+  project     Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // 建立索引：最常用的是「查詢某人未讀的通知」，所以將 recipientId 和 isRead 綁定索引
+  @@index([recipientId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
   @@schema("public")
 }

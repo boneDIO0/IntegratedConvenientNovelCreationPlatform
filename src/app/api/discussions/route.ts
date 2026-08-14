@@ -35,8 +35,15 @@ export async function GET(request: Request) {
       where: { projectId: projectId, channelId: channelId },
       orderBy: { createdAt: 'asc' }, // 舊的在上面，新的在下面
       include: {
-        users: { // 順便把留言者的名字和頭像抓出來！
+        users: {
           select: { name: true, image: true }
+        },
+        projectMessages: { 
+          select: {
+            id: true,
+            content: true,
+            users: { select: { name: true } }
+          }
         }
       }
     });
@@ -79,7 +86,9 @@ export async function POST(request: Request) {
         content: body.content,
         projectId: body.projectId,
         authorId: session.user.id,
-        channelId: body.channelId || 'general'
+        channelId: body.channelId || 'general',
+        referencedMessageId: body.referencedMessageId || null, 
+        mentions: body.mentions || [],
       }
     });
 
