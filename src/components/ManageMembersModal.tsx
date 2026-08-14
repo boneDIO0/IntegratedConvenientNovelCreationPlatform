@@ -33,6 +33,7 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
   const [fetchError, setFetchError] = useState('');
   const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
   const [targetEmail, setTargetEmail] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   // 開啟 Modal 時，自動撈取成員資料
   useEffect(() => {
@@ -74,28 +75,67 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
     setIsGenerating(true);
     setError('');
     setInviteLink('');
+    setSuccessMessage('');
     setCopied(false);
 
+    // 用逗號或半形空白切開字串，並過濾掉空字串
+    const rawEmails = targetEmail
+      .split(/[, ]+/)
+      .map(e => e.trim())
+      .filter(Boolean);
+    
+    // Email 格式防呆
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = rawEmails.filter(e => !emailRegex.test(e));
+
+    if (invalidEmails.length > 0) {
+      setError(`包含無效的信箱格式：${invalidEmails.join(', ')}`);
+      setIsGenerating(false);
+      return;
+    }
+
+    if (rawEmails.length > 5) {
+      setError('為防止系統濫用，一次最多只能發送 5 筆邀請喔！');
+      setIsGenerating(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/projects/${projectId}/invitations`, {
+      // 產生一組供複製的通用網址連結
+      const genericRes = await fetch(`/api/projects/${projectId}/invitations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role,
-          email: targetEmail.trim() || undefined
-        }),
+        body: JSON.stringify({ role }),
       });
+      const genericData = await genericRes.json();
+      if (!genericRes.ok) throw new Error(genericData.error || '產生連結失敗');
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '產生連結失敗');
-      }
+      setInviteLink(genericData.data.inviteLink);
+      
+      if (rawEmails.length === 0) {
+        setSuccessMessage('通用邀請連結產生成功！');
+      } else {
+        // 如果有填寫 Email，額外發送專屬通知給這些人
+        let messages: string[] = [];
+        let latestLink = '';
 
-      setInviteLink(data.data.inviteLink);
+        for (const email of rawEmails) {
+          const res = await fetch(`/api/projects/${projectId}/invitations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role, email }),
+          });
+          const data = await res.json();
+          
+          if (!res.ok) {
+            throw new Error(`${email} 發送失敗：${data.error}`);
+          }
+          if (data.message) messages.push(data.message);
+          latestLink = data.data.inviteLink; // 記錄剛產生的專屬連結
+        }
 
-      if (targetEmail.trim()) {
-        alert(`已成功寄送邀請信至：${targetEmail}`);
-        setTargetEmail(''); // 發送成功後清空信箱
+        setTargetEmail('');
+        setSuccessMessage(`通用連結已產生！\n${messages.join('\n')}`);
       }
 
     } catch (err: any) {
@@ -219,13 +259,11 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
           {activeTab === 'invite' && normalizedUserRole === 'OWNER' ? (
             <div className="space-y-5">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">賦予權限身分</label>
-                
                 <div className="mt-4">
-                  <label className="block text-sm font-bold text-slate-700 mb-2">傳送邀請至 Email (選填)</label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">傳送邀請至 Email (選填，可輸入多個)</label>
                   <input
-                    type="email"
-                    placeholder="例如: collaborator@example.com"
+                    type="text"
+                    placeholder="例如: abc@example.com, def@test.com (用逗號分隔)"
                     value={targetEmail}
                     onChange={(e) => setTargetEmail(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm transition-all"
@@ -233,7 +271,8 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
                   <p className="text-xs text-slate-400 mt-1.5">如果留空，將僅產生邀請連結供您手動複製分享。</p>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm font-bold text-slate-700 mb-2 mt-3">賦予權限身分</label>
+                <div className="grid grid-cols-2 gap-3">                  
                   <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-all ${role === 'EDITOR' ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' : 'border-slate-200 hover:border-slate-300'}`}>
                     <input type="radio" name="role" value="EDITOR" checked={role === 'EDITOR'} onChange={() => setRole('EDITOR')} className="mt-0.5 h-4 w-4 text-indigo-600 focus:ring-indigo-500" />
                     <div>
@@ -265,24 +304,33 @@ export default function ManageMembersModal({ projectId, isOpen, onClose, current
                 {isGenerating ? '正在產生金鑰...' : <><LinkIcon size={16} /> 產生專屬邀請連結</>}
               </button>
 
+              {successMessage && (
+                <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700 border border-emerald-100 flex items-center gap-2 font-medium">
+                  <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
+                  <span>{successMessage}</span>
+                </div>
+              )}
+
               {inviteLink && (
                 <div className="mt-4 animate-in slide-in-from-bottom-2">
-                  <label className="block text-xs font-bold text-slate-500 mb-1.5">邀請連結 (7天內有效，單次使用)</label>
-                  <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-1.5 pl-3">
-                    <input 
-                      type="text" 
-                      readOnly 
-                      value={inviteLink} 
-                      className="flex-1 bg-transparent text-sm text-indigo-900 focus:outline-none truncate"
-                    />
-                    <button
-                      onClick={handleCopy}
-                      className={`flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold text-white transition-all ${
-                        copied ? 'bg-emerald-500' : 'bg-indigo-600 hover:bg-indigo-700'
-                      }`}
-                    >
-                      {copied ? <><CheckCircle2 size={14} /> 已複製</> : <><Copy size={14} /> 複製</>}
-                    </button>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1.5">或手動複製邀請連結 (7天內有效)</label>
+                    <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-1.5 pl-3">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value={inviteLink} 
+                        className="flex-1 bg-transparent text-sm text-indigo-900 focus:outline-none truncate"
+                      />
+                      <button
+                        onClick={handleCopy}
+                        className={`flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold text-white transition-all ${
+                          copied ? 'bg-emerald-500' : 'bg-indigo-600 hover:bg-indigo-700'
+                        }`}
+                      >
+                        {copied ? <><CheckCircle2 size={14} /> 已複製</> : <><Copy size={14} /> 複製</>}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
