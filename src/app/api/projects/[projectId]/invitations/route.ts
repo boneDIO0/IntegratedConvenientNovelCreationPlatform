@@ -4,6 +4,7 @@ import { verifyProjectAccess } from '@/lib/auth-utils';
 import { PROJECT_ROLES } from '@/lib/roles';
 import crypto from 'crypto';
 import { Resend } from 'resend';
+import { rateLimiter } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -16,6 +17,19 @@ interface RouteParams {
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
+    // 同一 IP 每 60 秒最多只能邀請 5 次
+    const rateLimitResult = await rateLimiter(request, {
+      limit: 5,
+      windowSeconds: 60
+    });
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { error: `操作太頻繁，請等待 ${rateLimitResult.resetTime} 秒後再試。` },
+        { status: 429 }
+      );
+    }
+    
     const resolvedParams = await params;
     const { projectId } = resolvedParams;
 
@@ -52,6 +66,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         expiresAt: expiresAt,
       },
       select: {
+        id: true,
         token: true,
         role: true,
         email: true,
@@ -64,36 +79,57 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const origin = request.nextUrl.origin;
     const inviteLink = `${origin}/invite/${newInvitation.token}`;
 
+    let message = '邀請連結產生成功！';
+
     if (email) {
-      const [project, inviter] = await Promise.all([
+      const [project, inviter, targetUser] = await Promise.all([
         prisma.project.findUnique({ where: { id: projectId } }),
-        prisma.user.findUnique({ where: { id: auth.userId! }, select: { name: true, email: true } })
+        prisma.user.findUnique({ where: { id: auth.userId! }, select: { name: true, email: true } }),
+        prisma.user.findUnique({ where: { email: email } })
       ]);
       const projectName = project?.title || '未命名專案';
       const roleName = role === 'EDITOR' ? '協作寫手' : '檢視者';
       const inviterName = inviter?.name || inviter?.email || '某人';
 
-      await resend.emails.send({
-        from: 'onboarding@resend.dev', // 測試階段用 Resend 的預設網域
-        to: email,
-        subject: `[邀請] 您受邀加入《${projectName}》的創作團隊`,
-        html: `
-          <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto;">
-            <h2>您收到了一份協作邀請！</h2>
-            <p style="color: #555; line-height: 1.6;">
-              <strong>${inviterName}</strong> 邀請您以「<strong>${roleName}</strong>」的身分加入專案《<strong>${projectName}</strong>》。
-            </p>
-            <p style="color: #555; line-height: 1.6;">請點擊下方按鈕接受邀請（連結將於 7 天後失效）：</p>
-            <a href="${inviteLink}" style="display: inline-block; padding: 12px 24px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 6px; margin-top: 10px;">接受邀請</a>
-            <p style="margin-top: 30px; font-size: 12px; color: #666;">如果按鈕無法點擊，請複製以下網址至瀏覽器貼上：<br>${inviteLink}</p>
-          </div>
-        `
-      });
+      if (targetUser) {
+        // 若對方已經是註冊會員 -> 直接發送站內小鈴鐺通知！
+        await prisma.notification.create({
+          data: {
+            recipientId: targetUser.id,
+            actorId: auth.userId!,
+            type: 'INVITE', // 對應 Schema 的 Enum
+            projectId: projectId,
+            targetId: newInvitation.id,
+            message: `${inviterName} 邀請您以「${roleName}」的身分加入專案《${projectName}》`,
+            link: `/invite/${newInvitation.token}` // 點擊通知直接跳到接受頁面
+          }
+        });
+        message = `已發送站內邀請通知給 ${targetUser.name || email}`;
+      } else {
+        // 若對方還沒註冊 -> 發送 Email
+        await resend.emails.send({
+          from: 'onboarding@resend.dev', // 測試階段用 Resend 的預設網域
+          to: email,
+          subject: `[邀請] 您受邀加入《${projectName}》的創作團隊`,
+          html: `
+            <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto;">
+              <h2>您收到了一份協作邀請！</h2>
+              <p style="color: #555; line-height: 1.6;">
+                <strong>${inviterName}</strong> 邀請您以「<strong>${roleName}</strong>」的身分加入專案《<strong>${projectName}</strong>》。
+              </p>
+              <p style="color: #555; line-height: 1.6;">請點擊下方按鈕接受邀請（連結將於 7 天後失效）：</p>
+              <a href="${inviteLink}" style="display: inline-block; padding: 12px 24px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 6px; margin-top: 10px;">接受邀請</a>
+              <p style="margin-top: 30px; font-size: 12px; color: #666;">如果按鈕無法點擊，請複製以下網址至瀏覽器貼上：<br>${inviteLink}</p>
+            </div>
+          `
+        });
+        message = `邀請信已成功寄送至 ${email}`;
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: email ? `邀請信已成功寄送至 ${email}` : '邀請連結產生成功！',
+      message: message,
       data: {
         inviteLink: inviteLink,
         role: newInvitation.role,
