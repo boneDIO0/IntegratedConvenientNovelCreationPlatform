@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma'; // 🌟 召喚真實的資料庫引擎
+import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/ErrorHandler';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
@@ -98,6 +98,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: "error", message: "無權限在此專案留言" }, { status: 403 });
     }
 
+    // 將 @ALL 替換為實際的 UUID 陣列
+    let finalMentions = body.mentions && Array.isArray(body.mentions) ? [...body.mentions] : [];
+    if (finalMentions.includes('ALL')) {
+      const allMembers = await prisma.projectMember.findMany({
+        where: { projectId: body.projectId },
+        select: { userId: true }
+      });
+      // 移除 'ALL' 字串，換成所有成員的真實 ID
+      finalMentions = finalMentions.filter(id => id !== 'ALL');
+      const allUserIds = allMembers.map(m => m.userId);
+      finalMentions = Array.from(new Set([...finalMentions, ...allUserIds])); // 去除重複
+    }
+    
     const newMessage = await prisma.projectMessages.create({
       data: {
         content: body.content,
@@ -105,9 +118,41 @@ export async function POST(request: Request) {
         authorId: session.user.id,
         channelId: body.channelId || 'general',
         referencedMessageId: body.referencedMessageId || null, 
-        mentions: body.mentions || [],
+        mentions: finalMentions,
       }
     });
+
+    const targetRecipientIds = finalMentions.filter(id => id !== session.user.id);
+
+    // 新增通知給被標註的人
+    if (targetRecipientIds.length > 0) {
+      const [project, actor] = await Promise.all([
+        prisma.project.findUnique({ where: { id: body.projectId }, select: { title: true } }),
+        prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } })
+      ]);
+
+      const projectName = project?.title || '專案';
+      const actorName = actor?.name || '某人';
+      
+      const isChapter = body.channelId && body.channelId !== 'general';
+      const linkUrl = isChapter 
+        ? `/novel_list/${body.projectId}/editor/${body.channelId}`
+        : `/novel_list/${body.projectId}/discussions`;
+
+      const notificationsToCreate = targetRecipientIds.map((recipientId: string) => ({
+        recipientId: recipientId,
+        actorId: session.user.id,
+        type: 'MENTION' as const,
+        projectId: body.projectId,
+        targetId: newMessage.id,
+        message: `${actorName} 在《${projectName}》的討論區提到了你`,
+        link: linkUrl
+      }));
+
+      await prisma.notification.createMany({
+        data: notificationsToCreate
+      });
+    }
 
     return NextResponse.json(
       { status: "success", message: "成功留言", data: newMessage },
