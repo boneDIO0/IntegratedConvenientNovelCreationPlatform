@@ -87,10 +87,17 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
 
       setSettings(flatItems);
 
-      // 提取本章登場 ID
+      // 🎯 提取本章登場 ID (多重相容性防禦)
       const initialAssigned = new Set<string>();
       flatItems.forEach((item: any) => {
-        if (item.isChapterAssigned || item.isAssigned || item.chapters?.some((c: any) => c.id === chapterId)) {
+        const isAssignedFlag = item.isChapterAssigned || item.isAssigned;
+        
+        const hasChapterRelation = Array.isArray(item.chapters) && item.chapters.some((c: any) => {
+          if (typeof c === 'string') return c === chapterId;
+          return c.id === chapterId;
+        });
+
+        if (isAssignedFlag || hasChapterRelation) {
           initialAssigned.add(item.id);
         }
       });
@@ -102,6 +109,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   };
 
+  // 🎯 開啟時自動撈取，關閉時清除搜尋紀錄
   useEffect(() => {
     if (isOpen) {
       fetchPopoverSettings();
@@ -109,7 +117,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       setDetailItem(null);
       setSearchQuery('');
     }
-  }, [isOpen, projectId, chapterId]);
+  }, [isOpen]);
 
   // 🎯 2. 切換登場狀態（對齊後端 PATCH 路由）
   const handleToggleChapterAssign = async (e: React.MouseEvent, itemId: string) => {
@@ -147,7 +155,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   };
 
-  // 🎯 失焦即時自動儲存表單欄位（支援複數關聯角色與多物件結構化解析）
+  // 🎯 3. 失焦即時自動儲存表單欄位（方案 B：自動校正、背景創建組織、複數關聯與 Color #號補全）
   const handleSaveField = async (updatedContent: Record<string, any>) => {
     if (!detailItem || isSavingField) return;
 
@@ -155,38 +163,31 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       setIsSavingField(true);
       const safeContent: Record<string, any> = { ...updatedContent };
 
-      Object.keys(safeContent).forEach((key) => {
+      for (const key of Object.keys(safeContent)) {
         const rawVal = safeContent[key];
         const rawItemAny = detailItem as any;
         const originalVal = rawItemAny.content?.[key] || rawItemAny[key];
 
-        // 🎯 1. 複數關聯角色/要素 (relations) 陣列解析
+        // 🎯 1. 關聯角色 (relations) 物件陣列語意解析與 ID 更新
         if (key === 'relations' && typeof rawVal === 'string') {
-          // 按「換行」或「逗號」切分每一條關聯紀錄
           const lines = rawVal
             .split(/[\n,，]/)
             .map(s => s.trim())
             .filter(Boolean);
 
-          // 將每一條拆解成獨立的物件，組合成複數物件陣列 [...]
           safeContent[key] = lines.map(line => {
-            // 解析語法範例：
-            // "• [敵對] 荒耶宗蓮"  -> 關係: 敵對, 目標: 荒耶宗蓮
-            // "[同學] 兩儀式"      -> 關係: 同學, 目標: 兩儀式
-            // "淺上藤乃"           -> 關係: 關聯, 目標: 淺上藤乃
             const match = line.match(/(?:•\s*)?(?:\[(.*?)\])?\s*(.*)/);
             const relationType = match && match[1] ? match[1].trim() : '關聯';
             const targetName = match && match[2] ? match[2].trim() : line.trim();
 
-            // 去全域 settings 搜尋是否有該角色的 UUID
             const matchedTarget = settings.find(
-              s => s.name.trim().toLowerCase() === targetName.toLowerCase()
+              s => s.name.trim().toLowerCase() === targetName.toLowerCase() || s.id === targetName
             );
 
             return {
               type: relationType,
               relation: relationType,
-              targetId: matchedTarget ? matchedTarget.id : targetName, // 有 UUID 用 UUID，沒有用原名
+              targetId: matchedTarget ? matchedTarget.id : targetName,
               targetName: targetName,
               name: targetName
             };
@@ -200,17 +201,55 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             .filter(Boolean);
         }
 
-        // 🎯 3. 所屬勢力外鍵映射（組織名稱 -> UUID）
+        // 🎯 3. 方案 B 核心：所屬勢力外鍵映射（組織名稱 -> 自動匹配或背景建立新組織）
         if ((key === 'faction' || key === 'alliances') && typeof rawVal === 'string' && rawVal.trim()) {
           const inputName = rawVal.trim();
-          const matchedFaction = settings.find(
+          
+          let matchedFaction = settings.find(
             s => s.id === inputName || (s.category === 'faction' && s.name.trim().toLowerCase() === inputName.toLowerCase())
           );
+
+          if (!matchedFaction && projectId) {
+            try {
+              const createCatRes = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  categoryName: '組織',
+                  type: 'faction',
+                  projectId: projectId,
+                  item: { name: inputName }
+                })
+              });
+
+              if (createCatRes.ok) {
+                const newFactionEntity = await createCatRes.json();
+                matchedFaction = {
+                  id: newFactionEntity.id,
+                  name: newFactionEntity.name || inputName,
+                  category: 'faction'
+                } as SettingItem;
+              }
+            } catch (createErr) {
+              console.error("背景自動建立新組織失敗:", createErr);
+            }
+          }
+
           if (matchedFaction) {
             safeContent[key] = matchedFaction.id;
           }
         }
-      });
+
+        // 🎯 4. 色彩 Hex 格式自動校正 (補上 # 號)
+        if (key === 'color' && typeof rawVal === 'string' && rawVal.trim()) {
+          let hex = rawVal.trim();
+          if (!hex.startsWith('#')) {
+            hex = `#${hex}`;
+          }
+          const isValidHex = /^#([0-9A-F]{3}){1,2}$/i.test(hex);
+          safeContent[key] = isValidHex ? hex : '#64748b';
+        }
+      }
 
       const updatedItem = {
         ...detailItem,
@@ -262,19 +301,14 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   };
 
   const FIELD_LABEL_MAP: Record<string, string> = {
-    // 通用欄位
     description: '詳細說明',
     summary: '摘要說明',
     notes: '備註與註記',
-    
-    // 事件 (Event) 欄位
     date: '發生時間',
     location: '發生地點',
     relations: '關聯角色 / 要素',
     participants: '參與人員',
     impact: '影響與結果',
-    
-    // 人物 (Character) 欄位
     titles: '頭銜 / 稱號',
     age: '年齡',
     gender: '性別',
@@ -285,24 +319,21 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     abilities: '能力 / 技能',
     alliances: '所屬組織',
     faction: '所屬勢力',
-
-    // 組織 (Faction) 欄位
     leader: '首領 / 領導者',
     headquarters: '據點 / 總部',
     goals: '組織目標',
-
-    // 物品 (Item) 欄位
     rarity: '稀有度',
     owner: '持有者',
     effect: '效果 / 功能',
     itemType: '物品類型',
-
-    // 地點 (Location) 欄位
     climate: '氣候特徵',
     geography: '地理環境',
+    color: '關係圖專屬色彩',
+    hierarchy: '組織架構 / 階級',
+    territory: '勢力範圍 / 領地',
   };
 
-  // 🎯 5. 渲染可編輯的詳情欄位
+  // 🎯 5. 渲染可編輯且對齊顯示的詳情欄位
   const renderDetailFields = (item: SettingItem) => {
     const content = editingContent;
     
@@ -319,7 +350,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     return entries.map(([key, value]) => {
       const label = FIELD_LABEL_MAP[key] || (key.charAt(0).toUpperCase() + key.slice(1));
       
-      // 🎯 外鍵 UUID 反查：若為 faction/alliances 且值為 UUID，轉成中文名稱呈現
       let displayValue = value;
       if ((key === 'faction' || key === 'alliances') && typeof value === 'string') {
         const foundFaction = settings.find(s => s.id === value);
@@ -328,13 +358,18 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         }
       }
 
-      // 特殊格式化：轉成無 JSON 中括號的友善字串
+      // 🎯 關聯格式化展示修復：優先顯字，若是 UUID 則拿 settings 進行反查
       let valStr = '';
       if (key === 'relations' && Array.isArray(displayValue)) {
         valStr = displayValue.map((r: any) => {
-          if (typeof r === 'object') {
+          if (typeof r === 'object' && r !== null) {
             const relType = r.type || r.relation || '關聯';
-            const target = r.targetId || r.targetName || r.name || '未知';
+            
+            // 優先找中文名字或原名，找不到再拿 UUID 進行查表校正
+            const rawTarget = r.targetName || r.name || r.targetId || '';
+            const matchedChar = settings.find(s => s.id === rawTarget || s.name === rawTarget);
+            const target = matchedChar ? matchedChar.name : (r.targetName || r.name || rawTarget || '未知');
+
             return `• [${relType}] ${target}`;
           }
           return `• ${r}`;
@@ -364,7 +399,32 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             </button>
           </div>
 
-          {isMultiLine ? (
+          {key === 'color' ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={valStr.startsWith('#') ? valStr : `#${valStr}`}
+                onChange={(e) => {
+                  const nextContent = { ...editingContent, [key]: e.target.value };
+                  setEditingContent(nextContent);
+                  handleSaveField(nextContent);
+                }}
+                className="w-7 h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5 bg-white flex-shrink-0"
+                title="點擊選擇顏色"
+              />
+              <input
+                type="text"
+                value={valStr}
+                placeholder="#64748b"
+                onChange={(e) => {
+                  const nextContent = { ...editingContent, [key]: e.target.value };
+                  setEditingContent(nextContent);
+                }}
+                onBlur={() => handleSaveField(editingContent)}
+                className="flex-1 text-xs text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 focus:bg-white rounded-lg px-1.5 py-1 focus:outline-none transition-all font-mono font-medium"
+              />
+            </div>
+          ) : isMultiLine ? (
             <textarea
               value={valStr}
               placeholder="請輸入內容..."
@@ -434,7 +494,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
 
           <div className="flex flex-col h-full animate-in slide-in-from-left duration-200">
             
-            {/* 搜尋與 Tab 標籤 */}
             <div className="p-3 border-b border-slate-100 space-y-2 bg-slate-50/50">
               <input
                 type="text"
@@ -461,7 +520,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
               </div>
             </div>
 
-            {/* 卡片列表 */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {loading ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
@@ -550,7 +608,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
               )}
             </div>
 
-            {/* Bottom Footer */}
             <div className="p-2.5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-[11px] text-slate-500 px-3">
               <span>找不到想要的角色或設定？</span>
               {projectId && (

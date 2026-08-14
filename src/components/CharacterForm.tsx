@@ -11,12 +11,12 @@ import { useState } from "react";
 interface CharacterFormProps {
   item: SettingItem & { 
     titles?: string[];
-    relations?: { targetId: string; type: string }[]; 
+    relations?: any[]; // 🌟 提升相容性：支援舊有物件或字串型態
   };
   onSave: (updatedItem: SettingItem) => void | Promise<void>;
   allSettings?: { category: string; items: SettingItem[] }[]; 
-  currentChapterSettings?: { category: string; items: SettingItem[] }[]; // 🌟 核心新增：接收本章登場名單
-  onDirty?: () => void; // 🌟 核心新增：欄位被修改時通知父層亮起已修改標籤
+  currentChapterSettings?: { category: string; items: SettingItem[] }[]; 
+  onDirty?: () => void; 
 }
 
 export default function CharacterForm({ 
@@ -42,9 +42,14 @@ export default function CharacterForm({
     item.customFields || []
   );
 
-  // 關聯人物狀態
-  const [relations, setRelations] = useState<{ targetId: string; type: string }[]>(
-    item.relations || []
+  // 關聯人物狀態（統一轉成標準結構物件）
+  const [relations, setRelations] = useState<any[]>(
+    (item.relations || []).map(r => {
+      if (typeof r === 'string') {
+        return { targetId: r, targetName: r, type: '關聯' };
+      }
+      return r;
+    })
   );
   
   // 臨時狀態
@@ -57,7 +62,7 @@ export default function CharacterForm({
     group.items.filter(i => i.category === 'faction')
   );
 
-  // 🌟 核心分離：下拉選單使用 100% 全域無過濾的總庫，確保所有人都能被選，且絕不觸發 React 冒泡重繪死鎖！
+  // 下拉選單使用 100% 全域總庫，排除自身
   const availableCharacters = allSettings
     .flatMap(group => group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-'))) 
     .filter(char => char.id !== item.id && char.name !== name); 
@@ -68,7 +73,7 @@ export default function CharacterForm({
     const newTitles = [...titles];
     newTitles[index] = value;
     setTitles(newTitles);
-    onDirty?.(); // 觸發髒數據
+    onDirty?.();
   };
 
   const handleAddCustomField = () => { setCustomFields([...customFields, { label: "新屬性 (點擊修改)", value: "" }]); onDirty?.(); };
@@ -82,17 +87,25 @@ export default function CharacterForm({
 
   const handleAddRelation = () => {
     if (!selectedTargetId) return;
-    if (relations.some(r => r.targetId === selectedTargetId)) {
+    if (relations.some(r => r.targetId === selectedTargetId || r.targetName === selectedTargetId)) {
       alert("已存在與該角色的關聯設定！");
       return;
     }
-    setRelations([...relations, { targetId: selectedTargetId, type: relationType }]);
+    
+    // 抓取選中的角色名字
+    const targetObj = availableCharacters.find(c => c.id === selectedTargetId);
+
+    setRelations([...relations, { 
+      targetId: selectedTargetId, 
+      targetName: targetObj?.name || selectedTargetId,
+      type: relationType 
+    }]);
     setSelectedTargetId(""); 
-    onDirty?.(); // 建立關係時通知父層
+    onDirty?.();
   };
 
   const handleRemoveRelation = (targetIdToRemove: string) => {
-    setRelations(relations.filter(r => r.targetId !== targetIdToRemove));
+    setRelations(relations.filter(r => r.targetId !== targetIdToRemove && r.targetName !== targetIdToRemove));
     onDirty?.();
   };
 
@@ -215,7 +228,6 @@ export default function CharacterForm({
           <Label className="font-bold text-slate-700">關聯人物設定</Label>
           
           <div className="flex flex-wrap gap-2 items-center mb-2">
-            {/* 🌟 修正點：此受控 select 元件現在完全獨立，不再受任何外層 onChange 事件冒泡的強制打斷，點擊一次秒選中！ */}
             <select
               value={selectedTargetId}
               onChange={(e) => setSelectedTargetId(e.target.value)}
@@ -235,23 +247,32 @@ export default function CharacterForm({
             {relations.length > 0 ? (
               relations.map((rel, index) => {
                 const allCharactersInProject = allSettings.flatMap(g => g.items);
-                const targetChar = allCharactersInProject.find(c => c.id === rel.targetId);
-                const targetName = targetChar?.name || rel.targetId;
+                
+                // 🌟 修正點 1：多重容錯比對（UUID、targetName、targetId 字串名稱）
+                const targetChar = allCharactersInProject.find(
+                  c => c.id === rel.targetId || c.name === rel.targetName || c.name === rel.targetId
+                );
+                
+                // 優先使用反查出的正名，其次為 targetName，最後降級至 targetId
+                const displayTargetName = targetChar?.name || rel.targetName || rel.targetId || "未知角色";
 
-                // 🌟 修正點：利用傳進來的專屬 currentChapterSettings 進行準確反查，抓出誰才是本章神隱人口
-                const isAbsentInChapter = !currentChapterSettings
-                  .flatMap(g => g.items)
-                  .some(c => c.id === rel.targetId);
+                // 🌟 修正點 2：只有在有傳入「本章登場清單」時才進行登場判定，且對名字或 UUID 雙重判定
+                const chapterItems = currentChapterSettings.flatMap(g => g.items);
+                const hasChapterFilter = currentChapterSettings.length > 0 && chapterItems.length > 0;
+                
+                const isAbsentInChapter = hasChapterFilter && !chapterItems.some(
+                  c => c.id === rel.targetId || c.name === displayTargetName
+                );
 
                 return (
                   <Badge key={index} variant="secondary" className={`text-sm py-1 px-3 bg-white shadow-sm border-slate-200 flex items-center gap-2 transition-all ${isAbsentInChapter ? "opacity-60 saturate-50 bg-slate-100/70" : ""}`}>
                     <span>
-                      👤 與 <strong className="text-blue-700">{targetName}</strong> 的關係是【{rel.type}】
+                      👤 與 <strong className="text-blue-700">{displayTargetName}</strong> 的關係是【{rel.type || rel.relation || "關聯"}】
                       {isAbsentInChapter && <span className="text-xs text-slate-400 ml-1">(本章未登場)</span>}
                     </span>
-                    <button type="button" onClick={() => handleRemoveRelation(rel.targetId)} className="text-slate-400 hover:text-red-500 font-bold text-xs transition-colors">✕</button>
+                    <button type="button" onClick={() => handleRemoveRelation(rel.targetId || rel.targetName)} className="text-slate-400 hover:text-red-500 font-bold text-xs transition-colors">✕</button>
                   </Badge>
-                )
+                );
               })
             ) : (
               <span className="text-sm text-slate-400">目前無關聯設定，請用上方選擇器建立人物連結。</span>
@@ -264,12 +285,11 @@ export default function CharacterForm({
         <button 
           onClick={handleSaveClick} 
           disabled={saveStatus !== "儲存人物設定"} 
-          // 🌟 核心修正：加入 disabled:opacity-50 與禁止游標，並將 transition-colors 改成 transition-all
           className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-md font-medium transition-all shadow-sm"
         >
           {saveStatus} 
         </button>
       </div>
     </div>
-  )
+  );
 }
