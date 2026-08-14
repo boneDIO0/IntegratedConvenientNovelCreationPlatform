@@ -260,7 +260,7 @@ model ProjectMessages {
   content             String
   authorId            String?          @map("author_id") 
   projectId           String           @map("project_id") @db.Uuid
-  mentions            String[]         @db.Uuid
+  mentions            String[]
   referencedFile      String?          @map("referenced_file") @db.Uuid
   channelId           String           @map("channel_id")
   referencedMessageId String?          @map("referenced_message_id") @db.Uuid
