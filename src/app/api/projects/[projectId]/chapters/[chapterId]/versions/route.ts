@@ -44,6 +44,11 @@ export async function GET(
           mode: 'insensitive'
         }
       },
+      include: {
+        author: {
+          select: { name: true, image: true }
+        }
+      },
       orderBy: { createdAt: 'desc' },
     });
 

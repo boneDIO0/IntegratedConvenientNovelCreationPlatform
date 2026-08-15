@@ -52,7 +52,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { title, content, saveVersion, commitMsg, status } = body
+    const { title, content, saveVersion, commitMsg, status, name, isAutoSave } = body
 
     // 📍 建立一個「資料庫操作陣列」，先放入一定會執行的更新章節動作
     const dbOperations: any[] = [
@@ -77,7 +77,9 @@ export async function PUT(
             targetType: "CHAPTER",
             targetId: chapterId,
             content: content as any, 
-            commitMsg: commitMsg || "編輯器手動存檔"
+            commitMsg: commitMsg || "編輯器手動存檔",
+            name: name || null,
+            isAutoSave: isAutoSave || false
           }
         })
       );

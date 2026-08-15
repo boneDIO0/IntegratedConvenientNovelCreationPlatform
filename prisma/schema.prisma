@@ -197,6 +197,8 @@ model Checkpoint {
   authorId     String?          @map("author_id")
   parentId     String?          @map("parent_id") @db.Uuid
   commitMsg    String?          @map("commit_msg")
+  name         String?
+  isAutoSave   Boolean          @default(false) @map("is_auto_save")
   targetType   String           @map("target_type")
   targetId     String?          @map("target_id") @db.Uuid
   content      Json             

@@ -166,7 +166,8 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
               content: content,
               saveVersion: true,
               commitMsg: "系統自動存檔 (離開網頁)",
-              status: chapterStatus
+              status: chapterStatus,
+              isAutoSave: true
             }),
             keepalive: true
           })
@@ -264,6 +265,20 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
     const targetStatus = typeof newStatus === 'string' ? newStatus : chapterStatus
 
+    let versionName = null;
+    if (!newStatus) {
+      const userInput = window.prompt(
+          "請為這次的存檔命名 (選填)：\n例如：第一章初稿、重寫戰鬥場景", 
+          ""
+      );
+
+      if (userInput === null) return; 
+
+      if (userInput.trim() !== "") {
+          versionName = userInput.trim();
+      }
+    }
+
     try {
       const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
         method: 'PUT',
@@ -273,7 +288,9 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           content: currentContent,
           saveVersion: true,
           commitMsg: `${currentTitle || '未命名章節'} - 手動存檔點`,
-          status: targetStatus
+          status: targetStatus,
+          name: versionName,
+          isAutoSave: false
         })
       })
 
