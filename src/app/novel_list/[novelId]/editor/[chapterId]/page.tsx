@@ -141,6 +141,10 @@ export default function ChapterEditorPage() {
               ) : (
                 versions.map((ver) => {
                   const isPreviewing = previewVersion?.id === ver.id;
+                  const authorName = ver.author?.name || '未知寫手';
+                  const authorImage = ver.author?.image;
+                  const isAutoSave = ver.isAutoSave;
+                  const versionName = ver.name;
 
                   return (
                     <div
@@ -151,11 +155,38 @@ export default function ChapterEditorPage() {
                           : 'border-slate-200 hover:border-purple-300'
                       }`}
                     >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-1.5">
+                          {authorImage ? (
+                            <img src={authorImage} alt={authorName} className="w-5 h-5 rounded-full object-cover border border-slate-200" />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                              {authorName.charAt(0)}
+                            </div>
+                          )}
+                          <span className="text-xs font-bold text-slate-700">{authorName}</span>
+                        </div>
+                        {isAutoSave ? (
+                          <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
+                            自動存檔
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-bold">
+                            手動存檔
+                          </span>
+                        )}
+                      </div>
+
+                      {versionName && (
+                        <p className="text-sm font-bold text-slate-800 break-all mb-0.5">
+                          {versionName}
+                        </p>
+                      )}
                       <p className="text-xs font-semibold text-slate-500">
                         {new Date(ver.createdAt).toLocaleString()}
                       </p>
-                      <p className="text-sm font-medium text-slate-700 mt-1.5 break-all">
-                        {ver.commitMsg || "系統自動儲存點"}
+                      <p className={`text-xs text-slate-600 mt-1.5 break-all ${versionName ? 'opacity-80' : 'font-medium'}`}>
+                        {ver.commitMsg || "無備註"}
                       </p>
 
                       {/* 操作按鈕區 */}

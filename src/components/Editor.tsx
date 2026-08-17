@@ -8,7 +8,8 @@ import { useEditorUI } from '@/contexts/EditorUIContext'
 import AssistantChat from './AssistantChat'
 import 'katex/dist/katex.min.css'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
-import { Eye, EyeOff, RotateCcw } from 'lucide-react'
+import { Eye, EyeOff, RotateCcw, BellRing } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 
 interface EditorProps {
   novelId: string;
@@ -26,9 +27,13 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const [saveStatus, setSaveStatus] = useState('已儲存')
   const [chapterStatus, setChapterStatus] = useState(initialStatus)
   const [isOnline, setIsOnline] = useState(true) // 📍 追蹤網路狀態
+  const { data: session } = useSession(); // 取得當前使用者，用來判斷最新存檔是不是自己存的
+  const [externalUpdate, setExternalUpdate] = useState<{ authorName: string } | null>(null); // 存放外部更新者的資訊
+  const knownLatestVersionRef = useRef<string | null>(null); // 記錄目前已知的最新版本 ID
 
   // 🌟 從 EditorUIContext 取出預覽與歷史版本相關 State
   const {
+    versions,
     latestRestoredContent,
     setLatestRestoredContent,
     fetchVersions,
@@ -166,7 +171,8 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
               content: content,
               saveVersion: true,
               commitMsg: "系統自動存檔 (離開網頁)",
-              status: chapterStatus
+              status: chapterStatus,
+              isAutoSave: true
             }),
             keepalive: true
           })
@@ -235,6 +241,72 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     };
   }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY]);
 
+  // 📍 機制 5：輕量級 Polling (每 20 秒拉取一次最新歷史版本)
+  useEffect(() => {
+    if (!isEditable || previewVersion) return; // 預覽或唯讀時不需 polling
+
+    const pollingInterval = setInterval(() => {
+      if (navigator.onLine) {
+        fetchVersions(novelId, chapterId); // 背景默默更新側邊欄的版本清單
+      }
+    }, 20 * 1000); // 20秒檢查一次
+
+    return () => clearInterval(pollingInterval);
+  }, [isEditable, previewVersion, novelId, chapterId, fetchVersions]);
+
+
+  // 📍 機制 6：比對最新版本，偵測是否被其他人更新
+  useEffect(() => {
+    if (versions.length > 0) {
+      const latest = versions[0];
+
+      // 第一次載入時，純粹記錄基準點，不觸發通知
+      if (!knownLatestVersionRef.current) {
+        knownLatestVersionRef.current = latest.id;
+        return;
+      }
+
+      // 發現新版本！
+      if (latest.id !== knownLatestVersionRef.current) {
+        // 如果這個新版本「不是」當前使用者存的
+        if (session?.user?.id && latest.authorId !== session.user.id) {
+          setExternalUpdate({
+            authorName: latest.author?.name || '其他協作者'
+          });
+        }
+        // 更新基準點，避免重複觸發
+        knownLatestVersionRef.current = latest.id;
+      }
+    }
+  }, [versions, session?.user?.id]);
+
+
+  // 🌟 處理：當使用者點擊「載入最新版本」
+  const handleLoadExternalUpdate = async () => {
+    if (!editor) return;
+    if (!confirm("載入最新版本將會覆蓋您畫面上尚未存檔的內容，確定要載入嗎？")) return;
+
+    try {
+      const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`);
+      if (res.ok) {
+        const data = await res.json();
+        
+        // 替換畫面內容與標題
+        editor.commands.setContent(data.content || {});
+        const titleInput = document.getElementById('doc-title') as HTMLInputElement;
+        if (titleInput && data.title) titleInput.value = data.title;
+        
+        // 清除提示並重置本地暫存
+        setExternalUpdate(null);
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+        setSaveStatus('● 已載入最新進度');
+      }
+    } catch (error) {
+      console.error("載入最新進度失敗", error);
+      alert("載入失敗，請檢查網路狀態");
+    }
+  };
+
   // 🌟 2. 監聽還原特定版本成功
   useEffect(() => {
     if (editor && latestRestoredContent) {
@@ -264,6 +336,20 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
     const targetStatus = typeof newStatus === 'string' ? newStatus : chapterStatus
 
+    let versionName = null;
+    if (!newStatus) {
+      const userInput = window.prompt(
+          "請為這次的存檔命名 (選填)：\n例如：第一章初稿、重寫戰鬥場景", 
+          ""
+      );
+
+      if (userInput === null) return; 
+
+      if (userInput.trim() !== "") {
+          versionName = userInput.trim();
+      }
+    }
+
     try {
       const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, {
         method: 'PUT',
@@ -273,7 +359,9 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           content: currentContent,
           saveVersion: true,
           commitMsg: `${currentTitle || '未命名章節'} - 手動存檔點`,
-          status: targetStatus
+          status: targetStatus,
+          name: versionName,
+          isAutoSave: false
         })
       })
 
@@ -351,6 +439,30 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             <EyeOff className="w-3.5 h-3.5" />
             退出預覽
           </button>
+        </div>
+      )}
+
+      {/* 別人更新了內容的提示 Banner */}
+      {externalUpdate && !previewVersion && (
+        <div className="bg-amber-100 text-amber-800 px-6 py-2.5 flex items-center justify-between text-sm shadow-md z-40 border-b border-amber-200 animate-in slide-in-from-top duration-300 shrink-0">
+          <div className="flex items-center gap-2 font-medium">
+            <BellRing className="w-4 h-4 text-amber-600 animate-bounce" />
+            <span>✨ <strong>{externalUpdate.authorName}</strong> 剛剛更新了此章節的內容！</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setExternalUpdate(null)}
+              className="text-amber-600 hover:text-amber-800 text-xs font-semibold transition-colors"
+            >
+              先不要 (保留我的)
+            </button>
+            <button
+              onClick={handleLoadExternalUpdate}
+              className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm text-xs"
+            >
+              載入最新版本
+            </button>
+          </div>
         </div>
       )}
 
