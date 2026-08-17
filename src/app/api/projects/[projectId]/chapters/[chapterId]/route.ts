@@ -83,6 +83,42 @@ export async function PUT(
           }
         })
       );
+
+      // 通知邏輯: 只有手動存檔 (!isAutoSave) 且有自訂命名 (name) 時，才發通知
+      if (!isAutoSave && name) {
+        const [project, actor, members] = await Promise.all([
+          prisma.project.findUnique({ where: { id: projectId }, select: { title: true, ownerId: true } }),
+          prisma.user.findUnique({ where: { id: authCheck.userId }, select: { name: true } }),
+          prisma.projectMember.findMany({ where: { projectId: projectId }, select: { userId: true } })
+        ]);
+
+        const projectName = project?.title || '未知專案';
+        const actorName = actor?.name || '某人';
+        
+        // 接收者名單：包含所有成員與擁有者，並排除作者自己
+        const recipientIds = new Set(members.map(m => m.userId));
+        if (project?.ownerId) recipientIds.add(project.ownerId);
+        recipientIds.delete(authCheck.userId);
+
+        if (recipientIds.size > 0) {
+          const notifications = Array.from(recipientIds).map(userId => ({
+            recipientId: userId,
+            actorId: authCheck.userId,
+            type: 'SYSTEM' as const,
+            projectId: projectId,
+            targetId: chapterId,
+            message: `${actorName} 為《${projectName}》的章節「${title}」建立了新版本：「${name}」`,
+            link: `/novel_list/${projectId}/editor/${chapterId}`
+          }));
+
+          // 將建立通知的任務一起推入 transaction 中
+          dbOperations.push(
+            prisma.notification.createMany({
+              data: notifications
+            })
+          );
+        }
+      }
     }
 
     // 動作 3：如果是發布操作，自動將整本小說升級為「連載中」

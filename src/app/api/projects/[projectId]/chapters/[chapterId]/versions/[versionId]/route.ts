@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/config';
 import { verifyProjectAccess } from '@/lib/auth-utils';
 import { PROJECT_ROLES } from '@/lib/roles';
 import prisma from '@/lib/prisma';
@@ -27,7 +25,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       PROJECT_ROLES.OWNER,
       PROJECT_ROLES.EDITOR
     ]);
-    if (!auth.isAuthorized) {
+    if (!auth.isAuthorized || !auth.userId) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
@@ -47,14 +45,60 @@ export async function POST(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: '找不到該筆歷史版本紀錄，無法還原' }, { status: 404 });
     }
 
-    // 2. 🌟 核心交易：將快照中的內容與當時的標題，完整覆蓋回 Chapter 資料表
-    // 💡 修正對照：根據你的 schema，欄位名稱叫 content，不是 deltaContent 囉！
-    const updatedChapter = await prisma.chapter.update({
-      where: { id: chapterId },
-      data: {
-        content: checkpoint.content || {}, // 倒滾內文 (Tiptap JSON)
-      }
-    });
+    // 準備通知所需的關聯資料
+    const [project, actor, members, currentChapter] = await Promise.all([
+      prisma.project.findUnique({ where: { id: projectId }, select: { title: true, ownerId: true } }),
+      prisma.user.findUnique({ where: { id: auth.userId }, select: { name: true } }),
+      prisma.projectMember.findMany({ where: { projectId: projectId }, select: { userId: true } }),
+      prisma.chapter.findUnique({ where: { id: chapterId }, select: { title: true } })
+    ]);
+
+    const projectName = project?.title || '未知專案';
+    const actorName = actor?.name || '某人';
+    const chapterTitle = currentChapter?.title || '未知章節';
+    
+    // 優先使用手動命名，若無則使用備註，最後 fallback 到時間
+    const versionName = checkpoint.name 
+      ? checkpoint.name 
+      : (checkpoint.commitMsg || new Date(checkpoint.createdAt || Date.now()).toLocaleString());
+
+    // 建立資料庫交易陣列
+    const dbOperations: any[] = [
+      prisma.chapter.update({
+        where: { id: chapterId },
+        data: {
+          content: checkpoint.content || {},
+        }
+      })
+    ];
+
+    // 整理接收者名單：包含所有成員與擁有者，並排除執行還原的作者自己
+    const recipientIds = new Set(members.map(m => m.userId));
+    if (project?.ownerId) recipientIds.add(project.ownerId);
+    recipientIds.delete(auth.userId);
+
+    // 如果有其他協作者，推入發送通知的任務
+    if (recipientIds.size > 0) {
+      const notifications = Array.from(recipientIds).map(userId => ({
+        recipientId: userId,
+        actorId: auth.userId,
+        type: 'SYSTEM' as const,
+        projectId: projectId,
+        targetId: chapterId,
+        message: `⚠️ ${actorName} 將《${projectName}》的章節「${chapterTitle}」還原至歷史版本：「${versionName}」`,
+        link: `/novel_list/${projectId}/editor/${chapterId}`
+      }));
+
+      dbOperations.push(
+        prisma.notification.createMany({
+          data: notifications
+        })
+      );
+    }
+
+    // 更新章節內文 + 發送通知
+    const results = await prisma.$transaction(dbOperations);
+    const updatedChapter = results[0];
 
     // 3. 回傳成功訊息與最新內文，讓前端 Tiptap 編輯器能立刻使用
     // 💡 貼心小提醒：這邊回傳的格式包含了 { content: ... }，正好與我們在主網頁寫的 setLatestRestoredContent(data.content) 完美契合！
