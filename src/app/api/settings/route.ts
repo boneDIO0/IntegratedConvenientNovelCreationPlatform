@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     ]);
     if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    // 🌟【關鍵修改】：不管有沒有帶 chapterId，都拉出「全專案所有設定」，但帶上 chapters 關聯做比對
+    // 🌟 完整拉出所有關聯的 chapters id，不做巢狀過濾，徹底避免 Prisma 條件失效
     const categories = await prisma.settingCategory.findMany({
       where: { 
         projectId: projectId, 
@@ -40,8 +40,9 @@ export async function GET(request: NextRequest) {
         entities: {
           where: { deletedAt: null }, 
           include: {
-            // 🎯 如果有帶 chapterId，只加載匹配該 chapterId 的關聯陣列（優化效能）
-            chapters: chapterId ? { where: { id: chapterId }, select: { id: true } } : { select: { id: true } }
+            chapters: {
+              select: { id: true }
+            }
           },
           orderBy: { orderIndex: 'asc' } 
         }, 
@@ -49,24 +50,26 @@ export async function GET(request: NextRequest) {
       orderBy: { orderIndex: 'asc' }
     }) as CategoryWithEntities[];
 
-    // 轉換成前端熟悉的格式，並帶上 isChapterAssigned 標記
+    // 轉換成前端格式，並精確比對 chapterId
     const formattedData = categories.map((cat: CategoryWithEntities) => ({
       category: cat.name,
       items: cat.entities.map((entity: EntityWithChapters) => {
         const contentObj = (entity.content as any) || {}; 
         
-        // 🎯 判斷該項目是否屬於目前章節
-        const isAssignedToChapter = chapterId 
-          ? Array.isArray(entity.chapters) && entity.chapters.some(c => c.id === chapterId)
-          : false;
+        // 🎯 只要 chapters 陣列中有當前章節的 ID，就判定為 true
+        const isAssignedToChapter = Boolean(
+          chapterId && 
+          Array.isArray(entity.chapters) && 
+          entity.chapters.some(c => c.id === chapterId)
+        );
 
         return {
           id: entity.id,
           name: entity.title, 
-          // 🌟 分類權重保衛
           category: contentObj.category || contentObj.formType || cat.type || 'custom', 
+          chapters: entity.chapters || [], // 🌟 把 chapters 陣列回傳給前端作為雙重防禦
           isChapterAssigned: isAssignedToChapter,
-          isAssigned: isAssignedToChapter, // 雙重命名前端相容
+          isAssigned: isAssignedToChapter,
           ...contentObj
         };
       })
@@ -229,7 +232,7 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// 🔀 PATCH: 同步本章登場關聯
+// 🔀 PATCH: 同步本章登場關聯（使用 Prisma 原生型別安全 connect/disconnect）
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
@@ -261,20 +264,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '該設定項目不存在或已被刪除' }, { status: 404 });
     }
 
+    // 🎯 核心修復：改用 Prisma 原生關聯操作，徹底杜絕 raw SQL 中 A/B 顛倒或表名錯誤問題
     if (action === 'connect_chapter') {
-      await prisma.$executeRaw`
-        INSERT INTO "_ChapterSettings" ("A", "B")
-        VALUES (${String(chapterId)}::uuid, ${String(entityId)}::uuid)
-        ON CONFLICT DO NOTHING
-      `;
+      await prisma.chapter.update({
+        where: { id: chapterId },
+        data: {
+          assignedSettings: {
+            connect: { id: entityId }
+          }
+        }
+      });
       return NextResponse.json({ message: '成功將要素劃分至本章登場名單' }, { status: 200 });
     }
 
     if (action === 'disconnect_chapter') {
-      await prisma.$executeRaw`
-        DELETE FROM "_ChapterSettings"
-        WHERE "A" = ${String(chapterId)}::uuid AND "B" = ${String(entityId)}::uuid
-      `;
+      await prisma.chapter.update({
+        where: { id: chapterId },
+        data: {
+          assignedSettings: {
+            disconnect: { id: entityId }
+          }
+        }
+      });
       return NextResponse.json({ message: '成功從本章登場名單中撤出' }, { status: 200 });
     }
 

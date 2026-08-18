@@ -134,7 +134,7 @@ export default function CharacterForm({
   const fallbackChar = name.charAt(0) || "?";
 
   return (
-    <div className="w-full h-full flex flex-col space-y-8">
+    <div className="w-full min-h-full flex flex-col space-y-8 pb-24">
       
       {/* 頂部：人物卡片視覺區 */}
       <div className="flex items-center gap-6 rounded-xl bg-slate-100/50 p-6 border border-slate-100">
@@ -281,11 +281,11 @@ export default function CharacterForm({
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+      <div className="flex justify-end gap-2 pt-6 pb-6 border-t border-slate-100">
         <button 
           onClick={handleSaveClick} 
           disabled={saveStatus !== "儲存人物設定"} 
-          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-md font-medium transition-all shadow-sm"
+          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-md active:scale-95"
         >
           {saveStatus} 
         </button>

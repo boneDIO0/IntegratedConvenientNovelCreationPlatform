@@ -420,7 +420,6 @@ return (
     <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col overflow-hidden">
       {/* 🎯 左側：獨立固定目錄側邊欄 - 加裝 flex-shrink-0，不論右方內容多長，絕對不准縮水變窄！ */}
       <aside className="w-full md:w-80 flex-shrink-0 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
-        <h2 className="text-xl font-bold mb-4 text-slate-800">設定集目錄</h2>
         <SettingsSidebar 
           data={settingsData}
           onSelect={(item) => {

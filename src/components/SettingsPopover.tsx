@@ -267,6 +267,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       setSettings(prev => prev.map(item => item.id === detailItem.id ? (updatedItem as any) : item));
       setDetailItem(updatedItem as any);
 
+      // 背景同步 Popover 列表，讓自動建立的新組織立即出現在選單中
       fetchPopoverSettings();
     } catch (err) {
       console.error("即時儲存欄位出錯:", err);
@@ -300,6 +301,14 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
+  const ITEM_TYPE_OPTIONS = [
+    { value: 'weapon', label: '常規武器' },
+    { value: 'relic', label: '古代遺物 / 聖物' },
+    { value: 'consumable', label: '消耗品' },
+    { value: 'skill', label: '特殊技能' },
+    { value: 'custom', label: '其他 / 自訂' },
+  ];
+
   const FIELD_LABEL_MAP: Record<string, string> = {
     description: '詳細說明',
     summary: '摘要說明',
@@ -326,6 +335,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     owner: '持有者',
     effect: '效果 / 功能',
     itemType: '物品類型',
+    resonanceEffect: '共鳴效果 / 特殊機制',
     climate: '氣候特徵',
     geography: '地理環境',
     color: '關係圖專屬色彩',
@@ -365,7 +375,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
           if (typeof r === 'object' && r !== null) {
             const relType = r.type || r.relation || '關聯';
             
-            // 優先找中文名字或原名，找不到再拿 UUID 進行查表校正
             const rawTarget = r.targetName || r.name || r.targetId || '';
             const matchedChar = settings.find(s => s.id === rawTarget || s.name === rawTarget);
             const target = matchedChar ? matchedChar.name : (r.targetName || r.name || rawTarget || '未知');
@@ -399,6 +408,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             </button>
           </div>
 
+          {/* 🎯 色彩欄位特化 UI */}
           {key === 'color' ? (
             <div className="flex items-center gap-2">
               <input
@@ -424,6 +434,23 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
                 className="flex-1 text-xs text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 focus:bg-white rounded-lg px-1.5 py-1 focus:outline-none transition-all font-mono font-medium"
               />
             </div>
+          ) : key === 'itemType' ? (
+            /* 🎯 物品類型下拉選單特化 UI */
+            <select
+              value={String(value || 'weapon')}
+              onChange={(e) => {
+                const nextContent = { ...editingContent, [key]: e.target.value };
+                setEditingContent(nextContent);
+                handleSaveField(nextContent);
+              }}
+              className="w-full text-xs text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-blue-400 rounded-lg px-2 py-1.5 focus:outline-none transition-all font-medium cursor-pointer"
+            >
+              {ITEM_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           ) : isMultiLine ? (
             <textarea
               value={valStr}
