@@ -20,9 +20,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       PROJECT_ROLES.OWNER,
       PROJECT_ROLES.EDITOR
     ]);
-    if (!auth.isAuthorized) {
+    if (!auth.isAuthorized || !auth.userId) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+
+    const currentUserId = auth.userId;
 
     const body = await request.json();
 
@@ -59,6 +61,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         updatedAt: new Date()
       }
     });
+
+    // 發送還原通知
+    const [project, actor, members] = await Promise.all([
+      prisma.project.findUnique({ where: { id: entity.projectId }, select: { title: true, ownerId: true } }),
+      prisma.user.findUnique({ where: { id: currentUserId }, select: { name: true } }),
+      prisma.projectMember.findMany({ where: { projectId: entity.projectId }, select: { userId: true } })
+    ]);
+
+    const projectName = project?.title || '未知專案';
+    const actorName = actor?.name || '某人';
+    const settingName = updatedEntity.title || '未知設定';
+    const versionDisplayName = targetVersion.versionName || targetVersion.name || new Date(Number(incomingTimestamp)).toLocaleString();
+
+    const recipientIds = new Set(members.map(m => m.userId));
+    if (project?.ownerId) recipientIds.add(project.ownerId);
+    recipientIds.delete(currentUserId);
+
+    if (recipientIds.size > 0) {
+      const notifications = Array.from(recipientIds).map(userId => ({
+        recipientId: userId,
+        actorId: currentUserId,
+        type: 'SYSTEM' as const,
+        projectId: entity.projectId,
+        targetId: id,
+        message: `⚠️ ${actorName} 將《${projectName}》的設定「${settingName}」還原至歷史版本：「${versionDisplayName}」`,
+        link: `/novel_list/${entity.projectId}/settings`
+      }));
+
+      await prisma.notification.createMany({ data: notifications });
+    }
 
     console.log(`🎉 [還原後端] 項目「${updatedEntity.title}」已安全還原成功！`);
     return NextResponse.json(updatedEntity, { status: 200 });

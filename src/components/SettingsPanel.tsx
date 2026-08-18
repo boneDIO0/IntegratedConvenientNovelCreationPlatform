@@ -15,6 +15,8 @@ import CalendarConfigForm from "@/components/CalendarConfigForm";
 import { useEditorUI } from "@/contexts/EditorUIContext";
 import { useRouter } from "next/navigation";
 import LocationForm from './LocationForm'; 
+import { useSession } from "next-auth/react";
+import { BellRing } from "lucide-react";
 
 interface SettingsPanelProps {
   projectId: string;
@@ -36,6 +38,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const { data: session } = useSession();
+  const [externalUpdate, setExternalUpdate] = useState<{ authorName: string, latestData: any } | null>(null);
 
   const [isLocalHistoryOpen, setIsLocalHistoryOpen] = useState(false);
 
@@ -158,6 +163,83 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
+  // 靜默輪詢
+  const silentFetchSettings = async () => {
+    try {
+      let listUrl = `/api/settings?projectId=${projectId}`;
+      if (chapterId) listUrl += `&chapterId=${chapterId}`;
+      const listRes = await fetch(listUrl);
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        setSettingsData(listData); // 背景默默更新側邊欄清單
+      }
+      
+      if (selectedItem) {
+        const itemRes = await fetch(`/api/settings/${selectedItem.id}`);
+        if (!itemRes.ok) return;
+        
+        const dbItem = await itemRes.json();
+        const dbContent = dbItem.content || {};
+        const dbVersions = Array.isArray(dbContent.versions) ? dbContent.versions : [];
+
+        const currentContent = (selectedItem as any).content || {};
+        const currentVersions = Array.isArray(currentContent.versions) ? currentContent.versions : [];
+
+        // 如果資料庫裡的版本數量，比手上版本數量多，代表有人存檔
+        if (dbVersions.length > currentVersions.length) {
+          const latestVersion = dbVersions[dbVersions.length - 1];
+          
+          // 檢查是不是自己存的
+          const isUpdatedByMe = 
+            session?.user?.id && 
+            latestVersion?.authorId && 
+            latestVersion.authorId === session.user.id;
+
+          // 不是自己存的就觸發橫幅提醒
+          if (!isUpdatedByMe) {
+            setExternalUpdate({
+              authorName: latestVersion?.authorName || '其他協作者',
+              latestData: dbItem
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('靜默更新失敗，可能是網路不穩');
+    }
+  };
+
+  // 每 30 秒執行一次靜默輪詢
+  useEffect(() => {
+    if (!isEditable) return;
+    const interval = setInterval(() => {
+      silentFetchSettings();
+    }, 30 * 1000);
+    return () => clearInterval(interval);
+  }, [projectId, chapterId, selectedItem, isEditable, session?.user?.id]);
+
+  // 處理使用者點擊載入最新版本
+  const handleLoadExternalUpdate = () => {
+    if (!externalUpdate?.latestData) return;
+    const isSure = window.confirm("載入最新版本將會覆蓋您畫面上尚未存檔的變更，確定要載入嗎？");
+    if (isSure) {
+      const dbItem = externalUpdate.latestData;
+      const dbContent = dbItem.content && typeof dbItem.content === 'object' ? dbItem.content : {};
+      
+      const alignedItem = {
+        ...dbItem,
+        ...dbContent, 
+        name: dbItem.title || dbItem.name,
+        category: dbContent.category || dbItem.category || 'custom',
+        content: dbItem.content
+      };
+
+      setSelectedItem(alignedItem);
+      setHasChanges(false);
+      setExternalUpdate(null);
+    }
+  };
+
   useEffect(() => {
     if (projectId) {
       fetchSettings();
@@ -202,6 +284,13 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   };
 
   const handleUpdateItem = async (updatedItem: SettingItem) => {
+    const userInput = window.prompt(
+      "請為這次的設定存檔命名 (選填)：\n例如：新增魔法設定、更新外觀描述", 
+      ""
+    );
+    if (userInput === null) return; // 按下取消則中斷存檔
+    const versionName = userInput.trim() !== "" ? userInput.trim() : null;
+
     // 1. 強指定錨當前分類，阻斷非同步回彈
     setSelectedItem(updatedItem);
     setHasChanges(false);
@@ -234,7 +323,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const res = await fetch(`/api/settings/${updatedItem.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updatedItem, saveVersion: true })
+        body: JSON.stringify({ ...updatedItem, saveVersion: true, versionName: versionName })
       });
 
       if (!res.ok) throw new Error("後端儲存失敗");
@@ -427,6 +516,7 @@ return (
             setSelectedItem(item);
             setViewMode('form'); 
             setHasChanges(false); 
+            setExternalUpdate(null); 
           }} 
           selectedId={selectedItem?.id}
           onAdd={handleAddItem}
@@ -440,7 +530,30 @@ return (
       {/* 🎯 右側主舞台：包含上方導覽與下方雙欄區 - 使用 min-w-0 隔絕任何內部溢出撐開 */}
       <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-8 flex flex-col h-full">
         <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col h-full min-w-0">
-          
+          {/* 別人更新了內容的提示橫幅 */}
+          {externalUpdate && (
+            <div className="bg-amber-100 text-amber-800 px-6 py-2.5 flex items-center justify-between text-sm shadow-sm border border-amber-200 rounded-lg mb-4 animate-in slide-in-from-top duration-300 shrink-0">
+              <div className="flex items-center gap-2 font-medium">
+                <BellRing className="w-4 h-4 text-amber-600 animate-bounce" />
+                <span>✨ <strong>{externalUpdate.authorName}</strong> 剛剛更新了這個設定項目！</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setExternalUpdate(null)}
+                  className="text-amber-600 hover:text-amber-800 text-xs font-semibold transition-colors"
+                >
+                  先不要 (保留我的)
+                </button>
+                <button
+                  onClick={handleLoadExternalUpdate}
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm text-xs"
+                >
+                  載入最新版本
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 上方導覽控制列 */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4 flex-shrink-0 w-full min-w-0">
             <div className="flex items-center gap-4">
@@ -780,6 +893,9 @@ return (
                             ? dateObject.toLocaleString('zh-TW', { hour12: true })
                             : "未知儲存時間";
 
+                          const authorName = version.authorName || '未知寫手';
+                          const authorImage = version.authorImage;
+
                           return (
                             <div
                               key={ts || index}
@@ -798,12 +914,29 @@ return (
                                 🗑️
                               </button>
 
-                              <p className="text-xs font-semibold text-purple-600 mb-1">
+                              {/* 存檔作者的資訊 */}
+                              <div className="flex justify-between items-start mb-2 pr-6">
+                                <div className="flex items-center gap-1.5">
+                                  {authorImage ? (
+                                    <img src={authorImage} alt={authorName} className="w-5 h-5 rounded-full object-cover border border-slate-200" />
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                      {authorName.charAt(0)}
+                                    </div>
+                                  )}
+                                  <span className="text-xs font-bold text-slate-700 truncate max-w-[120px]">
+                                    {authorName}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] font-semibold text-purple-600 mb-1">
                                 {displayTime}
                               </p>
 
                               <p className="text-sm font-bold text-slate-800 mb-3 truncate">
-                                {version.name || selectedItem.name} - 歷史存檔點
+                                {version.versionName || version.name || selectedItem.name} 
+                                <span className="text-xs text-slate-400 font-normal ml-1">- 歷史存檔點</span>
                               </p>
 
                               <button

@@ -64,13 +64,21 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       PROJECT_ROLES.OWNER,
       PROJECT_ROLES.EDITOR
     ]);
-    if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if (!auth.isAuthorized || !auth.userId) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+    const currentUserId = auth.userId;
+    const currentUser = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { name: true, image: true }
+    });
+    const authorName = currentUser?.name || '未知寫手';
+    const authorImage = currentUser?.image || null;
 
     const body = await request.json();
     console.log("📥 [時光機後端] 收到前端原始 Body 欄位:", Object.keys(body));
 
     // 2. 基礎解構
-    const { id: _frontendId, name, category, saveVersion, ...restData } = body;
+    const { id: _frontendId, name, category, saveVersion, versionName, ...restData } = body;
 
     // 🌟 撈出真正的自訂屬性表單資料
     let pureFormFields = {};
@@ -112,6 +120,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       currentVersions.push({
         timestamp: Date.now(),
         name: name || oldEntity.title || "未命名版本",
+        versionName: versionName || null,
+        authorId: currentUserId,
+        authorName: authorName,
+        authorImage: authorImage,
         content: backupContent 
       });
       console.log(`✅ [時光機後端] 已將本次最新改動寫入歷史快照。目前版本總數: ${currentVersions.length}`);
@@ -172,6 +184,35 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     } catch (e) {
       console.warn("⚠️ AI 向量化管線執行跳過或發生非致命異常，已進行防死隔離:", e);
+    }
+
+    // 建立有命名的手動存檔時，發送通知
+    if (shouldSaveVersion && versionName) {
+      const [project, members] = await Promise.all([
+        prisma.project.findUnique({ where: { id: oldEntity.projectId }, select: { title: true, ownerId: true } }),
+        prisma.projectMember.findMany({ where: { projectId: oldEntity.projectId }, select: { userId: true } })
+      ]);
+
+      const projectName = project?.title || '未知專案';
+      const settingName = name || oldEntity.title || '未知設定';
+
+      const recipientIds = new Set(members.map(m => m.userId));
+      if (project?.ownerId) recipientIds.add(project.ownerId);
+      recipientIds.delete(currentUserId);
+
+      if (recipientIds.size > 0) {
+        const notifications = Array.from(recipientIds).map(userId => ({
+          recipientId: userId,
+          actorId: currentUserId,
+          type: 'SYSTEM' as const,
+          projectId: oldEntity.projectId,
+          targetId: id,
+          message: `${authorName} 為《${projectName}》的設定「${settingName}」建立了新存檔：「${versionName}」`,
+          link: `/novel_list/${oldEntity.projectId}/settings`
+        }));
+
+        await prisma.notification.createMany({ data: notifications });
+      }
     }
 
     return NextResponse.json(updatedEntity, { status: 200 });
