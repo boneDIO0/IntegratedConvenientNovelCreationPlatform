@@ -11,6 +11,7 @@ export interface ProjectIndexItem {
   title: string;
   createdAt: string; 
   coverUrl?: string; 
+  description?: string | null;
   status?: string; // 👈 修正 1：加上 status 屬性，讓 TypeScript 認得它
   role?: ProjectRole;
 }
@@ -29,6 +30,7 @@ export default function NovelListPage() {
     projectId: null as string | null,
     initialTitle: '',
     initialCoverUrl: '',
+    initialDescription: '',
     initialStatus: 'DRAFT'
   })
 
@@ -62,9 +64,10 @@ export default function NovelListPage() {
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
-  const handleModalSubmit = async (title: string, file: File | null, status?: string) => {
+  const handleModalSubmit = async (title: string, file: File | null, description: string, status?: string) => {
     const formData = new FormData()
     formData.append('title', title)
+    formData.append('description', description)
     if (file) formData.append('cover', file)
     if (status) formData.append('status', status)
 
@@ -123,7 +126,7 @@ export default function NovelListPage() {
         </div>
         <button 
           // 👈 修正 2：補上 initialStatus，確保符合 state 定義
-          onClick={() => setFormModal({ isOpen: true, mode: 'create', projectId: null, initialTitle: '', initialCoverUrl: '', initialStatus: 'DRAFT' })}
+          onClick={() => setFormModal({ isOpen: true, mode: 'create', projectId: null, initialTitle: '', initialCoverUrl: '', initialDescription: '', initialStatus: 'DRAFT' })}
           className="bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95 flex items-center gap-2"
         >
           <span className="text-xl leading-none">+</span> 新增小說
@@ -152,6 +155,7 @@ export default function NovelListPage() {
         mode={formModal.mode}
         initialTitle={formModal.initialTitle}
         initialCoverUrl={formModal.initialCoverUrl}
+        initialDescription={formModal.initialDescription}
         initialStatus={formModal.initialStatus}
         onClose={() => setFormModal({ ...formModal, isOpen: false })}
         onSubmit={handleModalSubmit}
@@ -173,6 +177,7 @@ export default function NovelListPage() {
                 projectId: contextMenu.projectId, 
                 initialTitle: targetNovel?.title || '',
                 initialCoverUrl: targetNovel?.coverUrl || '',
+                initialDescription: targetNovel?.description || '',
                 initialStatus: targetNovel?.status || 'DRAFT'
               })
               setContextMenu({ visible: false, x: 0, y: 0, projectId: null })

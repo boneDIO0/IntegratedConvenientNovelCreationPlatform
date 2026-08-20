@@ -69,6 +69,7 @@ export async function POST(request: Request) {
     // 解析 FormData
     const formData = await request.formData()
     const title = formData.get('title') as string
+    const description = (formData.get('description') as string | null)?.trim() || null
     const coverFile = formData.get('cover') as File | null
 
     if (!title) {
@@ -90,7 +91,8 @@ export async function POST(request: Request) {
     const newProject = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const project = await tx.project.create({
         data: {
-          title: title,       
+          title: title,
+          description: description,       
           coverUrl: coverUrl, 
           ownerId: user.id, 
           members: {

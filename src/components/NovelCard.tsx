@@ -7,6 +7,7 @@ export interface NovelCardProps {
     title: string;
     createdAt: string;
     coverUrl?: string;
+    description?: string | null;
     status?: string; 
     // 📍 新增：接收可選的作者資訊 (讓創作後台跟大廳都可以共用這個卡片)
     owner?: {
@@ -78,6 +79,15 @@ export default function NovelCard({ project, onClick, onContextMenu }: NovelCard
               {project.owner.name || '匿名作者'}
             </span>
           </div>
+        )}
+
+        {project.description?.trim() && (
+          <p
+            className="mt-2 text-sm text-gray-500 leading-relaxed line-clamp-2"
+            title={project.description}
+          >
+            {project.description}
+          </p>
         )}
 
         <div className="mt-auto pt-3 flex justify-between items-center">
