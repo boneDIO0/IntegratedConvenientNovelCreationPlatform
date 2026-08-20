@@ -6,27 +6,26 @@ export interface NovelCardProps {
     id: string;
     title: string;
     createdAt: string;
+    publishedAt?: string | null; 
     coverUrl?: string;
     description?: string | null;
     status?: string; 
-    // 📍 新增：接收可選的作者資訊 (讓創作後台跟大廳都可以共用這個卡片)
     owner?: {
       name: string | null;
       image?: string | null;
     };
   };
   onClick: () => void;
-  onContextMenu?: (e: React.MouseEvent) => void; // 設定為可選，大廳可能不需要右鍵選單
+  onContextMenu?: (e: React.MouseEvent) => void; 
+  showPublishDate?: boolean; // 🌟 新增：由父層決定是否要顯示發布日期
 }
 
-export default function NovelCard({ project, onClick, onContextMenu }: NovelCardProps) {
-  // 將原本放在主頁面的日期格式化函式移進來
+export default function NovelCard({ project, onClick, onContextMenu, showPublishDate }: NovelCardProps) {
   const formatDate = (isoString: string) => {
     const date = new Date(isoString)
     return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
   }
 
-  // 狀態樣式對應表
   const getStatusDisplay = (status?: string) => {
     switch (status) {
       case 'COMPLETED':
@@ -63,7 +62,6 @@ export default function NovelCard({ project, onClick, onContextMenu }: NovelCard
       </div>
       
       <div className="p-4 flex flex-col flex-1 bg-white">
-        {/* 🌟 優化 1：加入 title 屬性，滑鼠懸浮時顯示完整名稱 */}
         <h2 
           className="text-lg font-bold text-gray-800 group-hover:text-blue-600 transition-colors line-clamp-1"
           title={project.title}
@@ -71,7 +69,6 @@ export default function NovelCard({ project, onClick, onContextMenu }: NovelCard
           {project.title}
         </h2>
 
-        {/* 🌟 優化 2：如果有作者資訊，就顯示出來 (創作後台可能沒有傳，所以加個判斷) */}
         {project.owner && (
           <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-600 font-medium">
             <span className="text-gray-400 text-xs">✏️</span>
@@ -91,7 +88,15 @@ export default function NovelCard({ project, onClick, onContextMenu }: NovelCard
         )}
 
         <div className="mt-auto pt-3 flex justify-between items-center">
-          <span className="text-xs text-gray-400">建立於：{formatDate(project.createdAt)}</span>
+          {/* 🌟 核心修改：如果是探索大廳 (showPublishDate=true)，就顯示發布於 (相容舊資料無發布時間的狀況) */}
+          <span className="text-xs text-gray-400">
+            {showPublishDate 
+              ? project.publishedAt
+                ? `發布於：${formatDate(project.publishedAt)}`
+                : '尚未發布章節'
+              : `建立於：${formatDate(project.createdAt)}`
+            }
+          </span>
           
           <span className={`text-[10px] px-2 py-0.5 rounded border font-medium tracking-wide ${statusDisplay.className}`}>
             {statusDisplay.text}

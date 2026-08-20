@@ -51,8 +51,18 @@ export async function PUT(
       return new NextResponse(authCheck.error, { status: authCheck.status })
     }
 
+    const currentChapter = await prisma.chapter.findFirst({
+      where: { id: chapterId, projectId },
+      select: { status: true },
+    })
+
+    if (!currentChapter) {
+      return new NextResponse('找不到章節', { status: 404 })
+    }
+
     const body = await request.json()
     const { title, content, saveVersion, commitMsg, status } = body
+    const isFirstPublish = status === 'PUBLISHED' && currentChapter.status !== 'PUBLISHED'
 
     // 📍 建立一個「資料庫操作陣列」，先放入一定會執行的更新章節動作
     const dbOperations: any[] = [
@@ -62,7 +72,7 @@ export async function PUT(
           title: title,
           content: content,
           ...(status && { status }),
-          ...(status === 'PUBLISHED' && { publishedAt: new Date() }) 
+          ...(isFirstPublish && { publishedAt: new Date() })
         }
       })
     ];
@@ -92,7 +102,7 @@ export async function PUT(
             status: 'DRAFT' 
           },
           data: { 
-            status: 'SERIALIZING' 
+            status: 'SERIALIZING'
           }
         })
       );
@@ -101,6 +111,33 @@ export async function PUT(
     // 將所有任務一起丟給資料庫執行
     const results = await prisma.$transaction(dbOperations)
     const updatedChapter = results[0] 
+
+    if (status) {
+      // 每次章節公開狀態改變時，都重新依最早可見章節同步作品的發布狀態與日期。
+      const firstPublishedChapter = await prisma.chapter.findFirst({
+        where: {
+          projectId,
+          status: 'PUBLISHED',
+          deletedAt: null,
+          publishedAt: { not: null },
+        },
+        orderBy: { publishedAt: 'asc' },
+        select: { publishedAt: true },
+      })
+
+      if (firstPublishedChapter?.publishedAt) {
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { publishedAt: firstPublishedChapter.publishedAt },
+        })
+      } else {
+        // 沒有任何公開章節時，作品不應繼續出現在探索大廳。
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { status: 'DRAFT', publishedAt: null },
+        })
+      }
+    }
 
     return NextResponse.json(updatedChapter)
   } catch (error) {

@@ -3,12 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import NovelCard from '@/components/NovelCard'
+import NovelPagination from '@/components/NovelPagination'
+
+const NOVELS_PER_PAGE = 20
 
 // 定義大廳專用的資料格式 (多包含了作者 owner 資訊)
 export interface PublicProjectItem {
   id: string;
   title: string;
   createdAt: string;
+  publishedAt: string | null;
   coverUrl?: string;
   status: string;
   owner: {
@@ -17,18 +21,34 @@ export interface PublicProjectItem {
   };
 }
 
+interface PaginatedProjectsResponse {
+  items: PublicProjectItem[];
+  pagination: {
+    page: number;
+    totalPages: number;
+  };
+}
+
 export default function ExplorePage() {
   const router = useRouter()
   const [projects, setProjects] = useState<PublicProjectItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
 
   useEffect(() => {
     const fetchPublicProjects = async () => {
+      setIsLoading(true)
       try {
-        const res = await fetch('/api/public/projects')
+        const res = await fetch(`/api/public/projects?page=${currentPage}&limit=${NOVELS_PER_PAGE}`)
         if (!res.ok) throw new Error('載入失敗')
-        const data = await res.json()
-        setProjects(data)
+        const data: PaginatedProjectsResponse = await res.json()
+        setProjects(data.items)
+        setTotalPages(data.pagination.totalPages)
+
+        if (data.pagination.page !== currentPage) {
+          setCurrentPage(data.pagination.page)
+        }
       } catch (error) {
         console.error(error)
       } finally {
@@ -37,7 +57,7 @@ export default function ExplorePage() {
     }
     
     fetchPublicProjects()
-  }, [])
+  }, [currentPage])
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">載入中...</div>
@@ -50,7 +70,7 @@ export default function ExplorePage() {
         <p className="text-gray-500 mt-2">發現平台上的精采好書，尋找下一個閱讀靈感。</p>
       </div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 lg:gap-[18px]">
         {projects.length === 0 ? (
           <div className="col-span-full py-20 text-center text-gray-400 border-2 border-dashed border-gray-300 rounded-xl">
             目前大廳還沒有公開的作品，敬請期待！
@@ -64,10 +84,17 @@ export default function ExplorePage() {
               onClick={() => router.push(`/explore/${project.id}`)}
               // 📍 核心差異 2：讀者不能點右鍵刪除別人的書，所以把事件攔截掉
               onContextMenu={(e) => e.preventDefault()}
+              showPublishDate={true}
             />
           ))
         )}
       </div>
+
+      <NovelPagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+      />
     </div>
   )
 }

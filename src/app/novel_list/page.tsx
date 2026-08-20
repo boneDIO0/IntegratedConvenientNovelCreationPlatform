@@ -1,10 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import NovelSetting from '@/components/NovelSetting'
 import NovelCard from '@/components/NovelCard'
+import NovelPagination from '@/components/NovelPagination'
 import { ProjectRole, PROJECT_ROLES } from '@/lib/roles'
+
+const NOVELS_PER_PAGE = 20
 
 export interface ProjectIndexItem {
   id: string;
@@ -16,10 +19,20 @@ export interface ProjectIndexItem {
   role?: ProjectRole;
 }
 
+interface PaginatedProjectsResponse {
+  items: ProjectIndexItem[];
+  pagination: {
+    page: number;
+    totalPages: number;
+  };
+}
+
 export default function NovelListPage() {
   const router = useRouter()
   const [projects, setProjects] = useState<ProjectIndexItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
 
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, projectId: null as string | null })
   const [deleteModal, setDeleteModal] = useState({ visible: false, projectId: null as string | null })
@@ -34,10 +47,10 @@ export default function NovelListPage() {
     initialStatus: 'DRAFT'
   })
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async (page: number) => {
     setIsLoading(true)
     try {
-      const res = await fetch('/api/projects')
+      const res = await fetch(`/api/projects?page=${page}&limit=${NOVELS_PER_PAGE}`)
       if (res.status === 401) {
         alert("請先登入！")
         return
@@ -48,17 +61,25 @@ export default function NovelListPage() {
         throw new Error(errorText || '伺服器發生錯誤')
       }
 
-      const data = await res.json()
-      setProjects(data)
+      const data: PaginatedProjectsResponse = await res.json()
+      setProjects(data.items)
+      setTotalPages(data.pagination.totalPages)
+
+      if (data.pagination.page !== page) {
+        setCurrentPage(data.pagination.page)
+      }
     } catch (error) {
       console.error("載入失敗", error)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchProjects()
+    void fetchProjects(currentPage)
+  }, [currentPage, fetchProjects])
+
+  useEffect(() => {
     const handleClickOutside = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null })
     window.addEventListener('click', handleClickOutside)
     return () => window.removeEventListener('click', handleClickOutside)
@@ -84,7 +105,7 @@ export default function NovelListPage() {
       })
       if (!res.ok) throw new Error('修改失敗')
       
-      fetchProjects()
+      void fetchProjects(currentPage)
     }
   }
 
@@ -107,7 +128,7 @@ export default function NovelListPage() {
     try {
       await fetch(`/api/projects/${deleteModal.projectId}`, { method: 'DELETE' })
       setDeleteModal({ visible: false, projectId: null })
-      fetchProjects() 
+      void fetchProjects(currentPage)
     } catch (error) {
       alert("刪除失敗")
     }
@@ -133,7 +154,7 @@ export default function NovelListPage() {
         </button>
       </div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 lg:gap-[18px]">
         {projects.length === 0 ? (
           <div className="col-span-full py-20 text-center text-gray-400 border-2 border-dashed border-gray-300 rounded-xl">
             目前還沒有作品，點擊右上角開始你的第一本小說吧！
@@ -149,6 +170,12 @@ export default function NovelListPage() {
           ))
         )}
       </div>
+
+      <NovelPagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+      />
 
       <NovelSetting 
         isOpen={formModal.isOpen}

@@ -40,7 +40,12 @@ export async function PATCH(
     }
 
     // 準備要更新的資料物件。前端送來 status 時一併寫入，讓「標記為已完結」真正生效。
-    const updateData: { title: string; description?: string | null; coverUrl?: string; status?: ProjectStatusValue } = { title }
+    const updateData: {
+      title: string
+      description?: string | null
+      coverUrl?: string
+      status?: ProjectStatusValue
+    } = { title }
 
     // 只有前端真的送出 description 時才更新，避免其他 PATCH 呼叫意外把既有簡介清空。
     if (typeof descriptionValue === 'string') {
