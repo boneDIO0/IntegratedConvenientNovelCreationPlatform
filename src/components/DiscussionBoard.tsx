@@ -9,19 +9,22 @@ import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
 import { Reply, X } from 'lucide-react';
 import { MentionsInput, Mention, SuggestionDataItem } from 'react-mentions';
+import { cn } from '@/lib/utils'
 
 interface DiscussionBoardProps {
   projectId: string;
   channelId?: string;
   mode?: 'private' | 'public';
   currentUserRole?: string; 
+  isWidget?: boolean; 
 }
 
 export function DiscussionBoard({ 
   projectId, 
   channelId = 'general', 
   mode = 'private', 
-  currentUserRole 
+  currentUserRole,
+  isWidget = false
 }: DiscussionBoardProps) {
   const { data: session } = useSession();
   const normalizedUserRole = currentUserRole?.toUpperCase() || 'VIEWER';
@@ -34,6 +37,7 @@ export function DiscussionBoard({
   const [editContent, setEditContent] = useState('');
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [titles, setTitles] = useState({ projectTitle: '', chapterTitle: '' });
   const [messages, setMessages] = useState<Message[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [projectMembers, setProjectMembers] = useState<SuggestionDataItem[]>([]);
@@ -45,6 +49,12 @@ export function DiscussionBoard({
     try {
       const res = await fetch(`${apiBaseUrl}?projectId=${projectId}&channelId=${channelId}`);      const json = await res.json();
       setMessages(json.data || []);
+      if (json.meta) {
+        setTitles({
+          projectTitle: json.meta.projectTitle,
+          chapterTitle: json.meta.chapterTitle
+        });
+      }
     } catch (error) {
       console.error('抓取留言失敗', error);
     }
@@ -74,6 +84,12 @@ export function DiscussionBoard({
   useEffect(() => {
     fetchMessages();
     fetchMembers();
+    // 每 15 秒執行一次
+    const pollingInterval = setInterval(() => {
+      fetchMessages();
+    }, 15 * 1000); 
+    
+    return () => clearInterval(pollingInterval);
   }, [projectId, channelId, apiBaseUrl]);
 
   // 將資料給後端 API
@@ -202,7 +218,7 @@ export function DiscussionBoard({
   const defaultStyle = {
     control: { fontSize: 14, fontWeight: 'normal' },
     '&multiLine': {
-      control: { minHeight: 96 },
+      control: { minHeight: isWidget ? 60 : 96 },
       highlighter: { padding: 12, border: '1px solid transparent' },
       input: {
         padding: 12,
@@ -231,10 +247,26 @@ export function DiscussionBoard({
   };
 
   return (
-    <div className="max-w-3xl mx-auto mt-10 space-y-6">
+    <div className={cn(
+      "w-full mx-auto",
+      isWidget ? "h-full flex flex-col space-y-3" : "max-w-3xl mt-10 space-y-6"
+    )}>
+      {/* --- 標題區塊 --- */}
+      <div>
+        {!isWidget && mode === 'private' && (
+          <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-3">
+          <span>《{titles.projectTitle}》</span> 
+          <span className="text-blue-600">
+            {titles.chapterTitle ? `${titles.chapterTitle} 的討論區` : '協作討論區'}
+          </span>
+        </h1>
+        )}
+      </div>
       {/* --- 輸入區塊 --- */}
-      <div className="p-6 border rounded-lg shadow-sm bg-white">
-        <h2 className="text-xl font-bold mb-4">{mode === 'public' ? '發表評論' : '新增留言'}</h2>
+      <div className={cn("border rounded-lg shadow-sm bg-white shrink-0", isWidget ? "p-3" : "p-6")}>
+        {!isWidget && (
+          <h2 className="text-xl font-bold mb-4">{mode === 'public' ? '發表評論' : '新增留言'}</h2>
+        )}
         
         {replyingTo && (
           <div className="mb-3 flex items-start justify-between bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-sm text-indigo-800 animate-in fade-in slide-in-from-top-2">
@@ -272,17 +304,19 @@ export function DiscussionBoard({
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={handleSubmit} disabled={isLoading || !content.trim()}>
+          <Button size={isWidget ? "sm" : "default"} onClick={handleSubmit} disabled={isLoading || !content.trim()}>
             {isLoading ? '傳送中...' : '發布留言'}
           </Button>
         </div>
       </div>
 
       {/* --- 留言列表區塊 --- */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-700">
-          {mode === 'public' ? '讀者評論' : '內部討論'} ({messages?.length || 0})
-        </h2>
+      <div className={cn("space-y-4", isWidget ? "flex-1 overflow-y-auto pr-1 custom-scrollbar pb-4" : "")}>
+        {!isWidget && (
+          <h2 className="text-lg font-bold text-gray-700">
+            {mode === 'public' ? '讀者評論' : '內部討論'} ({messages?.length || 0})
+          </h2>
+        )}
         
         {messages?.length === 0 ? (
           <p className="text-gray-500 text-center py-4">目前還沒有討論，來搶頭香吧！</p>
@@ -301,7 +335,7 @@ export function DiscussionBoard({
             const authorRoleBadge = msg.users?.role;
 
             return (
-              <div key={msg.id} className="p-4 border rounded-lg bg-gray-50">
+              <div key={msg.id} className={cn("border rounded-lg bg-gray-50", isWidget ? "p-3" : "p-4")}>
                 
                 {parentMsg && (
                   <div className="mb-3 ml-11 flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2 rounded-md border border-slate-100">
@@ -317,10 +351,10 @@ export function DiscussionBoard({
                       <img 
                         src={msg.users.image} 
                         alt={msg.users.name || 'User'} 
-                        className="w-8 h-8 rounded-full border border-gray-200 object-cover shrink-0 shadow-sm"
+                        className={cn("rounded-full border border-gray-200 object-cover shrink-0 shadow-sm", isWidget ? "w-6 h-6" : "w-8 h-8")}
                       />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-200">
+                      <div className={cn("rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0 border border-indigo-200", isWidget ? "w-6 h-6 text-xs" : "w-8 h-8 text-sm")}>
                         {msg.users?.name?.charAt(0) || '?'}
                       </div>
                     )}

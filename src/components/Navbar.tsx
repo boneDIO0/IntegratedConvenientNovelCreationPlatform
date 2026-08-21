@@ -1,7 +1,7 @@
 "use client"
 
 import { useParams } from "next/navigation"
-import { History, ChevronDown, BookOpenCheck, Users, Bell, Check } from "lucide-react" // 引入漂亮的圖示
+import { History, ChevronDown, BookOpenCheck, Users, Bell, Check, MessageSquare, ExternalLink } from "lucide-react" // 引入漂亮的圖示
 
 import * as React from "react"
 import { signIn, signOut, useSession } from "next-auth/react"
@@ -15,6 +15,7 @@ import { useOverlay } from "@/contexts/OverlayContext"
 import { useRouter, usePathname } from "next/navigation"
 import { useEditorUI } from "@/contexts/EditorUIContext"
 import { SettingsPopover } from "@/components/SettingsPopover"
+import { DiscussionBoard } from "@/components/DiscussionBoard"
 import ManageMembersModal from "@/components/ManageMembersModal"
 
 export default function Navbar({ projectId, role }: { projectId?: string; role?: string }) {
@@ -36,6 +37,9 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
 
   const [menuOpen, setMenuOpen] = React.useState(false)
 
+  const [discussionOpen, setDiscussionOpen] = React.useState(false)
+  const discussionRef = React.useRef<HTMLDivElement | null>(null)
+
   const [isMemberModalOpen, setIsMemberModalOpen] = React.useState(false)
 
   const [notificationsOpen, setNotificationsOpen] = React.useState(false)
@@ -45,13 +49,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
 
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const { data: session, status } = useSession()
-
-  const { isDiscussionOpen, toggleDiscussion } = useOverlay()
-
-  const handleDiscussionClick = () => {
-    toggleDiscussion() // 切換全螢幕討論區按鈕
-    setMenuOpen(false)
-  }
 
   // 獲取通知資料
   const fetchNotifications = async () => {
@@ -119,6 +116,9 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
         !menuRef.current.contains(event.target as Node)
       ) {
         setMenuOpen(false)
+      }
+      if (discussionOpen && discussionRef.current && !discussionRef.current.contains(event.target as Node)) {
+        setDiscussionOpen(false)
       }
       if (notificationsOpen && notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setNotificationsOpen(false)
@@ -215,17 +215,63 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                       </span>
                     </button>
 
-                    <button 
-                      onClick={handleDiscussionClick} 
-                      className={cn(
-                        "px-3 py-1 rounded transition-colors duration-200",
-                        isDiscussionOpen 
-                          ? "bg-slate-700 hover:bg-slate-800 text-white" 
-                          : "bg-blue-100 hover:bg-blue-200 text-blue-700" 
+                    {/* 協作討論區 */}
+                    <div ref={discussionRef} className="relative flex items-center">
+                      <button 
+                        onClick={() => {
+                          setDiscussionOpen(!discussionOpen);
+                          setMenuOpen(false);
+                          setNotificationsOpen(false);
+                        }} 
+                        className={cn(
+                          "px-3 py-1 rounded transition-colors duration-200 text-sm flex items-center gap-1",
+                          discussionOpen 
+                            ? "bg-slate-700 hover:bg-slate-800 text-white" 
+                            : "bg-blue-100 hover:bg-blue-200 text-blue-700" 
+                        )}
+                        title="開啟討論區"
+                      >
+                        <MessageSquare size={16} /> 
+                        <span className="hidden sm:inline font-semibold">討論</span>
+                      </button>
+
+                      {discussionOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-80 md:w-[420px] rounded-2xl border border-border/80 bg-white shadow-xl shadow-slate-200/50 z-[100] flex flex-col overflow-hidden">
+                          {/* 頂部標題 */}
+                          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between shrink-0">
+                            <span className="font-bold text-slate-800 flex items-center gap-2">
+                              <MessageSquare size={16} className="text-blue-500" />
+                              {chapterId ? '本章討論' : '全域討論'}
+                            </span>
+                            <span className="text-xs font-medium text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">
+                              {role === 'OWNER' ? '管理員' : '成員'}
+                            </span>
+                          </div>
+                          
+                          <div className="h-[450px] p-3 bg-white">
+                            <DiscussionBoard 
+                              projectId={safeProjectId} 
+                              channelId={chapterId || 'general'} 
+                              mode="private"
+                              currentUserRole={role}
+                              isWidget={true}
+                            />
+                          </div>
+
+                          <div className="p-3 bg-slate-50 border-t border-slate-100 shrink-0">
+                            <Link 
+                              href={`/discussions?novelId=${safeProjectId}&channelId=${chapterId || 'general'}`}
+                              target="_blank"
+                              onClick={() => setDiscussionOpen(false)}
+                              className="flex items-center justify-center gap-2 w-full py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-blue-600 hover:bg-blue-50 hover:border-blue-200 transition-all shadow-sm"
+                            >
+                              <span>在新分頁開啟完整討論區</span>
+                              <ExternalLink size={16} />
+                            </Link>
+                          </div>
+                        </div>
                       )}
-                    >
-                      {isDiscussionOpen ? "👁️‍🗨️" : "🗨️"}
-                    </button>
+                    </div>
                   </>
                 )}
                 {isEditorPage && (
