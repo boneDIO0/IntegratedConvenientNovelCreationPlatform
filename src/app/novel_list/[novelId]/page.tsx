@@ -110,6 +110,25 @@ export default function ChapterListPage() {
           </div>
         </div>
 
+        {/* 靈感記事板 page */}
+        <div 
+          onClick={() => router.push(`/novel_list/${novelId}/notes`)}
+          className="mb-6 bg-amber-50 border-2 border-dashed border-amber-300 hover:border-amber-400 hover:bg-amber-100/60 rounded-xl p-3 flex items-center justify-between cursor-pointer transition-all group shadow-sm"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-2xl border border-amber-200 group-hover:scale-110 transition-transform">
+              💡
+            </div>
+            <div>
+              <h3 className="font-bold text-amber-900 text-sm">靈感與大綱</h3>
+              <p className="text-xs text-amber-700/80 font-medium mt-0.25">點此展開全域故事架構，寫作不迷路</p>
+            </div>
+          </div>
+          <div className="text-amber-500 font-black text-xl group-hover:translate-x-2 transition-transform pr-2">
+            ➔
+          </div>
+        </div>
+
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           {chapters.length === 0 ? (
             <div className="p-16 flex flex-col items-center justify-center text-slate-400">

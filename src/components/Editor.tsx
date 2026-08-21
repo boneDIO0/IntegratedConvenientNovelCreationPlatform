@@ -6,11 +6,12 @@ import Underline from '@tiptap/extension-underline'
 import CharacterCount from '@tiptap/extension-character-count'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useEditorUI } from '@/contexts/EditorUIContext'
+import { useRouter } from 'next/navigation'
 import AssistantChat from './AssistantChat'
 import { NotesPanel } from '@/components/NotesPanel'
 import 'katex/dist/katex.min.css'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
-import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb } from 'lucide-react'
+import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb, ExternalLink } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 
 interface EditorProps {
@@ -23,6 +24,7 @@ interface EditorProps {
 }
 
 export default function Editor({ novelId, chapterId, initialTitle, initialContent, isEditable = true, initialStatus = 'DRAFT' }: EditorProps) {
+  const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
   const [, setTick] = useState(0)
   const forceUpdate = useCallback(() => setTick(tick => tick + 1), [])
@@ -592,6 +594,15 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         {isNotesOpen && (
           <div className="w-[320px] shrink-0 border-r border-gray-200 bg-white shadow-[4px_0_15px_rgba(0,0,0,0.03)] z-20 animate-in slide-in-from-left duration-300 flex flex-col h-full relative">
             <NotesPanel projectId={novelId} isWidget={true} isEditable={isEditable} />
+            <div className="mt-auto p-4 border-t border-amber-100 bg-amber-50/50 shrink-0">
+              <button
+                onClick={() => window.open(`/novel_list/${novelId}/notes`, '_blank')}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-amber-200 rounded-xl text-amber-700 text-sm font-bold shadow-sm hover:bg-amber-100 hover:border-amber-300 transition-all group"
+              >
+                <span>展開全域故事大綱</span> 
+                <ExternalLink size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </button>
+            </div>
           </div>
         )}
         <div className="flex-1 w-full overflow-y-auto bg-[#f8f9fa] flex flex-col items-center px-4 custom-scrollbar">
