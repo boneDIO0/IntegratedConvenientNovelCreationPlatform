@@ -11,7 +11,7 @@ import AssistantChat from './AssistantChat'
 import { NotesPanel } from '@/components/NotesPanel'
 import 'katex/dist/katex.min.css'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
-import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb, ExternalLink } from 'lucide-react'
+import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb, ExternalLink, Download } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 
 interface EditorProps {
@@ -35,6 +35,18 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const [externalUpdate, setExternalUpdate] = useState<{ authorName: string } | null>(null); // 存放外部更新者的資訊
   const knownLatestVersionRef = useRef<string | null>(null); // 記錄目前已知的最新版本 ID
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // 🌟 從 EditorUIContext 取出預覽與歷史版本相關 State
   const {
@@ -571,8 +583,42 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
               </>
             )}
 
-            <div className="w-9 h-9 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold cursor-pointer border-2 border-white shadow-sm text-sm select-none ml-2">
-              U
+            <div className="relative ml-2" ref={exportMenuRef}>
+              <button
+                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                className={`flex items-center justify-center w-9 h-9 rounded-lg transition-colors shadow-sm border ${
+                  isExportMenuOpen 
+                    ? 'bg-slate-200 border-slate-300 text-slate-700' 
+                    : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-600'
+                }`}
+                title="匯出整部作品"
+              >
+                <Download size={18} />
+              </button>
+
+              {isExportMenuOpen && (
+                <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="px-3 py-2 text-xs font-bold text-slate-400 border-b border-slate-100 bg-slate-50/50">
+                    匯出整部作品
+                  </div>
+                  <a
+                    href={`/api/projects/${novelId}/export?format=txt`}
+                    download
+                    onClick={() => setIsExportMenuOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    📄 純文字 (TXT)
+                  </a>
+                  <a
+                    href={`/api/projects/${novelId}/export?format=docx`}
+                    download
+                    onClick={() => setIsExportMenuOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
+                  >
+                    📘 Word (DOCX)
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
