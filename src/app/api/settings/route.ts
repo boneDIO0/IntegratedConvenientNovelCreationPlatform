@@ -122,14 +122,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!parentCategory) {
-      parentCategory = await prisma.settingCategory.create({
-        data: {
-          name: body.categoryName,
-          projectId: projectId, 
-          type: body.type || 'custom', 
+      const targetCategoryName = body.categoryName || body.name || "未命名目錄";
+
+        parentCategory = await prisma.settingCategory.create({
+          data: {
+            name: targetCategoryName,
+            projectId: projectId,
+            type: body.type && body.type !== 'new_category' ? body.type : "custom" 
+          }
+        });
+        
+        // 如果只是一個新增空目錄的請求，建完目錄就可以提早返回
+        if (body.type === 'new_category' || body.action === 'new_category') {
+          return NextResponse.json(parentCategory, { status: 201 });
         }
-      });
-    }
+      }
 
     const newEntity = await prisma.settingEntity.create({
       data: {

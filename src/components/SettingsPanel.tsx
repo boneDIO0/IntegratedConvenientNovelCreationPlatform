@@ -16,7 +16,8 @@ import { useEditorUI } from "@/contexts/EditorUIContext";
 import { useRouter } from "next/navigation";
 import LocationForm from './LocationForm'; 
 import { useSession } from "next-auth/react";
-import { BellRing } from "lucide-react";
+import { BellRing, Download } from "lucide-react";
+import ImportSettingsModal from "./ImportSettingsModal";
 
 interface SettingsPanelProps {
   projectId: string;
@@ -43,6 +44,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [externalUpdate, setExternalUpdate] = useState<{ authorName: string, latestData: any } | null>(null);
 
   const [isLocalHistoryOpen, setIsLocalHistoryOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const handleRestoreVersion = async (timestamp: number) => {
     if (!selectedItem) return;
@@ -451,7 +453,11 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'new_category', name: newCategoryName, projectId })
+        body: JSON.stringify({ 
+          action: 'new_category', 
+          categoryName: newCategoryName, 
+          projectId 
+        })
       });
     } catch (error) {}
   };
@@ -632,6 +638,15 @@ return (
             </div>
             
             <div className="flex flex-wrap gap-1.5 flex-shrink-0 items-center">
+              {isEditable && !chapterId && (
+                <button 
+                  onClick={() => { if (!confirmLeave()) return; setIsImportModalOpen(true); }}
+                  className="rounded-md border px-4 py-2 text-sm font-medium transition-colors bg-white text-slate-700 border-slate-300 hover:bg-slate-50 flex items-center gap-1.5 shadow-sm mr-2"
+                >
+                  <Download size={16} className="text-blue-500" /> 匯入設定集
+                </button>
+              )}
+              
               <button 
                 onClick={() => { if (!confirmLeave()) return; setViewMode('timeline'); setHighlightedIds(null); }}
                 className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${viewMode === 'timeline' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
@@ -850,8 +865,16 @@ return (
                     )}
                   </fieldset>
                ) : (
-                  <div className="w-full flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200 min-h-[400px]">
-                    <span className="text-slate-400">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
+                  <div className="w-full flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 min-h-[400px] bg-slate-50/30 gap-4">
+                    <span className="text-slate-400 font-medium">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
+                    {isEditable && globalAllSettings.length === 0 && !chapterId && (
+                      <button 
+                        onClick={() => setIsImportModalOpen(true)}
+                        className="mt-2 px-6 py-2.5 bg-white border border-slate-200 shadow-sm rounded-xl text-blue-600 font-bold hover:bg-blue-50 hover:border-blue-200 transition-all flex items-center gap-2"
+                      >
+                        <Download size={18} /> 從其他作品匯入設定集
+                      </button>
+                    )}
                   </div>
                )}
             </div>
@@ -969,6 +992,16 @@ return (
           </div>
         </div>
       </main>
+      {isImportModalOpen && (
+        <ImportSettingsModal
+          currentProjectId={projectId}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            // 匯入成功後，重新拉取最新資料，Sidebar 與畫面會瞬間同步！
+            fetchSettings(); 
+          }}
+        />
+      )}
     </div>
   );
 }
