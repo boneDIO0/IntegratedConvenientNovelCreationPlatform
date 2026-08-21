@@ -1,32 +1,41 @@
 'use client'
 
-import { useParams, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { DiscussionBoard } from '@/components/DiscussionBoard';
+import { Suspense } from 'react';
 
-export default function DiscussionPage() {
+function DiscussionContent() {
   const searchParams = useSearchParams();
   const novelId = searchParams.get('novelId') as string;
   const channelId = searchParams.get('channelId') || 'general';
   
-  // 預設使用者角色為 'VIEWER'
-  
+  return (
+    <div>
+      {novelId ? (
+        <DiscussionBoard
+          projectId={novelId} 
+          channelId={channelId} 
+          mode="private" 
+        />
+      ) : (
+        <div className="text-center text-slate-500 py-20 bg-white rounded-xl shadow-sm border border-slate-200">
+          載入中，或無法取得專案資訊...
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function DiscussionPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-8">
-      <div>
-        {novelId ? (
-          <DiscussionBoard
-            projectId={novelId} 
-            channelId={channelId} 
-            mode="private" 
-            // currentUserRole={userRole} // 未來如果有需要 OWNER 刪除權限，再把 role 傳進來即可
-          />
-        ) : (
-          <div className="text-center text-slate-500 py-20 bg-white rounded-xl shadow-sm border border-slate-200">
-            載入中，或無法取得專案資訊...
-          </div>
-        )}
-      </div>
-      
+      <Suspense fallback={
+        <div className="text-center text-slate-500 py-20 bg-white rounded-xl shadow-sm border border-slate-200">
+          正在準備討論區...
+        </div>
+      }>
+        <DiscussionContent />
+      </Suspense>
     </main>
   );
 }
