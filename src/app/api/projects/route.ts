@@ -100,7 +100,41 @@ export async function POST(request: Request) {
             }
           }
         }
-      })
+      });
+
+      // 建立預設文字大綱模板 (靈感記事板)
+      const initialTimestamp = Date.now();
+      const defaultDescription = `<h2>📖 故事核心 (Logline)</h2><p>用一句話總結你的故事（主角是誰？他想要什麼？遇到什麼阻礙？如果不成功會怎樣？）。</p><p></p><h2>🎯 主題與調性</h2><p>這是一個關於「＿＿」的故事。整體氛圍是（輕鬆/沉重/懸疑/熱血...）。</p><p></p><h2>⚔️ 核心衝突</h2><ul><li><p><strong>外在衝突：</strong> 主角面臨的具體挑戰或反派。</p></li><li><p><strong>內在衝突：</strong> 主角內心的恐懼、盲點或需要克服的缺陷。</p></li></ul><p></p><h2>💡 靈感速記區</h2><p>在這裡寫下你腦中一閃而過的有趣橋段或對白...</p>`;
+
+      const defaultCategory = await tx.noteCategory.create({
+        data: {
+          name: '企劃與大綱',
+          projectId: project.id
+        }
+      });
+
+      await tx.noteEntity.create({
+        data: {
+          title: '小說企劃大綱',
+          categoryId: defaultCategory.id,
+          projectId: project.id,
+          content: {
+            category: 'text_note', 
+            description: defaultDescription,
+            versions: [
+              {
+                timestamp: initialTimestamp,
+                name: "系統自動建立",
+                authorName: "平台精靈",
+                content: {
+                  category: 'text_note',
+                  description: defaultDescription
+                }
+              }
+            ]
+          }
+        }
+      });
       
       return project
     })

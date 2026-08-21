@@ -3,12 +3,15 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
+import CharacterCount from '@tiptap/extension-character-count'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useEditorUI } from '@/contexts/EditorUIContext'
+import { useRouter } from 'next/navigation'
 import AssistantChat from './AssistantChat'
+import { NotesPanel } from '@/components/NotesPanel'
 import 'katex/dist/katex.min.css'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
-import { Eye, EyeOff, RotateCcw, BellRing } from 'lucide-react'
+import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb, ExternalLink } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 
 interface EditorProps {
@@ -21,6 +24,7 @@ interface EditorProps {
 }
 
 export default function Editor({ novelId, chapterId, initialTitle, initialContent, isEditable = true, initialStatus = 'DRAFT' }: EditorProps) {
+  const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
   const [, setTick] = useState(0)
   const forceUpdate = useCallback(() => setTick(tick => tick + 1), [])
@@ -30,6 +34,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const { data: session } = useSession(); // 取得當前使用者，用來判斷最新存檔是不是自己存的
   const [externalUpdate, setExternalUpdate] = useState<{ authorName: string } | null>(null); // 存放外部更新者的資訊
   const knownLatestVersionRef = useRef<string | null>(null); // 記錄目前已知的最新版本 ID
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
 
   // 🌟 從 EditorUIContext 取出預覽與歷史版本相關 State
   const {
@@ -48,7 +53,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const LOCAL_STORAGE_KEY = `editor_draft_${novelId}_${chapterId}`
 
   const editor = useEditor({
-    extensions: [StarterKit, Underline, MathExtension.configure({ evaluation: false })],
+    extensions: [StarterKit, Underline, CharacterCount, MathExtension.configure({ evaluation: false })],
     immediatelyRender: false,
     editable: isEditable,
     content: initialContent || '<p>開始撰寫你的偉大故事...</p>',
@@ -470,6 +475,22 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
       <div className="w-full flex flex-col bg-white border-b border-gray-200 shadow-sm z-30 shrink-0">
         <div className="flex justify-between items-center px-6 py-3">
           <div className="flex items-center gap-4">
+
+            {!previewVersion && (
+              <button
+                type="button"
+                onClick={() => setIsNotesOpen(!isNotesOpen)}
+                className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all border ${
+                  isNotesOpen 
+                    ? 'bg-amber-100 border-amber-200 text-amber-700 shadow-inner' 
+                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-amber-500'
+                }`}
+                title="開關靈感記事板"
+              >
+                <Lightbulb size={18} className={isNotesOpen ? "fill-amber-200" : ""} />
+              </button>
+            )}
+
             <div className="w-16 h-8 bg-blue-600 rounded text-white flex items-center justify-center font-bold text-sm shadow-sm select-none">
               DEMO
             </div>
@@ -509,11 +530,18 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                     ${isEditable && !previewVersion ? 'border-transparent hover:border-gray-300 focus:border-blue-500' : 'border-transparent opacity-80 cursor-default'}
                   `}
                 />
-                {isEditable && !previewVersion && (
-                  <span className={`text-xs transition-colors ${getStatusColor()}`}>
-                    {saveStatus}
+                <div className="flex items-center gap-3 ml-2">
+                  {isEditable && !previewVersion && (
+                    <span className={`text-xs transition-colors ${getStatusColor()}`}>
+                      {saveStatus}
+                    </span>
+                  )}
+                  
+                  {/* 字數統計 */}
+                  <span className="text-xs font-semibold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-md border border-slate-200 shadow-sm select-none flex items-center gap-1.5">
+                    {editor.storage.characterCount.characters()} 字
                   </span>
-                )}
+                </div>
               </div>
             </div>
           </div>
@@ -562,9 +590,25 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         )}
       </div>
 
-      <div className="flex-1 w-full overflow-y-auto bg-[#f8f9fa] flex flex-col items-center px-4 custom-scrollbar">
-        <div className="w-full max-w-[816px] h-auto shrink-0 bg-white border border-gray-200 shadow-[0_4px_25px_rgba(0,0,0,0.04)] p-[60px] min-h-[1100px] rounded-2xl my-10 transition-all">
-          <EditorContent editor={editor} />
+      <div className="flex flex-1 w-full overflow-hidden">
+        {isNotesOpen && (
+          <div className="w-[320px] shrink-0 border-r border-gray-200 bg-white shadow-[4px_0_15px_rgba(0,0,0,0.03)] z-20 animate-in slide-in-from-left duration-300 flex flex-col h-full relative">
+            <NotesPanel projectId={novelId} isWidget={true} isEditable={isEditable} />
+            <div className="mt-auto p-4 border-t border-amber-100 bg-amber-50/50 shrink-0">
+              <button
+                onClick={() => window.open(`/novel_list/${novelId}/notes`, '_blank')}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-amber-200 rounded-xl text-amber-700 text-sm font-bold shadow-sm hover:bg-amber-100 hover:border-amber-300 transition-all group"
+              >
+                <span>展開全域故事大綱</span> 
+                <ExternalLink size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="flex-1 w-full overflow-y-auto bg-[#f8f9fa] flex flex-col items-center px-4 custom-scrollbar">
+          <div className="w-full max-w-[816px] h-auto shrink-0 bg-white border border-gray-200 shadow-[0_4px_25px_rgba(0,0,0,0.04)] p-[60px] min-h-[1100px] rounded-2xl my-10 transition-all">
+            <EditorContent editor={editor} />
+          </div>
         </div>
       </div>
 
