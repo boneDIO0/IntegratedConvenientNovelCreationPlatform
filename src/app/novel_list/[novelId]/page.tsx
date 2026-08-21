@@ -93,6 +93,24 @@ export default function ChapterListPage() {
           
           {/* 按鈕群組 */}
           <div className="flex items-center gap-3">
+            <a 
+              href={`/api/projects/${novelId}/export?format=txt`}
+              download
+              className="bg-white border border-slate-200 text-slate-700 px-3 py-2 rounded-lg font-semibold hover:bg-slate-50 transition-all shadow-sm text-sm"
+              title="匯出為純文字檔"
+            >
+              📄 TXT
+            </a>
+            <a 
+              href={`/api/projects/${novelId}/export?format=docx`}
+              download
+              className="bg-white border border-slate-200 text-slate-700 px-3 py-2 rounded-lg font-semibold hover:bg-blue-50 hover:text-blue-600 transition-all shadow-sm text-sm"
+              title="匯出為 Word 檔"
+            >
+              📘 DOCX
+            </a>
+
+            <div className="w-px h-6 bg-slate-300 mx-1"></div> {/* 分隔線 */}
             <button 
               onClick={() => router.push(`/novel_list/${novelId}/settings`)}
               className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg font-semibold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2 shadow-sm"
