@@ -30,7 +30,7 @@ export async function GET(
       where: { id: projectId },
       include: {
         chapters: {
-          orderBy: { createdAt: 'asc' } // 依照建立時間排序
+          orderBy: { orderIndex: 'asc' } // 依照 orderIndex 排序
         }
       }
     });
@@ -44,11 +44,25 @@ export async function GET(
     project.chapters.forEach((chapter: any) => {
       if (!chapter.content) return;
 
-      // 透過 Tiptap 將 JSON 轉回 HTML
-      const chapterHtml = generateHTML(chapter.content, [
-        StarterKit,
-        Underline,
-      ]);
+      let chapterHtml = "";
+
+      if (typeof chapter.content === 'object' && chapter.content.type === 'doc') {
+        try {
+          chapterHtml = generateHTML(chapter.content, [
+            StarterKit,
+            Underline,
+          ]);
+        } catch (err) {
+          console.error(`章節 [${chapter.title}] 解析失敗:`, err);
+          chapterHtml = "<p>（章節內容解析失敗）</p>";
+        }
+      } else if (typeof chapter.content === 'string') {
+        // 如果不小心存成了純 HTML 字串
+        chapterHtml = chapter.content;
+      } else {
+        // 空物件或是尚未編輯的新章節
+        chapterHtml = "<p></p>";
+      }
 
       // 組合 HTML (給 DOCX 用)
       fullHtml += `<h2>${chapter.title}</h2>${chapterHtml}<br/><br/>`;
