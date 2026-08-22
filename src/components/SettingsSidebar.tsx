@@ -110,7 +110,7 @@ export default function SettingsSidebar({
       </div>
 
       {/* 常規設定目錄列表 */}
-      <div className="space-y-6 overflow-y-auto flex-1 pr-1">
+      <div className="space-y-6 overflow-y-auto flex-1 pr-1 pb-24">
         {data.map((group, index) => (
           <div key={index} className="group/category">
             

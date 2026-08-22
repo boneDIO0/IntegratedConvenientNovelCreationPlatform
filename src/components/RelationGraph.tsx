@@ -15,19 +15,18 @@ interface ColorStyle {
 interface RelationGraphProps {
   highlightedIds?: string[] | null;
   onNodeSelect?: (nodeId: string) => void;
-  // 核心升級：直接把當前全域的設定資料傳進來，實現即時反應
   allSettings: { category: string; items: SettingItem[] }[]; 
 }
 
 const dagreGraph = new dagre.graphlib.Graph();
 dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-// 建立自動排版函式：計算出不打結的最佳 x, y 座標
+// 自動排版：計算不打結的最佳節點座標
 const getLayoutedElements = (nodes: any[], edges: any[], direction = 'LR') => {
   dagreGraph.setGraph({ rankdir: direction, ranksep: 200, nodesep: 100 });
 
   nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: 160, height: 50 }); // 稍微增加寬度相容中文字
+    dagreGraph.setNode(node.id, { width: 160, height: 50 });
   });
 
   edges.forEach((edge) => {
@@ -50,7 +49,7 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = 'LR') => {
   return { layoutedNodes, layoutedEdges: edges };
 };
 
-// 🌟 1. 移入外部函式：純原生 Hex 擴充，將全作品的組織色彩轉化為關係圖 Style Map
+// 色彩映射：將組織色彩轉化為關係圖樣式
 const generateDynamicFactionColors = (
   settingsData: { category: string; items: SettingItem[] }[]
 ): Record<string, ColorStyle> => {
@@ -58,15 +57,16 @@ const generateDynamicFactionColors = (
   
   const factions = settingsData
     .flatMap((g) => g.items)
-    .filter((i) => i.category === 'faction');
+    .filter((i) => i.category === 'faction' || (i as any).type === 'faction');
   
   factions.forEach((f) => {
-    const userColor = f.color || "#64748b"; // 優先拿你在 FactionForm 存進資料庫的顏色
+    const rawColor = f.color || (f as any).content?.color || "#64748b";
+    const userColor = rawColor.startsWith('#') ? rawColor : `#${rawColor}`;
     
     map[f.id] = {
-      bg: `${userColor}15`, // 莫蘭迪柔和透光底色 (15 代表 8% 透明度)
-      border: userColor,    // 飽和陣營實色邊框
-      text: userColor       // 文字顏色
+      bg: `${userColor}15`,
+      border: userColor,
+      text: userColor
     };
   });
   
@@ -75,33 +75,30 @@ const generateDynamicFactionColors = (
 
 export default function RelationGraph({ highlightedIds, onNodeSelect, allSettings = [] }: RelationGraphProps) {
   
-  // 第一塊：計算 Nodes 和 Edges 的 useMemo (將 allSettings 納入監聽項目)
   const { nodes, edges } = useMemo(() => {
-    // 動態抓取全作品的所有「人物」
+    // 1. 動態抓取全作品的所有角色
     const characters = allSettings.flatMap(group => 
-      group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-'))
+      group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-') || (i as any).type === 'character')
     );
 
-    // 🌟 2. 核心技術點：在 useMemo 內部生成當前資料庫最即時的陣營色彩對照表
     const factionColorMap = generateDynamicFactionColors(allSettings);
 
-    // 計算節點 (Nodes)
+    // 2. 計算節點 (Nodes)
     const initialNodes = characters.map((char) => {
       const isHighlighted = highlightedIds ? highlightedIds.includes(char.id) : true;
       const opacity = isHighlighted ? 1 : 0.2;
 
-      // 🌟 3. 動態變色引擎：查表取出該角色陣營在資料庫中儲存的色彩設定
-      const colors = (char.faction && factionColorMap[char.faction]) || { 
-        bg: "#f8fafc",      // 無所屬散人背景
-        border: "#cbd5e1",  // 散人邊框
-        text: "#475569"     // 散人文字
+      const factionId = char.faction || (char as any).content?.faction;
+      const colors = (factionId && factionColorMap[factionId]) || { 
+        bg: "#f8fafc",
+        border: "#cbd5e1",
+        text: "#475569"
       };
 
       return {
         id: char.id,
-        position: { x: 0, y: 0 }, // 初始座標會被 dagre 自動排版覆蓋
-        data: { label: char.name },
-        // 🌟 4. 將對稱、高質感的動態莫蘭迪色系直接渲染進 React Flow 節點中
+        position: { x: 0, y: 0 },
+        data: { label: char.name || (char as any).title || "未命名人物" },
         style: {
           background: colors.bg,
           color: colors.text,
@@ -117,33 +114,47 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
       };
     });
 
-    // 計算連線 (Edges)
+    // 3. 計算連線 (Edges)
     const edgeMap = new Map();
 
     characters.forEach(char => {
-      (char.relations || []).forEach(rel => {
-        if (!characters.some(c => c.id === rel.targetId)) return;
+      // 雙向相容：讀取根屬性 relations 或 content.relations
+      const rawRelations = char.relations || (char as any).content?.relations || [];
+      const safeRelations = Array.isArray(rawRelations) ? rawRelations : [];
 
-        const pair = [char.id, rel.targetId].sort();
+      safeRelations.forEach(rel => {
+        if (!rel) return;
+
+        const rawTarget = rel.targetId || rel.targetName || rel.name || (typeof rel === 'string' ? rel : '');
+        const relType = rel.type || rel.relation || '關聯';
+
+        // 雙向反查目標角色節點（相容 UUID、名稱與 Title）
+        const targetNode = characters.find(
+          c => c.id === rawTarget || c.name === rawTarget || (c as any).title === rawTarget
+        );
+
+        if (!targetNode || targetNode.id === char.id) return;
+
+        const pair = [char.id, targetNode.id].sort();
         const edgeId = `e-${pair[0]}-${pair[1]}`;
         
         const isEdgeHighlighted = highlightedIds 
-          ? (highlightedIds.includes(char.id) || highlightedIds.includes(rel.targetId)) 
+          ? (highlightedIds.includes(char.id) || highlightedIds.includes(targetNode.id)) 
           : true;
         const edgeOpacity = isEdgeHighlighted ? 1 : 0.1;
 
         if (edgeMap.has(edgeId)) {
           const existingEdge = edgeMap.get(edgeId);
-          if (!existingEdge.label.includes(rel.type)) {
-            existingEdge.label = `${existingEdge.label} ↔ ${rel.type}`;
+          if (!existingEdge.label.includes(relType)) {
+            existingEdge.label = `${existingEdge.label} ↔ ${relType}`;
           }
           existingEdge.markerStart = { type: MarkerType.ArrowClosed };
         } else {
           edgeMap.set(edgeId, {
             id: edgeId,
             source: char.id,
-            target: rel.targetId,
-            label: rel.type,
+            target: targetNode.id,
+            label: relType,
             type: 'default',
             animated: true,
             markerEnd: { type: MarkerType.ArrowClosed },
@@ -162,7 +173,6 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
 
     const initialEdges = Array.from(edgeMap.values());
 
-    // 執行排版魔法
     const { layoutedNodes, layoutedEdges } = getLayoutedElements(
       initialNodes,
       initialEdges,
@@ -172,14 +182,12 @@ export default function RelationGraph({ highlightedIds, onNodeSelect, allSetting
     return { nodes: layoutedNodes, edges: layoutedEdges };
   }, [highlightedIds, allSettings]);
 
-  // 第二塊：事件處理
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     if (onNodeSelect) {
       onNodeSelect(node.id);
     }
   }, [onNodeSelect]);
 
-  // 第三塊：渲染畫面
   return (
     <div className="h-full w-full rounded-lg border border-slate-200 bg-white min-h-[550px]">
       <ReactFlow nodes={nodes} edges={edges} onNodeClick={handleNodeClick} fitView>

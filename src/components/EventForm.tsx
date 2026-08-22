@@ -4,33 +4,37 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { SettingItem } from "@/types" // 🎯 確保維持中心型別引入
+import { SettingItem } from "@/types"
 import { formatFantasyDate, CalendarConfig } from "@/lib/calendarEngine" 
 import { useState, useEffect } from "react" 
 
 interface EventFormProps {
   item: SettingItem;
   calendarConfig?: CalendarConfig; 
-  allSettings: { category: string; items: SettingItem[] }[]; // 確保介面完全咬合
+  allSettings: { category: string; items: SettingItem[] }[];
   onSave: (updatedItem: SettingItem) => void | Promise<void>; 
   onDirty?: () => void; 
 }
 
-// 🌟 修正點 1：確實把大腦傳進來的 allSettings 從解構參數中解放出來！
 export default function EventForm({ item, calendarConfig, allSettings, onSave, onDirty }: EventFormProps) {
-  const [name, setName] = useState(item.name || "");
-  const [currentDate, setCurrentDate] = useState(item.date || "");
-  const [locationId, setLocationId] = useState(item.locationId || "");
-  const [description, setDescription] = useState(item.description || "");
-  const [saveStatus, setSaveStatus] = useState("儲存事件紀錄");
-  const [relations, setRelations] = useState<{targetId: string, type: string}[]>(item.relations || []);
+  const itemContent = (item as any).content && typeof (item as any).content === 'object' 
+    ? (item as any).content 
+    : {};
+
+  const isStandardMode = calendarConfig?.mode !== "fantasy_only";
+
+  const [name, setName] = useState(item.name || item.title || "");
+  const [currentDate, setCurrentDate] = useState(itemContent.date || item.date || "");
+  const [locationId, setLocationId] = useState(itemContent.locationId || item.locationId || "");
+  const [description, setDescription] = useState(itemContent.description || item.description || "");
+  const [relations, setRelations] = useState<{ targetId: string; type: string; name?: string }[]>(
+    itemContent.relations || item.relations || []
+  );
 
   const [selectedEra, setSelectedEra] = useState("");
   const [fantasyYear, setFantasyYear] = useState<number | "">("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  const isStandardMode = calendarConfig?.mode !== "fantasy_only";
-  
-  // 🌟 修正點 2：確實將變數定義收攏在函數體內，並補上明確型別防禦
   const availableLocations = allSettings?.find((c: any) => {
     const currentCategory = (c.category || c.categoryName || c.name || "").toLowerCase();
     return currentCategory.includes("location") || currentCategory.includes("地點") || currentCategory === "place";
@@ -38,18 +42,22 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
 
   const availableCharacters = allSettings?.find((c: any) => {
     const currentCategory = (c.category || c.categoryName || c.name || "").toLowerCase();
-    return currentCategory.includes("character") || currentCategory.includes("character") || currentCategory.includes("人物") || currentCategory.includes("角色");
+    return currentCategory.includes("character") || currentCategory.includes("人物") || currentCategory.includes("角色");
   })?.items || [];
 
   useEffect(() => {
-    setName(item.name || "");
-    setCurrentDate(item.date || "");
-    setLocationId(item.locationId || "");
-    setDescription(item.description || "");
-    setRelations(item.relations || []);
+    const content = (item as any).content && typeof (item as any).content === 'object' 
+      ? (item as any).content 
+      : {};
+
+    setName(item.name || item.title || "");
+    setCurrentDate(content.date || item.date || "");
+    setLocationId(content.locationId || item.locationId || "");
+    setDescription(content.description || item.description || "");
+    setRelations(content.relations || item.relations || []);
 
     if (!isStandardMode) {
-      const displayStr = item.fantasyDisplay || "";
+      const displayStr = content.fantasyDisplay || item.fantasyDisplay || "";
       const matched = displayStr.match(/^(.+?)\s*(\d+)\s*年$/);
       
       if (matched) {
@@ -68,17 +76,19 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
     ? formatFantasyDate(currentDate, calendarConfig, "")
     : generatedFantasyDisplay;
 
-  const handleCharacterToggle = (characterName: string) => {
+  const handleCharacterToggle = (charId: string, charName: string) => {
     onDirty?.();
-    const exists = relations.some(r => r.targetId === characterName);
+    const exists = relations.some(r => r.targetId === charId || r.targetId === charName);
     if (exists) {
-      setRelations(relations.filter(r => r.targetId !== characterName));
+      setRelations(relations.filter(r => r.targetId !== charId && r.targetId !== charName));
     } else {
-      setRelations([...relations, { targetId: characterName, type: '登場' }]);
+      setRelations([...relations, { targetId: charId, name: charName, type: '登場' }]);
     }
   };
 
   const handleSaveClick = async () => {
+    if (isSaving) return;
+
     let calculatedWeight = item.sortWeight ?? 0;
 
     if (!isStandardMode && calendarConfig?.eras) {
@@ -88,9 +98,8 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
       calculatedWeight = safeIndex * 100000 + safeYear;
     }
 
-    const updatedItem: SettingItem = {
-      ...item,
-      name,
+    const currentContent = {
+      ...(item as any).content,
       locationId,
       description,
       relations,
@@ -99,23 +108,32 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
       sortWeight: calculatedWeight 
     };
 
-    setSaveStatus("儲存中...");
+    const updatedItem = {
+      ...item,
+      name,
+      title: name,
+      locationId,
+      description,
+      relations,
+      date: isStandardMode ? currentDate : "", 
+      fantasyDisplay: isStandardMode ? "" : generatedFantasyDisplay, 
+      sortWeight: calculatedWeight,
+      content: currentContent
+    } as SettingItem;
 
     try {
+      setIsSaving(true);
       await onSave(updatedItem);
-      setSaveStatus("✅ 儲存成功！");
     } catch (error) {
       console.error("歷史事件儲存出錯:", error);
-      setSaveStatus("❌ 儲存失敗");
+      alert("❌ 儲存失敗，請檢查網路連線");
+    } finally {
+      setIsSaving(false);
     }
-
-    setTimeout(() => {
-      setSaveStatus("儲存事件紀錄");
-    }, 2000);
   };
 
   return (
-    <div className="w-full h-full flex flex-col space-y-6">
+    <div className="w-full min-h-full flex flex-col space-y-6 pb-24">
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">{name || "未命名事件"}</h2>
@@ -160,7 +178,7 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
                   id="eraSelect"
                   value={selectedEra}
                   onChange={(e) => { setSelectedEra(e.target.value); onDirty?.(); }}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer text-slate-800"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm transition-colors cursor-pointer text-slate-800"
                 >
                   {calendarConfig?.eras && calendarConfig.eras.length > 0 ? (
                     calendarConfig.eras.map((era, index) => (
@@ -198,15 +216,15 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
               id="location"
               value={locationId}
               onChange={(e) => { setLocationId(e.target.value); onDirty?.(); }}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer text-slate-800"
-          >
-            <option value="">-- 請選取專案中的地點 --</option>
-            {availableLocations.map((loc: SettingItem) => (
-              <option key={loc.id} value={loc.id}> {/* 🎯 傳入真正的 loc.id */}
-                📍 {loc.name} {loc.climate ? `(${loc.climate})` : ''}
-              </option>
-            ))}
-          </select>
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors cursor-pointer text-slate-800"
+            >
+              <option value="">-- 請選取專案中的地點 --</option>
+              {availableLocations.map((loc: SettingItem) => (
+                <option key={loc.id} value={loc.id}>
+                  📍 {loc.name} {loc.climate ? `(${loc.climate})` : ''}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -225,13 +243,13 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
           <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-slate-200 bg-slate-50 min-h-[80px]">
             {availableCharacters.length > 0 ? (
               availableCharacters.map((char: SettingItem) => {
-                const isSelected = relations.some(r => r.targetId === char.name);
+                const isSelected = relations.some(r => r.targetId === char.id || r.targetId === char.name);
                 return (
                   <button
                     key={char.id}
                     type="button"
-                    onClick={() => handleCharacterToggle(char.name || "")}
-                    className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all duration-200 shadow-sm flex items-center gap-1.5 ${
+                    onClick={() => handleCharacterToggle(char.id, char.name || "")}
+                    className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all duration-200 shadow-sm flex items-center gap-1.5 cursor-pointer ${
                       isSelected
                         ? "bg-slate-900 text-white border-slate-950 scale-105"
                         : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
@@ -249,13 +267,13 @@ export default function EventForm({ item, calendarConfig, allSettings, onSave, o
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+      <div className="flex justify-end gap-2 pt-6 pb-6 border-t border-slate-100">
         <button 
           onClick={handleSaveClick}
-          disabled={saveStatus !== "儲存事件紀錄"}
-          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-md font-medium transition-all shadow-sm"
+          disabled={isSaving}
+          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-md active:scale-95 cursor-pointer"
         >
-          {saveStatus} 
+          {isSaving ? "儲存中..." : "儲存事件紀錄"} 
         </button>
       </div>
     </div>

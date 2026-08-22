@@ -182,7 +182,7 @@ export default function CalendarConfigForm({ projectId, initialConfig, isEditabl
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28">
       <div className="border-b border-slate-100 pb-3">
         <h3 className="text-xl font-bold text-slate-800">🌍 修改世界觀多紀元斷代曆法</h3>
         <p className="text-sm text-slate-500 mt-1">

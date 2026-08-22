@@ -4,28 +4,31 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { SettingItem } from "@/types" // 🎯 對齊核心完全體型別定義
+import { SettingItem } from "@/types"
 import { useState, useEffect } from "react" 
 
-// 🌟 1. 擴充 Interface：接收全域設定源 allSettings 進行跨表單聯動
 interface FactionFormProps {
   item: SettingItem & { color?: string }; 
-  allSettings: { category: string; items: SettingItem[] }[]; // 注入全域大資料庫
+  allSettings: { category: string; items: SettingItem[] }[];
   onSave: (updatedItem: SettingItem) => void | Promise<void>;
   onDirty?: () => void; 
 }
 
 export default function FactionForm({ item, allSettings, onSave, onDirty }: FactionFormProps) {
-  // 🌟 2. 建立所有欄位的 state 進行即時管理
-  const [name, setName] = useState(item.name || "");
-  const [leader, setLeader] = useState(item.leader || "");
-  const [territory, setTerritory] = useState(item.territory || "");
-  const [description, setDescription] = useState(item.description || "");
-  const [color, setColor] = useState(item.color || "#64748b"); 
-  const [hierarchyStr, setHierarchyStr] = useState(item.hierarchy?.join('，') || "");
-  const [saveStatus, setSaveStatus] = useState("儲存組織設定");
+  const itemContent = (item as any).content && typeof (item as any).content === 'object' 
+    ? (item as any).content 
+    : {};
 
-  // 🔍 全方位模糊防禦：從全域資料中撈出所有「人物」與「地點」
+  const [name, setName] = useState(item.name || item.title || "");
+  const [leader, setLeader] = useState(itemContent.leader || item.leader || "");
+  const [territory, setTerritory] = useState(itemContent.territory || item.territory || "");
+  const [description, setDescription] = useState(itemContent.description || item.description || "");
+  const [color, setColor] = useState(itemContent.color || item.color || "#64748b"); 
+  const [hierarchyStr, setHierarchyStr] = useState(
+    (itemContent.hierarchy || item.hierarchy)?.join('，') || ""
+  );
+  const [isSaving, setIsSaving] = useState(false);
+
   const availableCharacters = allSettings?.find((c: any) => {
     const cat = (c.category || c.categoryName || "").toLowerCase();
     return cat.includes("character") || cat.includes("人物") || cat.includes("角色");
@@ -36,60 +39,70 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
     return cat.includes("location") || cat.includes("地點");
   })?.items || [];
 
-  // 當切換項目時同步刷新欄位
   useEffect(() => {
-    setName(item.name || "");
-    setLeader(item.leader || "");
-    setTerritory(item.territory || "");
-    setDescription(item.description || "");
-    setColor(item.color || "#64748b");
-    setHierarchyStr(item.hierarchy?.join('，') || "");
+    const content = (item as any).content && typeof (item as any).content === 'object' 
+      ? (item as any).content 
+      : {};
+
+    setName(item.name || item.title || "");
+    setLeader(content.leader || item.leader || "");
+    setTerritory(content.territory || item.territory || "");
+    setDescription(content.description || item.description || "");
+    setColor(content.color || item.color || "#64748b");
+    setHierarchyStr((content.hierarchy || item.hierarchy)?.join('，') || "");
   }, [item]);
 
-  // 將字串即時轉回陣列，支援中英文逗號，並過濾掉空白項目
-  const currentHierarchy = hierarchyStr
+  const currentHierarchy: string[] = (hierarchyStr || "")
     .split(/[,，]/) 
-    .map(rank => rank.trim())
-    .filter(rank => rank !== "");
+    .map((rank: string) => rank.trim())
+    .filter((rank: string) => rank !== "");
 
-  // 🌟 3. 實作存檔邏輯
   const handleSaveClick = async () => {
-    const updatedItem: SettingItem = {
-      ...item,
-      name,
-      leader,        // 儲存所選取的人物品項
-      territory,     // 儲存所選取的地點品項
+    if (isSaving) return;
+
+    const currentContent = {
+      ...(item as any).content,
+      leader,
+      territory,
       description,
-      hierarchy: currentHierarchy, 
-      color: color 
+      hierarchy: currentHierarchy,
+      color
     };
 
-    setSaveStatus("儲存中...");
+    const updatedItem = {
+      ...item,
+      name,
+      title: name,
+      leader,
+      territory,
+      description,
+      hierarchy: currentHierarchy, 
+      color,
+      content: currentContent
+    } as SettingItem;
 
     try {
+      setIsSaving(true);
       await onSave(updatedItem);
-      setSaveStatus("✅ 儲存成功！");
     } catch (error) {
-      console.error(error);
-      setSaveStatus("❌ 儲存失敗");
+      console.error("組織設定儲存出錯:", error);
+      alert("❌ 儲存失敗，請檢查網路連線");
+    } finally {
+      setIsSaving(false);
     }
-
-    setTimeout(() => {
-      setSaveStatus("儲存組織設定");
-    }, 2000);
   };
 
   const PRESET_COLORS = [
-    "#3b82f6", // 守序藍 (元風組織/正統王朝)
-    "#ef4444", // 狂暴紅 (叛軍/部落)
-    "#10b981", // 神祕綠 (精靈/魔法公會)
-    "#f59e0b", // 富庶黃 (商會/黃金教派)
-    "#8b5cf6", // 異能紫 (刺客結社/古老信仰)
-    "#64748b"  // 中立灰 (散人/流浪者)
+    "#3b82f6",
+    "#ef4444",
+    "#10b981",
+    "#f59e0b",
+    "#8b5cf6",
+    "#64748b"
   ];
 
   return (
-    <div className="w-full h-full flex flex-col space-y-6">
+    <div className="w-full min-h-full flex flex-col space-y-6 pb-24">
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">{name || "未命名組織"}</h2>
@@ -105,13 +118,11 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
       </div>
 
       <div className="space-y-5 flex-1">
-        {/* 組織名稱 */}
         <div className="grid gap-2">
           <Label htmlFor="name">組織名稱</Label>
           <Input id="name" value={name} onChange={(e) => { setName(e.target.value); onDirty?.(); }} /> 
         </div>
 
-        {/* 關係圖專屬色彩選擇器 */}
         <div className="grid gap-3 p-4 bg-slate-50/50 rounded-xl border border-slate-200/60">
           <div className="flex items-center justify-between">
             <Label className="font-bold text-slate-700 flex items-center gap-2">
@@ -140,7 +151,7 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
                   type="button"
                   onClick={() => { setColor(pColor); onDirty?.(); }}
                   style={{ backgroundColor: pColor }}
-                  className={`w-7 h-7 rounded-full transition-all hover:scale-110 ${
+                  className={`w-7 h-7 rounded-full transition-all hover:scale-110 cursor-pointer ${
                     color === pColor ? "ring-2 ring-offset-2 ring-slate-900 scale-105 shadow-sm" : "opacity-80"
                   }`}
                   title="套用推薦色"
@@ -150,9 +161,7 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
           </div>
         </div>
 
-        {/* 🌟 領袖與領土：升級為雙欄連動 Dropdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 現任領袖下拉選單 */}
           <div className="grid gap-2">
             <Label htmlFor="leader">現任領袖</Label>
             <select
@@ -170,7 +179,6 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
             </select>
           </div>
 
-          {/* 勢力範圍下拉選單 */}
           <div className="grid gap-2">
             <Label htmlFor="territory">勢力範圍 (大本營/領土)</Label>
             <select
@@ -189,7 +197,6 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
           </div>
         </div>
 
-        {/* 階級制度 */}
         <div className="grid gap-2">
           <Label htmlFor="hierarchy">階級制度 (請用逗號分隔)</Label>
           <Input 
@@ -211,7 +218,6 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
           </div>
         </div>
 
-        {/* 組織背景與文化 */}
         <div className="grid gap-2">
           <Label htmlFor="description">組織背景與文化</Label>
           <Textarea
@@ -223,13 +229,13 @@ export default function FactionForm({ item, allSettings, onSave, onDirty }: Fact
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+      <div className="flex justify-end gap-2 pt-6 pb-6 border-t border-slate-100">
         <button 
           onClick={handleSaveClick}
-          disabled={saveStatus !== "儲存組織設定"}
-          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-md font-medium transition-all shadow-sm"
+          disabled={isSaving}
+          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-md active:scale-95 cursor-pointer"
         >
-          {saveStatus}
+          {isSaving ? "儲存中..." : "儲存組織設定"}
         </button>
       </div>
     </div>

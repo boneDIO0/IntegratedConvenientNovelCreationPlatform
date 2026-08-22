@@ -5,13 +5,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { SettingItem } from "@/lib/mockSettings"
-import { useState } from "react";
+import { SettingItem } from "@/types"
+import { useState, useEffect } from "react";
 
 interface CharacterFormProps {
   item: SettingItem & { 
     titles?: string[];
-    relations?: any[]; // 🌟 提升相容性：支援舊有物件或字串型態
+    relations?: any[];
   };
   onSave: (updatedItem: SettingItem) => void | Promise<void>;
   allSettings?: { category: string; items: SettingItem[] }[]; 
@@ -26,25 +26,25 @@ export default function CharacterForm({
   currentChapterSettings = [],
   onDirty 
 }: CharacterFormProps) {
+  const itemContent = (item as any).content && typeof (item as any).content === 'object' 
+    ? (item as any).content 
+    : {};
 
-  // 基本欄位狀態
-  const [name, setName] = useState(item.name || "");
-  const [faction, setFaction] = useState(item.faction || "independent");
-  const [description, setDescription] = useState(item.description || "");
+  // 1. 初始化欄位狀態
+  const [name, setName] = useState(item.name || item.title || "");
+  const [faction, setFaction] = useState(itemContent.faction || item.faction || "independent");
+  const [description, setDescription] = useState(itemContent.description || item.description || "");
 
-  // 稱號狀態
   const [titles, setTitles] = useState<string[]>(
-    item.titles || (item.title ? [item.title] : [])
+    itemContent.titles || item.titles || (item.title ? [item.title] : [])
   );
 
-  // 自訂欄位狀態
-  const [customFields, setCustomFields] = useState<{label: string, value: string}[]>(
-    item.customFields || []
+  const [customFields, setCustomFields] = useState<{ label: string; value: string }[]>(
+    itemContent.customFields || item.customFields || []
   );
 
-  // 關聯人物狀態（統一轉成標準結構物件）
   const [relations, setRelations] = useState<any[]>(
-    (item.relations || []).map(r => {
+    (itemContent.relations || item.relations || []).map((r: any) => {
       if (typeof r === 'string') {
         return { targetId: r, targetName: r, type: '關聯' };
       }
@@ -52,17 +52,35 @@ export default function CharacterForm({
     })
   );
   
-  // 臨時狀態
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [relationType, setRelationType] = useState("好友");
-  const [saveStatus, setSaveStatus] = useState("儲存人物設定");
+  const [isSaving, setIsSaving] = useState(false);
 
-  // 動態抓取全世界的所有組織 (Faction)
+  // 2. 監聽傳入 item 變更，同步刷新表單狀態
+  useEffect(() => {
+    const content = (item as any).content && typeof (item as any).content === 'object' 
+      ? (item as any).content 
+      : {};
+
+    setName(item.name || item.title || "");
+    setFaction(content.faction || item.faction || "independent");
+    setDescription(content.description || item.description || "");
+    setTitles(content.titles || item.titles || (item.title ? [item.title] : []));
+    setCustomFields(content.customFields || item.customFields || []);
+    setRelations(
+      (content.relations || item.relations || []).map((r: any) => {
+        if (typeof r === 'string') {
+          return { targetId: r, targetName: r, type: '關聯' };
+        }
+        return r;
+      })
+    );
+  }, [item]);
+
   const availableFactions = allSettings.flatMap(group => 
     group.items.filter(i => i.category === 'faction')
   );
 
-  // 下拉選單使用 100% 全域總庫，排除自身
   const availableCharacters = allSettings
     .flatMap(group => group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-'))) 
     .filter(char => char.id !== item.id && char.name !== name); 
@@ -76,7 +94,7 @@ export default function CharacterForm({
     onDirty?.();
   };
 
-  const handleAddCustomField = () => { setCustomFields([...customFields, { label: "新屬性 (點擊修改)", value: "" }]); onDirty?.(); };
+  const handleAddCustomField = () => { setCustomFields([...customFields, { label: "新屬性", value: "" }]); onDirty?.(); };
   const handleRemoveCustomField = (indexToRemove: number) => { setCustomFields(customFields.filter((_, index) => index !== indexToRemove)); onDirty?.(); };
   const handleCustomFieldChange = (index: number, fieldKey: 'label' | 'value', newValue: string) => {
     const newFields = [...customFields];
@@ -92,13 +110,14 @@ export default function CharacterForm({
       return;
     }
     
-    // 抓取選中的角色名字
     const targetObj = availableCharacters.find(c => c.id === selectedTargetId);
 
     setRelations([...relations, { 
       targetId: selectedTargetId, 
       targetName: targetObj?.name || selectedTargetId,
-      type: relationType 
+      type: relationType,
+      relation: relationType,
+      name: targetObj?.name || selectedTargetId
     }]);
     setSelectedTargetId(""); 
     onDirty?.();
@@ -110,32 +129,45 @@ export default function CharacterForm({
   };
 
   const handleSaveClick = async () => {
+    if (isSaving) return;
+
+    const currentContent = {
+      ...(item as any).content,
+      faction,
+      description,
+      title: titles[0] || "",
+      titles,
+      customFields,
+      relations
+    };
+
     const updatedItem = {
       ...item,
-      name: name,
-      faction: faction,
-      description: description,
-      title: titles[0] || "", 
-      titles: titles,         
-      customFields: customFields,
-      relations: relations 
-    };
+      name,
+      title: titles[0] || name,
+      faction,
+      description,
+      titles,
+      customFields,
+      relations,
+      content: currentContent
+    } as SettingItem;
     
-    setSaveStatus("儲存中...");
     try {
+      setIsSaving(true);
       await onSave(updatedItem); 
-      setSaveStatus("✅ 儲存成功！");
     } catch (error) {
-      setSaveStatus("❌ 儲存失敗");
+      console.error("人物設定儲存出錯:", error);
+      alert("❌ 儲存失敗，請檢查網路連線");
+    } finally {
+      setIsSaving(false);
     }
-    setTimeout(() => { setSaveStatus("儲存人物設定"); }, 2000);
   };
 
   const fallbackChar = name.charAt(0) || "?";
 
   return (
     <div className="w-full min-h-full flex flex-col space-y-8 pb-24">
-      
       {/* 頂部：人物卡片視覺區 */}
       <div className="flex items-center gap-6 rounded-xl bg-slate-100/50 p-6 border border-slate-100">
         <Avatar className="h-20 w-20 border-2 border-white shadow-sm">
@@ -169,7 +201,7 @@ export default function CharacterForm({
           <select
             value={faction}
             onChange={(e) => { setFaction(e.target.value); onDirty?.(); }}
-            className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+            className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white cursor-pointer"
           >
             <option value="independent">無所屬</option>
             {availableFactions.map(f => (
@@ -181,7 +213,7 @@ export default function CharacterForm({
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
             <Label>職位/稱號</Label>
-            <button type="button" onClick={handleAddTitle} className="text-xs text-blue-600 hover:underline font-medium">
+            <button type="button" onClick={handleAddTitle} className="text-xs text-blue-600 hover:underline font-medium cursor-pointer">
               + 新增稱號
             </button>
           </div>
@@ -191,7 +223,7 @@ export default function CharacterForm({
             {titles.map((title, index) => (
               <div key={index} className="flex gap-2">
                 <Input value={title} onChange={(e) => handleTitleChange(index, e.target.value)} placeholder="例如：千戶長" />
-                <button type="button" onClick={() => handleRemoveTitle(index)} className="text-red-500 hover:bg-red-50 px-3 rounded-md transition-colors">✕</button>
+                <button type="button" onClick={() => handleRemoveTitle(index)} className="text-red-500 hover:bg-red-50 px-3 rounded-md transition-colors cursor-pointer">✕</button>
               </div>
             ))}
           </div>
@@ -202,11 +234,11 @@ export default function CharacterForm({
           <Textarea id="description" className="min-h-[160px] resize-none leading-relaxed" value={description} onChange={(e) => { setDescription(e.target.value); onDirty?.(); }} />
         </div>
 
-        {/* 世界觀自訂欄位引擎 */}
+        {/* 自訂屬性區塊 */}
         <div className="grid gap-2 pt-4 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <Label className="text-slate-700 font-bold flex items-center gap-2">✨ 自訂屬性區塊</Label>
-            <button type="button" onClick={handleAddCustomField} className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline font-medium">+ 新增自訂欄位</button>
+            <button type="button" onClick={handleAddCustomField} className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline font-medium cursor-pointer">+ 新增自訂欄位</button>
           </div>
           
           <div className="space-y-4 mt-2">
@@ -214,16 +246,16 @@ export default function CharacterForm({
             {customFields.map((field, index) => (
               <div key={index} className="flex gap-3 items-start p-4 bg-slate-50 border border-slate-100 rounded-lg group">
                 <div className="flex-1 space-y-3">
-                  <Input value={field.label} onChange={(e) => handleCustomFieldChange(index, 'label', e.target.value)} className="font-bold text-slate-700 bg-white border-slate-200 h-9" placeholder="自訂欄位名稱 (例如：魔法屬性、替身能力)" />
-                  <Textarea value={field.value} onChange={(e) => handleCustomFieldChange(index, 'value', e.target.value)} className="min-h-[80px] bg-white resize-none text-slate-600" placeholder="輸入該屬性的詳細內容..." />
+                  <Input value={field.label} onChange={(e) => handleCustomFieldChange(index, 'label', e.target.value)} className="font-bold text-slate-700 bg-white border-slate-200 h-9" placeholder="自訂欄位名稱" />
+                  <Textarea value={field.value} onChange={(e) => handleCustomFieldChange(index, 'value', e.target.value)} className="min-h-[80px] bg-white resize-none text-slate-600" placeholder="輸入詳細內容..." />
                 </div>
-                <button type="button" onClick={() => handleRemoveCustomField(index)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-md transition-colors mt-1">🗑️</button>
+                <button type="button" onClick={() => handleRemoveCustomField(index)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-md transition-colors mt-1 cursor-pointer">🗑️</button>
               </div>
             ))}
           </div>
         </div>
 
-        {/* 動態關係建立與顯示區塊 */}
+        {/* 關聯人物設定 */}
         <div className="grid gap-2 pt-4 border-t border-slate-100">
           <Label className="font-bold text-slate-700">關聯人物設定</Label>
           
@@ -240,23 +272,19 @@ export default function CharacterForm({
             </select>
 
             <Input value={relationType} onChange={(e) => setRelationType(e.target.value)} placeholder="關係 (例如：宿敵、親屬)" className="w-32 h-9" />
-            <button type="button" onClick={handleAddRelation} disabled={!selectedTargetId} className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold px-4 py-2 h-9 rounded-md transition-colors">+ 建立連結</button>
+            <button type="button" onClick={handleAddRelation} disabled={!selectedTargetId} className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold px-4 py-2 h-9 rounded-md transition-colors cursor-pointer">+ 建立連結</button>
           </div>
 
           <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-slate-200 bg-slate-50 min-h-[60px] items-center">
             {relations.length > 0 ? (
               relations.map((rel, index) => {
                 const allCharactersInProject = allSettings.flatMap(g => g.items);
-                
-                // 🌟 修正點 1：多重容錯比對（UUID、targetName、targetId 字串名稱）
                 const targetChar = allCharactersInProject.find(
                   c => c.id === rel.targetId || c.name === rel.targetName || c.name === rel.targetId
                 );
                 
-                // 優先使用反查出的正名，其次為 targetName，最後降級至 targetId
                 const displayTargetName = targetChar?.name || rel.targetName || rel.targetId || "未知角色";
 
-                // 🌟 修正點 2：只有在有傳入「本章登場清單」時才進行登場判定，且對名字或 UUID 雙重判定
                 const chapterItems = currentChapterSettings.flatMap(g => g.items);
                 const hasChapterFilter = currentChapterSettings.length > 0 && chapterItems.length > 0;
                 
@@ -270,7 +298,7 @@ export default function CharacterForm({
                       👤 與 <strong className="text-blue-700">{displayTargetName}</strong> 的關係是【{rel.type || rel.relation || "關聯"}】
                       {isAbsentInChapter && <span className="text-xs text-slate-400 ml-1">(本章未登場)</span>}
                     </span>
-                    <button type="button" onClick={() => handleRemoveRelation(rel.targetId || rel.targetName)} className="text-slate-400 hover:text-red-500 font-bold text-xs transition-colors">✕</button>
+                    <button type="button" onClick={() => handleRemoveRelation(rel.targetId || rel.targetName)} className="text-slate-400 hover:text-red-500 font-bold text-xs transition-colors cursor-pointer">✕</button>
                   </Badge>
                 );
               })
@@ -281,13 +309,14 @@ export default function CharacterForm({
         </div>
       </div>
 
+      {/* 底部按鈕區 */}
       <div className="flex justify-end gap-2 pt-6 pb-6 border-t border-slate-100">
         <button 
           onClick={handleSaveClick} 
-          disabled={saveStatus !== "儲存人物設定"} 
-          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-md active:scale-95"
+          disabled={isSaving} 
+          className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-md active:scale-95 cursor-pointer"
         >
-          {saveStatus} 
+          {isSaving ? "儲存中..." : "儲存人物設定"} 
         </button>
       </div>
     </div>

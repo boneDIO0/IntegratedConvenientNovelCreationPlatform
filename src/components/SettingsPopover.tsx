@@ -41,11 +41,9 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   const [detailItem, setDetailItem] = useState<SettingItem | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // 🎯 即時編輯狀態管理
   const [editingContent, setEditingContent] = useState<Record<string, any>>({});
   const [isSavingField, setIsSavingField] = useState(false);
 
-  // 當選擇的詳情項目改變時，初始化可編輯內容
   useEffect(() => {
     if (detailItem) {
       const content = (detailItem as any).content && typeof (detailItem as any).content === 'object'
@@ -55,7 +53,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   }, [detailItem]);
 
-  // 🎯 1. 健壯的 API 讀取與解包邏輯
   const fetchPopoverSettings = async () => {
     if (!projectId) {
       console.warn("SettingsPopover 缺少 projectId，取消請求");
@@ -87,7 +84,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
 
       setSettings(flatItems);
 
-      // 🎯 提取本章登場 ID (多重相容性防禦)
       const initialAssigned = new Set<string>();
       flatItems.forEach((item: any) => {
         const isAssignedFlag = item.isChapterAssigned || item.isAssigned;
@@ -109,7 +105,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   };
 
-  // 🎯 開啟時自動撈取，關閉時清除搜尋紀錄
   useEffect(() => {
     if (isOpen) {
       fetchPopoverSettings();
@@ -119,7 +114,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   }, [isOpen]);
 
-  // 🎯 2. 切換登場狀態（對齊後端 PATCH 路由）
   const handleToggleChapterAssign = async (e: React.MouseEvent, itemId: string) => {
     e.stopPropagation();
     if (!chapterId || !projectId || togglingId) return;
@@ -149,13 +143,12 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       if (!res.ok) throw new Error("更新登場狀態失敗");
     } catch (err) {
       console.error(err);
-      setAssignedIds(assignedIds); // 失敗時倒滾狀態
+      setAssignedIds(assignedIds);
     } finally {
       setTogglingId(null);
     }
   };
 
-  // 🎯 3. 失焦即時自動儲存表單欄位（方案 B：自動校正、背景創建組織、複數關聯與 Color #號補全）
   const handleSaveField = async (updatedContent: Record<string, any>) => {
     if (!detailItem || isSavingField) return;
 
@@ -168,7 +161,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         const rawItemAny = detailItem as any;
         const originalVal = rawItemAny.content?.[key] || rawItemAny[key];
 
-        // 🎯 1. 關聯角色 (relations) 物件陣列語意解析與 ID 更新
+        // 🎯 1. 關聯角色 (relations) 物件陣列語意解析與 UUID 精準對齊 (供 RelationGraph 連線使用)
         if (key === 'relations' && typeof rawVal === 'string') {
           const lines = rawVal
             .split(/[\n,，]/)
@@ -180,20 +173,24 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             const relationType = match && match[1] ? match[1].trim() : '關聯';
             const targetName = match && match[2] ? match[2].trim() : line.trim();
 
-            const matchedTarget = settings.find(
-              s => s.name.trim().toLowerCase() === targetName.toLowerCase() || s.id === targetName
+            const matchedTarget = settings.find(s => 
+              s.id === targetName || 
+              s.name?.trim().toLowerCase() === targetName.toLowerCase() ||
+              (s as any).title?.trim().toLowerCase() === targetName.toLowerCase()
             );
+
+            const realTargetId = matchedTarget ? matchedTarget.id : targetName;
+            const realTargetName = matchedTarget ? matchedTarget.name : targetName;
 
             return {
               type: relationType,
               relation: relationType,
-              targetId: matchedTarget ? matchedTarget.id : targetName,
-              targetName: targetName,
-              name: targetName
+              targetId: realTargetId,
+              targetName: realTargetName,
+              name: realTargetName
             };
           });
         }
-        // 🎯 2. 普通字串陣列型別還原（如 titles, abilities）
         else if (Array.isArray(originalVal) && typeof rawVal === 'string') {
           safeContent[key] = rawVal
             .split(/[\n,，]/)
@@ -201,7 +198,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             .filter(Boolean);
         }
 
-        // 🎯 3. 方案 B 核心：所屬勢力外鍵映射（組織名稱 -> 自動匹配或背景建立新組織）
         if ((key === 'faction' || key === 'alliances') && typeof rawVal === 'string' && rawVal.trim()) {
           const inputName = rawVal.trim();
           
@@ -240,7 +236,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
           }
         }
 
-        // 🎯 4. 色彩 Hex 格式自動校正 (補上 # 號)
         if (key === 'color' && typeof rawVal === 'string' && rawVal.trim()) {
           let hex = rawVal.trim();
           if (!hex.startsWith('#')) {
@@ -251,9 +246,11 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         }
       }
 
+      // 🎯 雙向掛載 relations，確保讀取根屬性的關係圖組件能直接取得連線資訊
       const updatedItem = {
         ...detailItem,
         content: safeContent,
+        relations: safeContent.relations || (detailItem as any).relations,
       };
 
       const res = await fetch(`/api/settings/${detailItem.id}`, {
@@ -267,7 +264,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       setSettings(prev => prev.map(item => item.id === detailItem.id ? (updatedItem as any) : item));
       setDetailItem(updatedItem as any);
 
-      // 背景同步 Popover 列表，讓自動建立的新組織立即出現在選單中
       fetchPopoverSettings();
     } catch (err) {
       console.error("即時儲存欄位出錯:", err);
@@ -276,7 +272,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   };
 
-  // 🎯 4. 過濾邏輯
   const filteredSettings = useMemo(() => {
     return settings.filter(item => {
       const query = searchQuery.toLowerCase().trim();
@@ -341,16 +336,16 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     color: '關係圖專屬色彩',
     hierarchy: '組織架構 / 階級',
     territory: '勢力範圍 / 領地',
+    sortWeight: '時序排序權重 (越小越早)',
   };
 
-  // 🎯 5. 渲染可編輯且對齊顯示的詳情欄位
   const renderDetailFields = (item: SettingItem) => {
     const content = editingContent;
     
     const excludeKeys = [
       'id', 'projectId', 'category', 'formType', 'type', 'versions', 
       'createdAt', 'updatedAt', 'name', 'title', 'deletedAt', 
-      'isChapterAssigned', 'isAssigned', 'chapters'
+      'isChapterAssigned', 'isAssigned', 'chapters', 'locationId',
     ];
 
     const entries = Object.entries(content).filter(([k]) => !excludeKeys.includes(k));
@@ -368,13 +363,11 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         }
       }
 
-      // 🎯 關聯格式化展示修復：優先顯字，若是 UUID 則拿 settings 進行反查
       let valStr = '';
       if (key === 'relations' && Array.isArray(displayValue)) {
         valStr = displayValue.map((r: any) => {
           if (typeof r === 'object' && r !== null) {
             const relType = r.type || r.relation || '關聯';
-            
             const rawTarget = r.targetName || r.name || r.targetId || '';
             const matchedChar = settings.find(s => s.id === rawTarget || s.name === rawTarget);
             const target = matchedChar ? matchedChar.name : (r.targetName || r.name || rawTarget || '未知');
@@ -408,7 +401,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             </button>
           </div>
 
-          {/* 🎯 色彩欄位特化 UI */}
           {key === 'color' ? (
             <div className="flex items-center gap-2">
               <input
@@ -435,7 +427,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
               />
             </div>
           ) : key === 'itemType' ? (
-            /* 🎯 物品類型下拉選單特化 UI */
             <select
               value={String(value || 'weapon')}
               onChange={(e) => {
@@ -494,7 +485,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       </PopoverTrigger>
 
       <PopoverContent align="end" className="flex flex-col max-h-[520px] h-[520px] overflow-hidden p-0 shadow-2xl rounded-2xl border-slate-200 w-[380px]">
-        
         {detailItem ? (
           <div className="flex flex-col h-full animate-in slide-in-from-right duration-200">
             <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
@@ -518,9 +508,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             </div>
           </div>
         ) : (
-
           <div className="flex flex-col h-full animate-in slide-in-from-left duration-200">
-            
             <div className="p-3 border-b border-slate-100 space-y-2 bg-slate-50/50">
               <input
                 type="text"
@@ -647,10 +635,8 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
                 </Link>
               )}
             </div>
-
           </div>
         )}
-
       </PopoverContent>
     </Popover>
   );

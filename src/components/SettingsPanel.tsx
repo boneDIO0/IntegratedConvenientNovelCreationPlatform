@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import SettingsSidebar from "@/components/SettingsSidebar";
 import CharacterForm from "@/components/CharacterForm";
 import RelationGraph from "@/components/RelationGraph"; 
-import { SettingItem } from "@/types"; // 🎯 對齊全域完全體型別引入
+import { SettingItem } from "@/types";
 import FactionForm from "@/components/FactionForm";
 import ItemForm from "@/components/ItemForm";
 import EventForm from "@/components/EventForm";
@@ -31,6 +31,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [globalAllSettings, setGlobalAllSettings] = useState<{ category: string; items: SettingItem[] }[]>([]);
   const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
   const [calendarConfig, setCalendarConfig] = useState<CalendarConfig | undefined>(undefined);
+  const [saveTick, setSaveTick] = useState(0);
 
   const [viewMode, setViewMode] = useState<'form' | 'graph' | 'timeline' | 'chapter_manager'>(
     chapterId ? 'chapter_manager' : 'form'
@@ -63,22 +64,20 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       }
 
       const dbEntity = await res.json();
-
       const dbContent = dbEntity.content && typeof dbEntity.content === 'object' ? dbEntity.content : {};
 
       const alignedItem = {
         ...dbEntity,
         ...dbContent, 
         name: dbEntity.title || dbEntity.name,
-        category: dbContent.category || dbEntity.category || 'custom', // 還原型別定錨
+        category: dbContent.category || dbEntity.category || 'custom',
         content: dbEntity.content
       };
 
       alert("🎉 項目已成功還原至該歷史存檔點！");
 
+      setSelectedItem(alignedItem);
       await fetchSettings();
-      setSelectedItem(alignedItem); 
-
     } catch (error: any) {
       console.error("🔴 還原執行中斷:", error);
       alert(`⚠️ 還原失敗: ${error.message || "未知錯誤"}`);
@@ -173,7 +172,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const listRes = await fetch(listUrl);
       if (listRes.ok) {
         const listData = await listRes.json();
-        setSettingsData(listData); // 背景默默更新側邊欄清單
+        setSettingsData(listData);
       }
       
       if (selectedItem) {
@@ -187,17 +186,14 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         const currentContent = (selectedItem as any).content || {};
         const currentVersions = Array.isArray(currentContent.versions) ? currentContent.versions : [];
 
-        // 如果資料庫裡的版本數量，比手上版本數量多，代表有人存檔
         if (dbVersions.length > currentVersions.length) {
           const latestVersion = dbVersions[dbVersions.length - 1];
           
-          // 檢查是不是自己存的
           const isUpdatedByMe = 
             session?.user?.id && 
             latestVersion?.authorId && 
             latestVersion.authorId === session.user.id;
 
-          // 不是自己存的就觸發橫幅提醒
           if (!isUpdatedByMe) {
             setExternalUpdate({
               authorName: latestVersion?.authorName || '其他協作者',
@@ -211,7 +207,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-  // 每 30 秒執行一次靜默輪詢
   useEffect(() => {
     if (!isEditable) return;
     const interval = setInterval(() => {
@@ -220,7 +215,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     return () => clearInterval(interval);
   }, [projectId, chapterId, selectedItem, isEditable, session?.user?.id]);
 
-  // 處理使用者點擊載入最新版本
   const handleLoadExternalUpdate = () => {
     if (!externalUpdate?.latestData) return;
     const isSure = window.confirm("載入最新版本將會覆蓋您畫面上尚未存檔的變更，確定要載入嗎？");
@@ -285,41 +279,18 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
+  // 🎯 核心修復：精準更新 State，徹底杜絕 setTimeout 閉包覆蓋問題
   const handleUpdateItem = async (updatedItem: SettingItem) => {
     const userInput = window.prompt(
       "請為這次的設定存檔命名 (選填)：\n例如：新增魔法設定、更新外觀描述", 
       ""
     );
-    if (userInput === null) return; // 按下取消則中斷存檔
+    if (userInput === null) return;
     const versionName = userInput.trim() !== "" ? userInput.trim() : null;
 
-    // 1. 強指定錨當前分類，阻斷非同步回彈
+    // 先行樂觀更新
     setSelectedItem(updatedItem);
     setHasChanges(false);
-
-    setSettingsData(prevData => {
-      return prevData.map(group => {
-        if (group.items.some(i => i.id === updatedItem.id)) {
-          return {
-            ...group,
-            items: group.items.map(item => item.id === updatedItem.id ? updatedItem : item)
-          };
-        }
-        return group;
-      });
-    });
-
-    setGlobalAllSettings(prevGlobal => {
-      return prevGlobal.map(group => {
-        if (group.items.some(i => i.id === updatedItem.id)) {
-          return {
-            ...group,
-            items: group.items.map(item => item.id === updatedItem.id ? updatedItem : item)
-          };
-        }
-        return group;
-      });
-    });
 
     try {
       const res = await fetch(`/api/settings/${updatedItem.id}`, {
@@ -336,18 +307,30 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const alignedUpdatedItem = {
         ...latestEntityFromDB,
         ...dbContent, 
-        category: updatedItem.category, // 🌟 核心防禦：強制鎖定前端轉生分類，不使用後端目錄覆蓋值
+        category: updatedItem.category || dbContent.category || 'custom',
         name: latestEntityFromDB.title || latestEntityFromDB.name || updatedItem.name,
-        content: latestEntityFromDB.content 
+        content: latestEntityFromDB.content,
+        updatedAt: new Date().toISOString() // 確保生成全新時間戳記更新 key
       };
 
-      // 🎯 採取時序分流：先徹底更新好當前選取的 Form 狀態，再回頭 fetch 背景大陣列
+      // 1. 立即設定最新的真理源
       setSelectedItem(alignedUpdatedItem);
-      
-      setTimeout(async () => {
-        await fetchSettings();
-        setSelectedItem(alignedUpdatedItem); // 二次鎖定
-      }, 100);
+      setSaveTick(prev => prev + 1);
+
+      // 2. 本地立即更新側邊欄，無需等待非同步 fetch 回彈
+      setSettingsData(prevData =>
+        prevData.map(group => ({
+          ...group,
+          items: group.items.map(item => item.id === alignedUpdatedItem.id ? alignedUpdatedItem : item)
+        }))
+      );
+
+      setGlobalAllSettings(prevGlobal =>
+        prevGlobal.map(group => ({
+          ...group,
+          items: group.items.map(item => item.id === alignedUpdatedItem.id ? alignedUpdatedItem : item)
+        }))
+      );
 
     } catch (error) {
       console.error("雲端同步出錯:", error);
@@ -498,7 +481,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     );
   }
 
-  // 輔助函式：用來將分類對齊中文字串做雙向匹配
   const checkCategoryMatch = (groupName: string, type: string) => {
     const gName = groupName.toLowerCase();
     const tName = type.toLowerCase();
@@ -511,10 +493,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     return false;
   };
 
-return (
-    <div className="flex h-screen w-full bg-slate-50 md:flex-row flex-col overflow-hidden">
-      {/* 🎯 左側：獨立固定目錄側邊欄 - 加裝 flex-shrink-0，不論右方內容多長，絕對不准縮水變窄！ */}
-      <aside className="w-full md:w-80 flex-shrink-0 border-r border-slate-200 bg-white p-4 overflow-y-auto hidden md:block">
+  return (
+    <div className="flex h-full w-full bg-slate-50 md:flex-row flex-col overflow-hidden">
+      <aside className="w-full md:w-80 h-full flex-shrink-0 border-r border-slate-200 bg-white p-4 pb-20 overflow-y-auto hidden md:block">
         <SettingsSidebar 
           data={settingsData}
           onSelect={(item) => {
@@ -533,10 +514,10 @@ return (
         />
       </aside>
 
-      {/* 🎯 右側主舞台：包含上方導覽與下方雙欄區 - 使用 min-w-0 隔絕任何內部溢出撐開 */}
+      {/* 🎯 右側主舞台 */}
       <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-8 flex flex-col h-full">
         <div className="mx-auto w-full max-w-5xl flex-1 flex flex-col h-full min-w-0">
-          {/* 別人更新了內容的提示橫幅 */}
+          
           {externalUpdate && (
             <div className="bg-amber-100 text-amber-800 px-6 py-2.5 flex items-center justify-between text-sm shadow-sm border border-amber-200 rounded-lg mb-4 animate-in slide-in-from-top duration-300 shrink-0">
               <div className="flex items-center gap-2 font-medium">
@@ -560,7 +541,7 @@ return (
             </div>
           )}
 
-          {/* 上方導覽控制列 */}
+          {/* 上方導覽列 */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4 flex-shrink-0 w-full min-w-0">
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-slate-800 truncate">
@@ -601,18 +582,14 @@ return (
                           body: JSON.stringify(updated),
                         });
 
-                        setTimeout(async () => {
-                          await fetchSettings(); 
-                          setSelectedItem(updated);
-                        }, 150);
-
+                        setSelectedItem(updated);
                       } catch (error) {
                         console.error("轉生表單失敗:", error);
                       }
         
                       setHasChanges(true);
                     }}
-                    className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:hover:border-slate-200"
+                    className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                   >
                     <option value="character">👤 人物表單</option>
                     <option value="faction">🏛️ 組織表單</option>
@@ -681,14 +658,13 @@ return (
             </div>
           </div>
           
-          {/* 🎯 下方核心展示大容器：加入 gap 與 w-full min-w-0，開啟雙欄硬抗擠壓防禦 */}
+          {/* 下方核心表單展示區 */}
           <div className={`flex-1 w-full min-w-0 ${
             viewMode === 'chapter_manager' 
               ? 'flex flex-col gap-6' 
               : 'flex md:flex-row flex-col gap-6 items-start'
           }`}>
             
-            {/* 🎯 左大區：中央編輯表單主舞台 - 灌入 flex-1 min-w-0，允許內文有 LaTeX 公式時在內部安全寬度內渲染，決不向外撐爆父層！ */}
             <div className="flex-1 min-w-0 h-full">
                {viewMode === 'timeline' ? (
                   <TimelineView 
@@ -700,81 +676,80 @@ return (
                 ) : viewMode === 'graph' ? (
                     <RelationGraph allSettings={globalAllSettings} highlightedIds={highlightedIds} onNodeSelect={handleNodeSelectFromGraph} />
                 ) : viewMode === 'chapter_manager' ? (
-                    /* 🌟 核心修正：加入 w-full 與 max-w-5xl，使其與上方控制列完美對齊且置中 */
                     <div className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
                       <div className="flex items-start justify-between border-b border-slate-100 pb-4 flex-shrink-0">
                         <div>
                           <h3 className="text-2xl font-bold text-slate-900 mb-1">🎬 本章登場設定管理</h3>
-                        <p className="text-sm text-slate-500">
-                          勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏。
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setSelectedItem(null);
-                          const firstItem = settingsData.flatMap(g => g.items)[0];
-                          if (firstItem) {
-                            setSelectedItem(firstItem);
-                            setViewMode('form');
-                            setHasChanges(false);
-                          } else {
-                            setViewMode('form'); 
-                          }
-                        }}
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg shadow-sm transition-all whitespace-nowrap"
-                      >
-                        ✨ 完成配置
-                      </button>
-                    </div>
-
-                    <div className="space-y-6 flex-1 overflow-y-auto pr-1">
-                      {globalAllSettings.map((group) => (
-                        <div key={group.category} className="space-y-3 min-w-0"> {/* 🌟 補上 min-w-0 */}
-                          <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
-                            {group.category}
-                          </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
-                            {group.items.map((item) => {
-                              const isAssigned = settingsData
-                                .flatMap((g) => g.items)
-                                .some((i) => i.id === item.id);
-
-                              return (
-                                <label 
-                                  key={item.id} 
-                                  className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none min-w-0 ${
-                                    isAssigned 
-                                      ? 'border-blue-500 bg-blue-50/40 shadow-sm' 
-                                      : 'border-slate-200 bg-white hover:border-slate-300'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                      item.category === 'character' ? 'bg-blue-500' : 
-                                      item.category === 'faction' ? 'bg-orange-500' : 
-                                      item.category === 'location' ? 'bg-blue-600' : 
-                                      'bg-emerald-500'
-                                    }`} />
-                                    <span className="text-sm font-semibold text-slate-800 truncate block">
-                                      {item.name}
-                                    </span>
-                                  </div>
-                                  <input 
-                                    type="checkbox"
-                                    checked={isAssigned}
-                                    disabled={!isEditable}
-                                    onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
-                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0 ml-2"
-                                  />
-                                </label>
-                              );
-                            })}
-                          </div>
+                          <p className="text-sm text-slate-500">
+                            勾選下方項目以將角色、組織或道具拉入本章快捷側邊欄。未勾選的項目將在寫作時隱藏。
+                          </p>
                         </div>
-                      ))}
+                        <button
+                          onClick={() => {
+                            setSelectedItem(null);
+                            const firstItem = settingsData.flatMap(g => g.items)[0];
+                            if (firstItem) {
+                              setSelectedItem(firstItem);
+                              setViewMode('form');
+                              setHasChanges(false);
+                            } else {
+                              setViewMode('form'); 
+                            }
+                          }}
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg shadow-sm transition-all whitespace-nowrap"
+                        >
+                          ✨ 完成配置
+                        </button>
+                      </div>
+
+                      <div className="space-y-6 flex-1 overflow-y-auto pr-1">
+                        {globalAllSettings.map((group) => (
+                          <div key={group.category} className="space-y-3 min-w-0">
+                            <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
+                              {group.category}
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+                              {group.items.map((item) => {
+                                const isAssigned = settingsData
+                                  .flatMap((g) => g.items)
+                                  .some((i) => i.id === item.id);
+
+                                return (
+                                  <label 
+                                    key={item.id} 
+                                    className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none min-w-0 ${
+                                      isAssigned 
+                                        ? 'border-blue-500 bg-blue-50/40 shadow-sm' 
+                                        : 'border-slate-200 bg-white hover:border-slate-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                        item.category === 'character' ? 'bg-blue-500' : 
+                                        item.category === 'faction' ? 'bg-orange-500' : 
+                                        item.category === 'location' ? 'bg-blue-600' : 
+                                        'bg-emerald-500'
+                                      }`} />
+                                      <span className="text-sm font-semibold text-slate-800 truncate block">
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                    <input 
+                                      type="checkbox"
+                                      checked={isAssigned}
+                                      disabled={!isEditable}
+                                      onChange={(e) => handleToggleSettingToChapter(item.id, e.target.checked)}
+                                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0 ml-2"
+                                    />
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-               ) : selectedItem ? (
+                ) : selectedItem ? (
                   <fieldset 
                     disabled={!isEditable}
                     className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-8 shadow-sm overflow-x-auto"
@@ -804,7 +779,7 @@ return (
                       <>
                         {selectedItem.category === 'character' && (
                           <CharacterForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
                             item={selectedItem}
                             onSave={handleUpdateItem}
                             allSettings={globalAllSettings}
@@ -815,7 +790,7 @@ return (
 
                         {selectedItem.category === 'faction' && (
                           <FactionForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
                             item={selectedItem}
                             allSettings={globalAllSettings} 
                             onSave={handleUpdateItem}
@@ -825,7 +800,7 @@ return (
 
                         {selectedItem.category === 'item' && (
                           <ItemForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
                             item={selectedItem}
                             allSettings={globalAllSettings} 
                             onSave={handleUpdateItem}
@@ -835,7 +810,7 @@ return (
 
                         {selectedItem.category === 'event' && (
                           <EventForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
                             item={selectedItem}
                             calendarConfig={calendarConfig}
                             allSettings={globalAllSettings}
@@ -846,7 +821,7 @@ return (
 
                         {selectedItem.category === 'location' && (
                           <LocationForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`}
+                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
                             item={selectedItem}
                             allSettings={globalAllSettings}
                             onSave={handleUpdateItem}
@@ -856,7 +831,7 @@ return (
 
                         {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event', 'location'].includes(selectedItem.category)) && (
                           <DynamicForm 
-                            key={`${selectedItem.id}-${selectedItem.category}-${(selectedItem as any).content?.versions?.length || 0}`} 
+                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`} 
                             item={selectedItem} 
                             onSave={handleUpdateItem} 
                           />
@@ -864,7 +839,7 @@ return (
                       </>
                     )}
                   </fieldset>
-               ) : (
+                ) : (
                   <div className="w-full flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 min-h-[400px] bg-slate-50/30 gap-4">
                     <span className="text-slate-400 font-medium">請從左側目錄選擇一個項目，或點擊右上角檢視全局視圖</span>
                     {isEditable && globalAllSettings.length === 0 && !chapterId && (
@@ -876,10 +851,10 @@ return (
                       </button>
                     )}
                   </div>
-               )}
+                )}
             </div>
 
-            {/* 🎯 右小區：獨立時光機歷史面板 - 焊死 w-80 flex-shrink-0 雙保險，無論左邊公式推擠力道多強，在此處絕對不動如山！ */}
+            {/* 🎯 右側時光機歷史面板 */}
             {isLocalHistoryOpen && selectedItem && (
               <aside className="w-80 flex-shrink-0 border-l border-slate-200 bg-white p-4 overflow-y-auto flex flex-col h-full max-h-[calc(100vh-160px)] animate-in slide-in-from-right duration-200 shadow-sm rounded-xl">
                 <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2 flex-shrink-0">
@@ -937,7 +912,6 @@ return (
                                 🗑️
                               </button>
 
-                              {/* 存檔作者的資訊 */}
                               <div className="flex justify-between items-start mb-2 pr-6">
                                 <div className="flex items-center gap-1.5">
                                   {authorImage ? (
@@ -992,12 +966,12 @@ return (
           </div>
         </div>
       </main>
+      
       {isImportModalOpen && (
         <ImportSettingsModal
           currentProjectId={projectId}
           onClose={() => setIsImportModalOpen(false)}
           onSuccess={() => {
-            // 匯入成功後，重新拉取最新資料，Sidebar 與畫面會瞬間同步！
             fetchSettings(); 
           }}
         />
