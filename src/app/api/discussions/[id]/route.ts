@@ -144,8 +144,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
             return NextResponse.json({ status: "error", message: "Forbidden: 只有本人或管理員可以刪除留言" }, { status: 403 });
         }
 
-        await prisma.projectMessages.delete({
-            where: { id: messageId }
+        await prisma.$transaction(async (tx) => {
+            // 把所有回覆該留言的子留言之 referenceId 設為 null
+            await tx.projectMessages.updateMany({
+                where: { referencedMessageId: messageId },
+                data: { referencedMessageId: null }
+            });
+            await tx.projectMessages.delete({
+                where: { id: messageId }
+            });
         });
 
         return NextResponse.json({ status: "success", message: '留言刪除成功' }, { status: 200 });

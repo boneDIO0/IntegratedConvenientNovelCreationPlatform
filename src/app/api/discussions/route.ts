@@ -32,25 +32,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ status: "error", message: "無權限查看此專案的留言" }, { status: 403 });
     }
 
-    const messages = await prisma.projectMessages.findMany({
-      where: { projectId: projectId, channelId: channelId },
-      orderBy: { createdAt: 'asc' }, // 舊的在上面，新的在下面
-      include: {
-        users: {
-          select: { name: true, image: true }
-        },
-        projectMessages: { 
-          select: {
-            id: true,
-            content: true,
-            users: { select: { name: true } }
+    const [messages, project, chapter] = await Promise.all([
+      prisma.projectMessages.findMany({
+        where: { projectId: projectId, channelId: channelId },
+        orderBy: { createdAt: 'asc' }, 
+        include: {
+          users: { select: { name: true, image: true } },
+          projectMessages: { 
+            select: {
+              id: true,
+              content: true,
+              users: { select: { name: true } }
+            }
           }
         }
+      }),
+      prisma.project.findUnique({
+        where: { id: projectId },
+        select: { title: true }
+      }),
+      channelId !== 'general' 
+        ? prisma.chapter.findUnique({
+            where: { id: channelId },
+            select: { title: true }
+          })
+        : Promise.resolve(null)
+    ]);
+
+    return NextResponse.json({ 
+      status: "success", 
+      data: messages,
+      meta: {
+        projectTitle: project?.title || '未知作品',
+        chapterTitle: chapter?.title || null // 如果是 null 代表是在 general 總討論區
       }
-    });
-
-    return NextResponse.json({ status: "success", data: messages }, { status: 200 });
-
+    }, { status: 200 });
   } catch (error) {
     return handleApiError(error, "讀取留言過程發生錯誤");
   }
@@ -145,7 +161,7 @@ export async function POST(request: Request) {
         type: 'MENTION' as const,
         projectId: body.projectId,
         targetId: newMessage.id,
-        message: `${actorName} 在《${projectName}》的討論區提到了你`,
+        message: `${actorName} 在《${projectName}》的討論區提到了你：「${body.content}」`,
         link: linkUrl
       }));
 

@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
+import { GripVertical } from 'lucide-react'
 
 interface Chapter {
   id: string;
   title: string;
   updatedAt: string;
   status?: string; 
+  orderIndex: number;
 }
 
 export default function ChapterListPage() {
@@ -51,7 +54,8 @@ export default function ChapterListPage() {
       if (!res.ok) throw new Error("讀取失敗")
       const data = await res.json()
       setNovelTitle(data.novelTitle)
-      setChapters(data.chapters)
+      const sortedChapters = (data.chapters || []).sort((a: Chapter, b: Chapter) => a.orderIndex - b.orderIndex)
+      setChapters(sortedChapters)
     } catch (error) {
       console.error(error)
     } finally {
@@ -79,6 +83,58 @@ export default function ChapterListPage() {
       alert("新增章節失敗")
     }
   }
+
+  // 處理章節拖曳結束的邏輯
+  const handleDragEnd = async (result: DropResult) => {
+    const { destination, source } = result;
+
+    // 如果沒有拖曳到有效區域，或位置沒變，直接返回
+    if (!destination || destination.index === source.index) return;
+
+    // 先在前端移動陣列位置
+    const newChapters = Array.from(chapters);
+    const [movedChapter] = newChapters.splice(source.index, 1);
+    newChapters.splice(destination.index, 0, movedChapter);
+
+    // 演算法：計算新的 orderIndex (Fractional Indexing)
+    const prevChapter = newChapters[destination.index - 1];
+    const nextChapter = newChapters[destination.index + 1];
+
+    let newOrderIndex = 0;
+    
+    if (!prevChapter && nextChapter) {
+      // 移到最上面
+      newOrderIndex = nextChapter.orderIndex - 100;
+    } else if (prevChapter && !nextChapter) {
+      // 移到最下面
+      newOrderIndex = prevChapter.orderIndex + 100;
+    } else if (prevChapter && nextChapter) {
+      // 移到兩個章節中間：取平均值
+      newOrderIndex = (prevChapter.orderIndex + nextChapter.orderIndex) / 2;
+    } else {
+      // 只有一個章節的極端情況
+      newOrderIndex = 100;
+    }
+
+    // 更新剛拖曳的章節的 orderIndex，並更新畫面
+    movedChapter.orderIndex = newOrderIndex;
+    setChapters(newChapters);
+
+    try {
+      await fetch(`/api/projects/${novelId}/chapters/reorder`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chapterId: movedChapter.id,
+          newOrderIndex: newOrderIndex
+        })
+      });
+    } catch (error) {
+      console.error("排序儲存失敗", error);
+      alert("排序同步失敗，請重新整理頁面。");
+      fetchData(); // 失敗的話把畫面洗回資料庫的真實狀態
+    }
+  };
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center text-slate-500 font-medium">載入中...</div>
@@ -159,23 +215,54 @@ export default function ChapterListPage() {
               </button>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {chapters.map((chapter) => (
-                <div 
-                  key={chapter.id}
-                  className="p-5 hover:bg-slate-50 transition-colors flex justify-between items-center cursor-pointer group"
-                  onClick={() => router.push(`/novel_list/${novelId}/editor/${chapter.id}`)}
-                >
-                  <span className="font-medium text-slate-700 group-hover:text-blue-600 transition-colors">
-                    {chapter.title}
-                  </span>
-                  
-                  <div>
-                    {renderStatusBadge(chapter.status)}
+            <DragDropContext onDragEnd={handleDragEnd}>
+              <Droppable droppableId="chapters-list">
+                {(provided) => (
+                  <div 
+                    {...provided.droppableProps} 
+                    ref={provided.innerRef}
+                    className="divide-y divide-slate-100"
+                  >
+                    {chapters.map((chapter, index) => (
+                      <Draggable key={chapter.id} draggableId={chapter.id} index={index}>
+                        {(provided, snapshot) => (
+                          <div 
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            style={provided.draggableProps.style as React.CSSProperties}
+                            className={`p-3 transition-colors flex justify-between items-center group ${
+                              snapshot.isDragging ? 'bg-blue-50 shadow-lg ring-1 ring-blue-200' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 flex-1">
+                              <div 
+                                {...provided.dragHandleProps}
+                                className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing p-2"
+                              >
+                                <GripVertical size={18} />
+                              </div>
+                              
+                              {/* 點擊標題進入編輯器 */}
+                              <span 
+                                onClick={() => router.push(`/novel_list/${novelId}/editor/${chapter.id}`)}
+                                className="font-medium text-slate-700 group-hover:text-blue-600 transition-colors cursor-pointer flex-1 py-2"
+                              >
+                                {chapter.title}
+                              </span>
+                            </div>
+                            
+                            <div className="pl-4">
+                              {renderStatusBadge(chapter.status)}
+                            </div>
+                          </div>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
                   </div>
-                </div>
-              ))}
-            </div>
+                )}
+              </Droppable>
+            </DragDropContext>
           )}
         </div>
       </div>
