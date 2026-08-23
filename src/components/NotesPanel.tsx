@@ -288,6 +288,17 @@ export function NotesPanel({ projectId, isWidget = false, isEditable = true }: N
                           if (selectedNote?.id !== note.id && !confirmLeave()) return; // 攔截切換
                           setSelectedNote(note);
                           setExternalUpdate(null); 
+                          fetch(`/api/notes/${note.id}`)
+                            .then(res => res.json())
+                            .then(fullNote => {
+                               setSelectedNote(prev => ({
+                                  ...prev,
+                                  ...fullNote,
+                                  name: fullNote.title || fullNote.name,
+                                  content: fullNote.content
+                               }));
+                            })
+                            .catch(e => console.error("無法拉取完整筆記:", e));
                         }}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all truncate ${
                           selectedNote?.id === note.id 

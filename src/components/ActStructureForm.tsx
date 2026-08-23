@@ -33,18 +33,26 @@ export default function ActStructureForm({ item, onSave, onRefresh, onDirty, isE
   // 取出版本
   const versions = (item as any).versions || (item as any).content?.versions || [];
   
-  const [acts, setActs] = useState<Record<ActKey, Scene[]>>({
-    act1: [],
-    act2: [],
-    act3: []
+  const [acts, setActs] = useState<Record<ActKey, Scene[]>>(() => {
+    const possibleActs = (item as any).content?.acts || (item as any).acts;
+
+    if (possibleActs && Object.keys(possibleActs).length > 0) {
+      return possibleActs;
+    }
+    
+    return {
+      act1: [{ id: crypto.randomUUID(), content: "" }],
+      act2: [{ id: crypto.randomUUID(), content: "" }],
+      act3: [{ id: crypto.randomUUID(), content: "" }]
+    };
   });
 
   useEffect(() => {
     setTitle(item.name || "");
-    const existingContent = (item as any).content || {};
+    const possibleActs = (item as any).content?.acts || (item as any).acts;
     
-    if (existingContent.acts) {
-      setActs(existingContent.acts);
+    if (possibleActs && Object.keys(possibleActs).length > 0) {
+      setActs(possibleActs);
     } else {
       setActs({
         act1: [{ id: crypto.randomUUID(), content: "" }],
@@ -60,6 +68,20 @@ export default function ActStructureForm({ item, onSave, onRefresh, onDirty, isE
       ...prev,
       [actKey]: [...prev[actKey], { id: crypto.randomUUID(), content: "" }]
     }));
+    onDirty?.();
+  };
+
+  const handleInsertScene = (actKey: ActKey, insertAfterIndex: number) => {
+    if (!isEditable) return;
+    setActs(prev => {
+      const currentList = [...prev[actKey]];
+      // 在指定的 index 之後的位置 (index + 1)，插入一個全新的卡片
+      currentList.splice(insertAfterIndex + 1, 0, { id: crypto.randomUUID(), content: "" });
+      return {
+        ...prev,
+        [actKey]: currentList
+      };
+    });
     onDirty?.();
   };
 
@@ -202,47 +224,62 @@ export default function ActStructureForm({ item, onSave, onRefresh, onDirty, isE
 
             <div className="flex flex-col gap-3">
               {acts[actKey].map((scene, index) => (
-                <div key={scene.id} className="group flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 p-3 focus-within:ring-2 focus-within:ring-amber-400 transition-all hover:shadow-md">
+                <div key={scene.id} className="relative flex flex-col items-center">
                   
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-1.5 text-slate-400">
-                      <span className="text-[11px] font-bold tracking-wider">SCENE {index + 1}</span>
-                    </div>
-                    
-                    {isEditable && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => handleMoveScene(actKey, index, 'up')} 
-                          disabled={index === 0} 
-                          className="p-1 text-slate-400 hover:text-amber-600 disabled:opacity-30" 
-                          title="往上移動"
-                        >
-                          <ChevronUp size={16} />
-                        </button>
-                        <button 
-                          onClick={() => handleMoveScene(actKey, index, 'down')} 
-                          disabled={index === acts[actKey].length - 1} 
-                          className="p-1 text-slate-400 hover:text-amber-600 disabled:opacity-30" 
-                          title="往下移動"
-                        >
-                          <ChevronDown size={16} />
-                        </button>
-                        <div className="w-px h-3 bg-slate-200 mx-0.5"></div>
-                        <button onClick={() => handleDeleteScene(actKey, scene.id)} className="p-1 text-slate-400 hover:text-red-500" title="刪除場景">
-                          <Trash2 size={14} />
-                        </button>
+                  <div className="group flex flex-col bg-white w-full rounded-xl shadow-sm border border-slate-200 p-3 focus-within:ring-2 focus-within:ring-amber-400 transition-all hover:shadow-md z-10">
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-1.5 text-slate-400">
+                        <span className="text-[11px] font-bold tracking-wider">SCENE {index + 1}</span>
                       </div>
-                    )}
+                    
+                      {isEditable && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => handleMoveScene(actKey, index, 'up')} 
+                            disabled={index === 0} 
+                            className="p-1 text-slate-400 hover:text-amber-600 disabled:opacity-30" 
+                            title="往上移動"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handleMoveScene(actKey, index, 'down')} 
+                            disabled={index === acts[actKey].length - 1} 
+                            className="p-1 text-slate-400 hover:text-amber-600 disabled:opacity-30" 
+                            title="往下移動"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                          <div className="w-px h-3 bg-slate-200 mx-0.5"></div>
+                          <button onClick={() => handleDeleteScene(actKey, scene.id)} className="p-1 text-slate-400 hover:text-red-500" title="刪除場景">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <textarea
+                      value={scene.content}
+                      onChange={(e) => handleUpdateScene(actKey, scene.id, e.target.value)}
+                      disabled={!isEditable}
+                      placeholder={isEditable ? "描述這個場景發生的事情..." : "無內容"}
+                      className="w-full resize-none outline-none text-sm text-slate-700 bg-transparent min-h-[80px] leading-relaxed disabled:opacity-80 disabled:cursor-not-allowed"
+                      rows={4}
+                    />
                   </div>
 
-                  <textarea
-                    value={scene.content}
-                    onChange={(e) => handleUpdateScene(actKey, scene.id, e.target.value)}
-                    disabled={!isEditable}
-                    placeholder={isEditable ? "描述這個場景發生的事情..." : "無內容"}
-                    className="w-full resize-none outline-none text-sm text-slate-700 bg-transparent min-h-[80px] leading-relaxed disabled:opacity-80 disabled:cursor-not-allowed"
-                    rows={4}
-                  />
+                  {isEditable && (
+                    <div className="w-full h-3 flex items-center justify-center -my-1.5 z-20 opacity-0 hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleInsertScene(actKey, index)}
+                        className="bg-amber-100 text-amber-600 border border-amber-300 rounded-full p-1 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all shadow-sm"
+                        title="在此處插入新場景"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <div className="absolute w-full h-[1px] bg-amber-300 -z-10 left-0"></div>
+                    </div>
+                  )}
                 </div>
               ))}
 
