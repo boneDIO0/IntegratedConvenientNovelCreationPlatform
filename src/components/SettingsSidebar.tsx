@@ -1,7 +1,7 @@
 'use client'
 
 import { Plus, Trash2, Pencil, Check, X, FolderPlus, Globe } from "lucide-react"; // 🌟 引入 Globe 圖示
-import { SettingItem } from "@/lib/mockSettings";
+import { SettingItem } from '@/types';
 import { useState } from "react";
 import { useEditorUI } from "@/contexts/EditorUIContext";
 
