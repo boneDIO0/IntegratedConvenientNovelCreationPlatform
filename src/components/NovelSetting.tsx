@@ -8,10 +8,11 @@ export interface NovelSettingProps {
   mode: 'create' | 'edit';
   initialTitle?: string;
   initialCoverUrl?: string;
+  initialDescription?: string;
   initialStatus?: string; // 📍 新增：用來接收小說當前的狀態
   onClose: () => void;
-  // 📍 更新：送出時一併把新狀態傳出去
-  onSubmit: (title: string, file: File | null, status?: string) => Promise<void>; 
+  // 送出小說名稱、封面、作品簡介與狀態
+  onSubmit: (title: string, file: File | null, description: string, status?: string) => Promise<void>; 
 }
 
 export default function NovelSetting({ 
@@ -19,6 +20,7 @@ export default function NovelSetting({
   mode, 
   initialTitle = '', 
   initialCoverUrl = '', 
+  initialDescription = '',
   initialStatus = 'DRAFT',
   onClose, 
   onSubmit 
@@ -26,6 +28,7 @@ export default function NovelSetting({
   const [title, setTitle] = useState('')
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
+  const [description, setDescription] = useState('')
   const [status, setStatus] = useState('DRAFT') // 📍 新增內部狀態
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -34,10 +37,11 @@ export default function NovelSetting({
       setTitle(initialTitle)
       setCoverFile(null)
       setCoverPreview(initialCoverUrl || null)
+      setDescription(initialDescription || '')
       setStatus(initialStatus || 'DRAFT')
       setIsSubmitting(false)
     }
-  }, [isOpen, initialTitle, initialCoverUrl, initialStatus])
+  }, [isOpen, initialTitle, initialCoverUrl, initialDescription, initialStatus])
 
   if (!isOpen) return null
 
@@ -56,7 +60,7 @@ export default function NovelSetting({
     }
     setIsSubmitting(true)
     try {
-      await onSubmit(title, coverFile, status) // 📍 送出時帶上 status
+      await onSubmit(title, coverFile, description, status)
       onClose()
     } catch (error) {
       console.error(error)
@@ -71,8 +75,15 @@ export default function NovelSetting({
   const showCompletedCheckbox = !isCreate && initialStatus !== 'DRAFT'
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={!isSubmitting ? onClose : undefined}>
-      <div className="bg-white p-8 rounded-2xl w-[400px] shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-[1100] bg-black/50 p-4 overflow-y-auto"
+      onClick={!isSubmitting ? onClose : undefined}
+    >
+      <div className="min-h-full flex items-center justify-center">
+        <div
+          className="bg-white p-8 rounded-2xl w-[400px] max-w-full max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain shadow-2xl"
+          onClick={e => e.stopPropagation()}
+        >
         <h2 className="text-2xl font-bold mb-6 text-gray-800">
           {isCreate ? '新增小說' : '小說設定'}
         </h2>
@@ -88,6 +99,17 @@ export default function NovelSetting({
               placeholder="輸入你的偉大書名..."
               autoFocus
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">作品簡介</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full min-h-28 border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all resize-y"
+              placeholder="簡單介紹故事背景、主角或作品特色..."
+            />
+            <p className="text-xs text-gray-400 mt-1">公開作品頁與作品卡片會顯示這段簡介。</p>
           </div>
 
           <div>
@@ -146,6 +168,7 @@ export default function NovelSetting({
           >
             {isSubmitting ? '處理中...' : '儲存'}
           </button>
+        </div>
         </div>
       </div>
     </div>

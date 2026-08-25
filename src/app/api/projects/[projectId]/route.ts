@@ -23,14 +23,38 @@ export async function PATCH(
     // 1. 解析 FormData，支援封面圖片上傳
     const formData = await request.formData()
     const title = formData.get('title') as string
+    const descriptionValue = formData.get('description')
     const coverFile = formData.get('cover') as File | null
+    const status = formData.get('status')
 
     if (!title) {
       return NextResponse.json({ error: '標題不能為空' }, { status: 400 })
     }
 
-    // 準備要更新的資料物件
-    const updateData: { title: string; coverUrl?: string } = { title }
+    // 小說狀態只接受 Prisma ProjectStatus 中定義的值，避免任意字串寫入資料庫。
+    const validStatuses = ['DRAFT', 'SERIALIZING', 'COMPLETED'] as const
+    type ProjectStatusValue = (typeof validStatuses)[number]
+
+    if (status !== null && (typeof status !== 'string' || !validStatuses.includes(status as ProjectStatusValue))) {
+      return NextResponse.json({ error: '無效的小說狀態' }, { status: 400 })
+    }
+
+    // 準備要更新的資料物件。前端送來 status 時一併寫入，讓「標記為已完結」真正生效。
+    const updateData: {
+      title: string
+      description?: string | null
+      coverUrl?: string
+      status?: ProjectStatusValue
+    } = { title }
+
+    // 只有前端真的送出 description 時才更新，避免其他 PATCH 呼叫意外把既有簡介清空。
+    if (typeof descriptionValue === 'string') {
+      updateData.description = descriptionValue.trim() || null
+    }
+
+    if (typeof status === 'string') {
+      updateData.status = status as ProjectStatusValue
+    }
 
     // 2. 如果有上傳「新」封面，就存入 Vercel Blob 並更新網址
     if (coverFile && coverFile.size > 0) { // 加上 size > 0 防止傳入空物件檔案
