@@ -47,18 +47,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   const [editingContent, setEditingContent] = useState<Record<string, any>>({});
   const [isSavingField, setIsSavingField] = useState(false);
 
-  // 🌟 1. 監聽全域選取：打開 Popover 並直接定位到該設定詳情
-  useEffect(() => {
-    if (selectedSettingItem) {
-      setDetailItem(selectedSettingItem);
-      const content = (selectedSettingItem as any).content && typeof (selectedSettingItem as any).content === 'object'
-        ? (selectedSettingItem as any).content
-        : selectedSettingItem;
-      setEditingContent({ ...content });
-      setIsOpen(true);
-    }
-  }, [selectedSettingItem]);
-
   useEffect(() => {
     if (detailItem) {
       const content = (detailItem as any).content && typeof (detailItem as any).content === 'object'
