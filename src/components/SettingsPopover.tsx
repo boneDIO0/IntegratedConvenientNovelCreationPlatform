@@ -161,7 +161,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         const rawItemAny = detailItem as any;
         const originalVal = rawItemAny.content?.[key] || rawItemAny[key];
 
-        // 🎯 1. 關聯角色 (relations) 物件陣列語意解析與 UUID 精準對齊 (供 RelationGraph 連線使用)
         if (key === 'relations' && typeof rawVal === 'string') {
           const lines = rawVal
             .split(/[\n,，]/)
@@ -246,7 +245,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         }
       }
 
-      // 🎯 雙向掛載 relations，確保讀取根屬性的關係圖組件能直接取得連線資訊
       const updatedItem = {
         ...detailItem,
         content: safeContent,
@@ -298,7 +296,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
 
   const ITEM_TYPE_OPTIONS = [
     { value: 'weapon', label: '常規武器' },
-    { value: 'relic', label: '古代遺物 / 聖物' },
+    { value: 'artifact', label: '古代遺物 / 聖物' },
     { value: 'consumable', label: '消耗品' },
     { value: 'skill', label: '特殊技能' },
     { value: 'custom', label: '其他 / 自訂' },
@@ -331,21 +329,28 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     effect: '效果 / 功能',
     itemType: '物品類型',
     resonanceEffect: '共鳴效果 / 特殊機制',
-    climate: '氣候特徵',
+    climate: '風土氣候設定',
     geography: '地理環境',
     color: '關係圖專屬色彩',
     hierarchy: '組織架構 / 階級',
     territory: '勢力範圍 / 領地',
     sortWeight: '時序排序權重 (越小越早)',
+    parentId: '隸屬大分區',
   };
+
+  const allLocations = useMemo(() => {
+    return settings.filter(s => s.category === 'location' || (s as any).type === 'location');
+  }, [settings]);
 
   const renderDetailFields = (item: SettingItem) => {
     const content = editingContent;
-    
+    const isLocation = item.category === 'location' || (item as any).type === 'location';
     const excludeKeys = [
       'id', 'projectId', 'category', 'formType', 'type', 'versions', 
       'createdAt', 'updatedAt', 'name', 'title', 'deletedAt', 
-      'isChapterAssigned', 'isAssigned', 'chapters', 'locationId',
+      'isChapterAssigned', 'isAssigned', 'chapters',
+      'locationId',
+      ...(isLocation ? ['color', 'territory', 'leader', 'hierarchy'] : [])
     ];
 
     const entries = Object.entries(content).filter(([k]) => !excludeKeys.includes(k));
@@ -376,6 +381,9 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
           }
           return `• ${r}`;
         }).join('\n');
+      } else if (key === 'parentId' && typeof displayValue === 'string') {
+        const foundParent = allLocations.find(loc => loc.id === displayValue);
+        valStr = foundParent ? foundParent.name || foundParent.title || displayValue : displayValue;
       } else if (Array.isArray(displayValue)) {
         valStr = displayValue.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
       } else if (typeof displayValue === 'object' && displayValue !== null) {
@@ -428,7 +436,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
             </div>
           ) : key === 'itemType' ? (
             <select
-              value={String(value || 'weapon')}
+              value={String(value || 'artifact')}
               onChange={(e) => {
                 const nextContent = { ...editingContent, [key]: e.target.value };
                 setEditingContent(nextContent);
@@ -441,6 +449,27 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
                   {opt.label}
                 </option>
               ))}
+            </select>
+          ) : key === 'parentId' ? (
+            /* 🎯 隸屬大分區：渲染為地點下拉選單 */
+            <select
+              value={String(value || '')}
+              onChange={(e) => {
+                const nextVal = e.target.value || undefined;
+                const nextContent = { ...editingContent, [key]: nextVal };
+                setEditingContent(nextContent);
+                handleSaveField(nextContent);
+              }}
+              className="w-full text-xs text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-blue-400 rounded-lg px-2 py-1.5 focus:outline-none transition-all font-medium cursor-pointer"
+            >
+              <option value="">-- 獨立大分區 (無上級) --</option>
+              {allLocations
+                .filter(loc => loc.id !== item.id)
+                .map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    🏰 {loc.name || loc.title}
+                  </option>
+                ))}
             </select>
           ) : isMultiLine ? (
             <textarea
