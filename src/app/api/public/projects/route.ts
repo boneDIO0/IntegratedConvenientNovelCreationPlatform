@@ -1,34 +1,98 @@
 import { NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 
-export async function GET() {
+const DEFAULT_PAGE_SIZE = 20
+const MAX_PAGE_SIZE = 20
+
+function getPaginationParams(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const requestedPage = Number.parseInt(searchParams.get('page') ?? '1', 10)
+  const requestedLimit = Number.parseInt(searchParams.get('limit') ?? String(DEFAULT_PAGE_SIZE), 10)
+
+  return {
+    page: Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    limit: Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, MAX_PAGE_SIZE)
+      : DEFAULT_PAGE_SIZE,
+  }
+}
+
+export async function GET(request: Request) {
   try {
-    // 撈出所有允許公開的小說
-    const publicProjects = await prisma.project.findMany({
-      where: {
-        // 📍 核心過濾：只抓連載中或已完結的，排除 DRAFT (未公開)
-        status: {
-          in: ['SERIALIZING', 'COMPLETED']
-        },
-        // 排除掉已經被丟進垃圾桶的
-        deletedAt: null 
+    const { page, limit } = getPaginationParams(request)
+    const where: Prisma.ProjectWhereInput = {
+      status: {
+        in: ['SERIALIZING', 'COMPLETED'],
       },
-      // 📍 關聯抓取：把作者 (owner) 的基本資訊一起帶出來給大廳顯示
-      include: {
+      deletedAt: null,
+      // 即使舊資料的作品狀態尚未同步，只要沒有公開章節就不應曝光。
+      chapters: {
+        some: {
+          status: 'PUBLISHED',
+          deletedAt: null,
+        },
+      },
+    }
+
+    const getPublicProjects = (targetPage: number) => prisma.project.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        publishedAt: true,
+        coverUrl: true,
+        description: true,
+        status: true,
         owner: {
           select: {
             name: true,
-            image: true, 
-          }
-        }
+            image: true,
+          },
+        },
+        chapters: {
+          where: {
+            status: 'PUBLISHED',
+            deletedAt: null,
+            publishedAt: { not: null },
+          },
+          orderBy: { publishedAt: 'asc' },
+          select: { publishedAt: true },
+          take: 1,
+        },
       },
-      // 排序：預設先用建立時間由新到舊排 (未來你可以改成用 viewCount 或 publishedAt 排)
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { publishedAt: 'desc' },
+      skip: (targetPage - 1) * limit,
+      take: limit,
     })
 
-    return NextResponse.json(publicProjects)
+    // 計算總頁數與讀取卡片彼此獨立，因此同時執行以避免兩次資料庫等待相加。
+    const [total, requestedPageProjects] = await Promise.all([
+      prisma.project.count({ where }),
+      getPublicProjects(page),
+    ])
+    const totalPages = Math.max(1, Math.ceil(total / limit))
+    const currentPage = Math.min(page, totalPages)
+    const publicProjects = currentPage === page
+      ? requestedPageProjects
+      : await getPublicProjects(currentPage)
+
+    const projectsWithFirstChapterDate = publicProjects
+      .map(({ chapters, ...project }) => ({
+        ...project,
+        publishedAt: chapters[0]?.publishedAt ?? null,
+      }))
+
+    return NextResponse.json({
+      items: projectsWithFirstChapterDate,
+      pagination: {
+        page: currentPage,
+        limit,
+        total,
+        totalPages,
+      },
+    })
 
   } catch (error) {
     console.error("Public Projects GET Error:", error)
