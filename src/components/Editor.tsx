@@ -9,9 +9,11 @@ import { useEditorUI } from '@/contexts/EditorUIContext'
 import { useRouter } from 'next/navigation'
 import AssistantChat from './AssistantChat'
 import { NotesPanel } from '@/components/NotesPanel'
+import { SelectionSettingsTooltip } from '@/components/SelectionSettingsTooltip'
+import { SettingItem } from '@/types'
 import 'katex/dist/katex.min.css'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
-import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb, ExternalLink, Download } from 'lucide-react'
+import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb, ExternalLink, Download, X } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 
 interface EditorProps {
@@ -30,13 +32,65 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   const forceUpdate = useCallback(() => setTick(tick => tick + 1), [])
   const [saveStatus, setSaveStatus] = useState('已儲存')
   const [chapterStatus, setChapterStatus] = useState(initialStatus)
-  const [isOnline, setIsOnline] = useState(true) // 📍 追蹤網路狀態
-  const { data: session } = useSession(); // 取得當前使用者，用來判斷最新存檔是不是自己存的
-  const [externalUpdate, setExternalUpdate] = useState<{ authorName: string } | null>(null); // 存放外部更新者的資訊
-  const knownLatestVersionRef = useRef<string | null>(null); // 記錄目前已知的最新版本 ID
+  const [isOnline, setIsOnline] = useState(true)
+  const { data: session } = useSession();
+  const [externalUpdate, setExternalUpdate] = useState<{ authorName: string } | null>(null);
+  const knownLatestVersionRef = useRef<string | null>(null);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  const [allSettings, setAllSettings] = useState<SettingItem[]>([]);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+
+  const {
+    versions,
+    latestRestoredContent,
+    setLatestRestoredContent,
+    fetchVersions,
+    previewVersion,
+    setPreviewVersion,
+    selectedSettingItem,
+    setSelectedSettingItem,
+    openSettingDetail
+  } = useEditorUI()
+
+  // 載入設定集資料
+  useEffect(() => {
+    if (!novelId) return;
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch(`/api/settings?projectId=${novelId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const extractItems = (obj: any): SettingItem[] => {
+          if (!obj) return [];
+          if (Array.isArray(obj)) {
+            return obj.flatMap(item => extractItems(item));
+          }
+          if (typeof obj === 'object') {
+            // 如果物件本身就是 SettingItem (具備 id 與 name)
+            if (obj.id && (obj.name || obj.title)) {
+              return [obj];
+            }
+            // 若為包含清單的容器群組
+            const list = obj.items || obj.entities || obj.settingItems || obj.data || obj.groups || obj.settingGroups;
+            if (Array.isArray(list)) {
+              return list.flatMap(item => extractItems(item));
+            }
+          }
+          return [];
+        };
+
+        const flatList = extractItems(data);
+        setAllSettings(flatList);
+      } catch (err) {
+        console.error("載入設定集供編輯器反查失敗:", err);
+      }
+    };
+    fetchSettings();
+  }, [novelId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -48,19 +102,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // 🌟 從 EditorUIContext 取出預覽與歷史版本相關 State
-  const {
-    versions,
-    latestRestoredContent,
-    setLatestRestoredContent,
-    fetchVersions,
-    previewVersion,
-    setPreviewVersion
-  } = useEditorUI()
-
-  // 🌟 暫存進入預覽前的草稿內容與標題
   const draftBackupRef = useRef<{ title: string; content: any } | null>(null)
-
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const LOCAL_STORAGE_KEY = `editor_draft_${novelId}_${chapterId}`
 
@@ -78,12 +120,10 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
       forceUpdate()
     },
     onUpdate: ({ editor }) => {
-      // 🌟 在預覽模式下不觸發打字暫存
       if (previewVersion) return;
 
       setSaveStatus('編輯中...')
 
-      // 📍 機制 1：打字停頓 3 秒後，存入 LocalStorage
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
 
       typingTimeoutRef.current = setTimeout(() => {
@@ -97,14 +137,12 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     }
   })
 
-  // 🌟 1. 核心邏輯：監聽 previewVersion（切換歷史版本預覽模式）
   useEffect(() => {
     if (!editor) return
 
     const titleInput = document.getElementById('doc-title') as HTMLInputElement
 
     if (previewVersion) {
-      // 進入預覽：先將當前未存檔的標題與草稿內容備份起來
       if (!draftBackupRef.current) {
         draftBackupRef.current = {
           title: titleInput ? titleInput.value : initialTitle,
@@ -112,28 +150,24 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         }
       }
 
-      // 切換編輯器內容為預覽版本的 JSON 內容，並鎖定為唯讀
       editor.commands.setContent(previewVersion.content || {})
       editor.setEditable(false)
 
     } else {
-      // 退出預覽：還原備份的草稿內容與標題，並解鎖編輯權限
       if (draftBackupRef.current) {
         editor.commands.setContent(draftBackupRef.current.content)
         if (titleInput) {
           titleInput.value = draftBackupRef.current.title
         }
-        draftBackupRef.current = null // 清空備份
+        draftBackupRef.current = null
       }
 
-      // 恢復為原先傳入的權限 (isEditable)
       editor.setEditable(isEditable)
     }
   }, [previewVersion, editor, isEditable, initialTitle])
 
-  // 📍 機制 2：每 3 分鐘自動從 LocalStorage 撈取最新資料，靜默存入 DB
   useEffect(() => {
-    if (!isEditable || previewVersion) return; // 🌟 預覽模式下跳過自動存檔
+    if (!isEditable || previewVersion) return;
 
     const autoSaveInterval = setInterval(async () => {
       if (!navigator.onLine || isSaving || !editor) return;
@@ -169,9 +203,8 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     return () => clearInterval(autoSaveInterval)
   }, [editor, isSaving, novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY, previewVersion])
 
-  // 📍 機制 3：監聽使用者「切換分頁」或「關閉網頁」的瞬間
   useEffect(() => {
-    if (!isEditable || previewVersion) return; // 🌟 預覽模式下不執行離線 keepalive
+    if (!isEditable || previewVersion) return;
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden' && navigator.onLine) {
@@ -206,7 +239,6 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     };
   }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY, previewVersion]);
 
-  // 📍 機制 4：監聽網路斷線與重連狀態
   useEffect(() => {
     if (typeof window === 'undefined' || !isEditable) return;
 
@@ -258,47 +290,38 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     };
   }, [novelId, chapterId, chapterStatus, isEditable, LOCAL_STORAGE_KEY]);
 
-  // 📍 機制 5：輕量級 Polling (每 20 秒拉取一次最新歷史版本)
   useEffect(() => {
-    if (!isEditable || previewVersion) return; // 預覽或唯讀時不需 polling
+    if (!isEditable || previewVersion) return;
 
     const pollingInterval = setInterval(() => {
       if (navigator.onLine) {
-        fetchVersions(novelId, chapterId); // 背景默默更新側邊欄的版本清單
+        fetchVersions(novelId, chapterId);
       }
-    }, 20 * 1000); // 20秒檢查一次
+    }, 20 * 1000);
 
     return () => clearInterval(pollingInterval);
   }, [isEditable, previewVersion, novelId, chapterId, fetchVersions]);
 
-
-  // 📍 機制 6：比對最新版本，偵測是否被其他人更新
   useEffect(() => {
     if (versions.length > 0) {
       const latest = versions[0];
 
-      // 第一次載入時，純粹記錄基準點，不觸發通知
       if (!knownLatestVersionRef.current) {
         knownLatestVersionRef.current = latest.id;
         return;
       }
 
-      // 發現新版本！
       if (latest.id !== knownLatestVersionRef.current) {
-        // 如果這個新版本「不是」當前使用者存的
         if (session?.user?.id && latest.authorId !== session.user.id) {
           setExternalUpdate({
             authorName: latest.author?.name || '其他協作者'
           });
         }
-        // 更新基準點，避免重複觸發
         knownLatestVersionRef.current = latest.id;
       }
     }
   }, [versions, session?.user?.id]);
 
-
-  // 🌟 處理：當使用者點擊「載入最新版本」
   const handleLoadExternalUpdate = async () => {
     if (!editor) return;
     if (!confirm("載入最新版本將會覆蓋您畫面上尚未存檔的內容，確定要載入嗎？")) return;
@@ -308,12 +331,10 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
       if (res.ok) {
         const data = await res.json();
         
-        // 替換畫面內容與標題
         editor.commands.setContent(data.content || {});
         const titleInput = document.getElementById('doc-title') as HTMLInputElement;
         if (titleInput && data.title) titleInput.value = data.title;
         
-        // 清除提示並重置本地暫存
         setExternalUpdate(null);
         localStorage.removeItem(LOCAL_STORAGE_KEY);
         setSaveStatus('● 已載入最新進度');
@@ -324,20 +345,19 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
     }
   };
 
-  // 🌟 2. 監聽還原特定版本成功
   useEffect(() => {
     if (editor && latestRestoredContent) {
       editor.commands.setContent(latestRestoredContent)
-      draftBackupRef.current = null // 清除預覽前的備份
-      setPreviewVersion(null)        // 自動關閉預覽模式
-      editor.setEditable(isEditable) // 恢復編輯狀態
+      draftBackupRef.current = null
+      setPreviewVersion(null)
+      editor.setEditable(isEditable)
       setLatestRestoredContent(null)
       setSaveStatus('● 已還原版本並儲存')
     }
   }, [latestRestoredContent, editor, setLatestRestoredContent, isEditable, setPreviewVersion])
 
   const handleSave = useCallback(async (newStatus?: string) => {
-    if (!editor || isSaving || previewVersion) return // 🌟 預覽模式下禁止儲存
+    if (!editor || isSaving || previewVersion) return
 
     if (!navigator.onLine) {
       alert('目前處於離線狀態，請等網路恢復後再儲存喔！\n（別擔心，您的進度已安全暫存在瀏覽器中）');
@@ -437,7 +457,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
   return (
     <div className="flex flex-col w-full h-full bg-[#f8f9fa] overflow-hidden relative">
 
-      {/* 🌟【歷史版本預覽 Banner 提示條】 */}
+      {/* 歷史版本預覽 Banner 提示條 */}
       {previewVersion && (
         <div className="bg-purple-600 text-white px-6 py-2.5 flex items-center justify-between text-sm shadow-md z-40 animate-in slide-in-from-top duration-200 shrink-0">
           <div className="flex items-center gap-2">
@@ -451,7 +471,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
 
           <button
             onClick={() => setPreviewVersion(null)}
-            className="flex items-center gap-1.5 bg-white text-purple-700 hover:bg-purple-50 font-medium px-3 py-1 rounded-lg text-xs transition-colors shadow-sm"
+            className="flex items-center gap-1.5 bg-white text-purple-700 hover:bg-purple-50 font-medium px-3 py-1 rounded-lg text-xs transition-colors shadow-sm cursor-pointer"
           >
             <EyeOff className="w-3.5 h-3.5" />
             退出預覽
@@ -459,7 +479,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         </div>
       )}
 
-      {/* 別人更新了內容的提示 Banner */}
+      {/* 協作者更新提示 Banner */}
       {externalUpdate && !previewVersion && (
         <div className="bg-amber-100 text-amber-800 px-6 py-2.5 flex items-center justify-between text-sm shadow-md z-40 border-b border-amber-200 animate-in slide-in-from-top duration-300 shrink-0">
           <div className="flex items-center gap-2 font-medium">
@@ -469,13 +489,13 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           <div className="flex items-center gap-3">
             <button
               onClick={() => setExternalUpdate(null)}
-              className="text-amber-600 hover:text-amber-800 text-xs font-semibold transition-colors"
+              className="text-amber-600 hover:text-amber-800 text-xs font-semibold transition-colors cursor-pointer"
             >
               先不要 (保留我的)
             </button>
             <button
               onClick={handleLoadExternalUpdate}
-              className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm text-xs"
+              className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm text-xs cursor-pointer"
             >
               載入最新版本
             </button>
@@ -492,7 +512,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
               <button
                 type="button"
                 onClick={() => setIsNotesOpen(!isNotesOpen)}
-                className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all border ${
+                className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all border cursor-pointer ${
                   isNotesOpen 
                     ? 'bg-amber-100 border-amber-200 text-amber-700 shadow-inner' 
                     : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-amber-500'
@@ -564,7 +584,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                 <button
                   onClick={() => handleSave(chapterStatus === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED')}
                   disabled={editor.isEmpty || isSaving || !isOnline}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed border ${
+                  className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed border cursor-pointer ${
                     chapterStatus === 'PUBLISHED'
                       ? 'bg-white text-red-500 border-red-200 hover:bg-red-50'
                       : 'bg-emerald-500 text-white border-transparent hover:bg-emerald-600'
@@ -576,7 +596,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                 <button
                   onClick={() => handleSave()}
                   disabled={editor.isEmpty || isSaving || !isOnline}
-                  className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
+                  className="px-5 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
                 >
                   {isSaving ? '處理中...' : '儲存草稿'}
                 </button>
@@ -586,7 +606,7 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             <div className="relative ml-2" ref={exportMenuRef}>
               <button
                 onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                className={`flex items-center justify-center w-9 h-9 rounded-lg transition-colors shadow-sm border ${
+                className={`flex items-center justify-center w-9 h-9 rounded-lg transition-colors shadow-sm border cursor-pointer ${
                   isExportMenuOpen 
                     ? 'bg-slate-200 border-slate-300 text-slate-700' 
                     : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-600'
@@ -636,14 +656,14 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
         )}
       </div>
 
-      <div className="flex flex-1 w-full overflow-hidden">
+      <div className="flex flex-1 w-full overflow-hidden relative">
         {isNotesOpen && (
           <div className="w-[320px] shrink-0 border-r border-gray-200 bg-white shadow-[4px_0_15px_rgba(0,0,0,0.03)] z-20 animate-in slide-in-from-left duration-300 flex flex-col h-full relative">
             <NotesPanel projectId={novelId} isWidget={true} isEditable={isEditable} />
             <div className="mt-auto p-4 border-t border-amber-100 bg-amber-50/50 shrink-0">
               <button
                 onClick={() => window.open(`/novel_list/${novelId}/notes`, '_blank')}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-amber-200 rounded-xl text-amber-700 text-sm font-bold shadow-sm hover:bg-amber-100 hover:border-amber-300 transition-all group"
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-amber-200 rounded-xl text-amber-700 text-sm font-bold shadow-sm hover:bg-amber-100 hover:border-amber-300 transition-all group cursor-pointer"
               >
                 <span>展開全域故事大綱</span> 
                 <ExternalLink size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
@@ -651,11 +671,188 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             </div>
           </div>
         )}
-        <div className="flex-1 w-full overflow-y-auto bg-[#f8f9fa] flex flex-col items-center px-4 custom-scrollbar">
+
+        {/* 編輯器容器與選取懸浮卡片 */}
+        <div 
+          ref={editorContainerRef} 
+          className="flex-1 w-full overflow-y-auto bg-[#f8f9fa] flex flex-col items-center px-4 custom-scrollbar relative"
+        >
           <div className="w-full max-w-[816px] h-auto shrink-0 bg-white border border-gray-200 shadow-[0_4px_25px_rgba(0,0,0,0.04)] p-[60px] min-h-[1100px] rounded-2xl my-10 transition-all">
             <EditorContent editor={editor} />
           </div>
+
+          <SelectionSettingsTooltip 
+            allSettings={allSettings}
+            containerRef={editorContainerRef}
+            onOpenDetail={(item) => {
+              openSettingDetail({ ...item });
+            }}
+          />
         </div>
+
+        {/* 🌟 編輯器內部直連抽屜：自動整合 root 屬性與 content 物件，並將 UUID 智慧轉為中文名稱 */}
+        {selectedSettingItem && (() => {
+          const item = selectedSettingItem as any;
+          
+          const mergedContent: Record<string, any> = {
+            ...(item.content && typeof item.content === 'object' ? item.content : {}),
+            ...item
+          };
+
+          const excludeKeys = [
+            'id', 'projectId', 'category', 'formType', 'type', 'versions',
+            'createdAt', 'updatedAt', 'name', 'title', 'deletedAt',
+            'isChapterAssigned', 'isAssigned', 'chapters', 'content',
+            'selectedEraName', 'sortWeight', 'matchScore'
+          ];
+
+          const FIELD_LABEL_MAP: Record<string, string> = {
+            description: '詳細說明',
+            summary: '摘要說明',
+            notes: '備註與註記',
+            date: '發生時間',
+            location: '發生地點',
+            relations: '關聯角色 / 要素',
+            participants: '參與人員',
+            impact: '影響與結果',
+            titles: '頭銜 / 稱號',
+            aliases: '別名 / 別稱',
+            age: '年齡',
+            gender: '性別',
+            identity: '身分',
+            appearance: '外貌特徵',
+            personality: '性格特點',
+            background: '背景故事',
+            abilities: '能力 / 技能',
+            alliances: '所屬組織',
+            faction: '所屬勢力',
+            leader: '首領 / 領導者',
+            headquarters: '據點 / 總部',
+            goals: '組織目標',
+            rarity: '稀有度',
+            owner: '持有者',
+            effect: '效果 / 功能',
+            itemType: '物品類型',
+            resonanceEffect: '共鳴效果 / 特殊機制',
+            climate: '風土氣候設定',
+            geography: '地理環境',
+            color: '關係圖專屬色彩',
+            hierarchy: '組織架構 / 階級',
+            territory: '勢力範圍 / 領地',
+            parentId: '隸屬大分區',
+          };
+
+          // 🎯 通用名稱反查函式
+          const resolveSettingName = (val: any): string => {
+            if (!val) return '';
+            const str = String(val).trim();
+            if (!str) return '';
+
+            // 1. 比對 ID 或 Name
+            const matched = allSettings.find(s => {
+              const sAny = s as any;
+              const sContent = sAny.content || {};
+              return (
+                s.id === str ||
+                s.name?.trim().toLowerCase() === str.toLowerCase() ||
+                sAny.title?.trim().toLowerCase() === str.toLowerCase() ||
+                sContent.name?.trim().toLowerCase() === str.toLowerCase() ||
+                sContent.title?.trim().toLowerCase() === str.toLowerCase()
+              );
+            });
+
+            if (matched) {
+              const mAny = matched as any;
+              return matched.name || mAny.title || mAny.content?.name || mAny.content?.title || str;
+            }
+
+            return str;
+          };
+
+          const validEntries = Object.entries(mergedContent).filter(([k, v]) => {
+            if (excludeKeys.includes(k)) return false;
+            if (v === undefined || v === null || v === '') return false;
+            if (Array.isArray(v) && v.length === 0) return false;
+            return true;
+          });
+
+          return (
+            <aside className="fixed right-0 top-14 h-[calc(100vh-56px)] w-96 bg-white border-l border-slate-200 z-50 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded shrink-0">
+                    {item.category?.toUpperCase() || 'SETTING'}
+                  </span>
+                  <h3 className="font-bold text-slate-800 truncate">
+                    {item.name || item.title || "未命名設定"}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setSelectedSettingItem(null)}
+                  className="p-1 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {validEntries.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs py-12">
+                    尚無更詳細的屬性設定
+                  </div>
+                ) : (
+                  validEntries.map(([key, value]) => {
+                    const label = FIELD_LABEL_MAP[key] || key;
+                    let displayVal = value;
+
+                    // 🎯 1. 反查組織、陣營、地點
+                    if (['faction', 'alliances', 'parentId', 'locationId'].includes(key)) {
+                      displayVal = resolveSettingName(value);
+                    }
+
+                    // 🎯 2. 反查關聯人名
+                    else if (key === 'relations' && Array.isArray(value)) {
+                      displayVal = value.map((r: any) => {
+                        if (typeof r === 'object' && r !== null) {
+                          const relType = r.type || r.relation || '關聯';
+                          const rawTarget = r.targetId || r.targetName || r.name || '';
+                          const targetName = resolveSettingName(rawTarget) || '未知目標';
+                          return `• [${relType}] ${targetName}`;
+                        }
+                        return `• ${resolveSettingName(r)}`;
+                      }).join('\n');
+                    } else if (Array.isArray(value)) {
+                      displayVal = value.map(v => typeof v === 'string' ? resolveSettingName(v) : JSON.stringify(v)).join(', ');
+                    } else if (typeof value === 'object' && value !== null) {
+                      displayVal = JSON.stringify(value, null, 2);
+                    }
+
+                    return (
+                      <div key={key} className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-1">
+                        <span className="text-[11px] font-bold text-slate-500">{label}</span>
+                        <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-line font-medium">
+                          {String(displayVal)}
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="p-3 border-t border-slate-100 bg-slate-50 shrink-0">
+                <a
+                  href={`/novel_list/${novelId}/settings`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-1.5 w-full py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-blue-600 hover:bg-blue-50 transition-all shadow-sm"
+                >
+                  <span>在後台完整編輯</span>
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            </aside>
+          );
+        })()}
       </div>
 
       {isEditable && !previewVersion && <AssistantChat projectId={novelId} />}

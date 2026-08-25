@@ -1,11 +1,12 @@
 // src/components/SettingsPopover.tsx
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { SettingItem } from "@/types";
+import { useEditorUI } from "@/contexts/EditorUIContext";
 
 interface SettingsPopoverProps {
   projectId?: string;
@@ -28,6 +29,8 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   const projectId = propProjectId || (params?.novelId as string) || (params?.projectId as string);
   const chapterId = propChapterId || (params?.chapterId as string);
 
+  const { selectedSettingItem, setSelectedSettingItem } = useEditorUI();
+
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<SettingItem[]>([]);
@@ -44,6 +47,18 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   const [editingContent, setEditingContent] = useState<Record<string, any>>({});
   const [isSavingField, setIsSavingField] = useState(false);
 
+  // 🌟 1. 監聽全域選取：打開 Popover 並直接定位到該設定詳情
+  useEffect(() => {
+    if (selectedSettingItem) {
+      setDetailItem(selectedSettingItem);
+      const content = (selectedSettingItem as any).content && typeof (selectedSettingItem as any).content === 'object'
+        ? (selectedSettingItem as any).content
+        : selectedSettingItem;
+      setEditingContent({ ...content });
+      setIsOpen(true);
+    }
+  }, [selectedSettingItem]);
+
   useEffect(() => {
     if (detailItem) {
       const content = (detailItem as any).content && typeof (detailItem as any).content === 'object'
@@ -53,11 +68,8 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   }, [detailItem]);
 
-  const fetchPopoverSettings = async () => {
-    if (!projectId) {
-      console.warn("SettingsPopover 缺少 projectId，取消請求");
-      return;
-    }
+  const fetchPopoverSettings = useCallback(async () => {
+    if (!projectId) return;
 
     try {
       setLoading(true);
@@ -87,7 +99,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       const initialAssigned = new Set<string>();
       flatItems.forEach((item: any) => {
         const isAssignedFlag = item.isChapterAssigned || item.isAssigned;
-        
         const hasChapterRelation = Array.isArray(item.chapters) && item.chapters.some((c: any) => {
           if (typeof c === 'string') return c === chapterId;
           return c.id === chapterId;
@@ -103,16 +114,18 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, chapterId]);
 
-  useEffect(() => {
-    if (isOpen) {
+  // 🌟 2. 只有在手動打開且「不是」由外部指定跳轉詳情時，才重設狀態
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
       fetchPopoverSettings();
     } else {
       setDetailItem(null);
       setSearchQuery('');
     }
-  }, [isOpen]);
+  };
 
   const handleToggleChapterAssign = async (e: React.MouseEvent, itemId: string) => {
     e.stopPropagation();
@@ -284,6 +297,10 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       const isAssigned = assignedIds.has(item.id);
       const matchesCategory = activeTab === 'all' || item.category === activeTab;
 
+      if (query) {
+        return matchesCategory && matchesQuery;
+      }
+
       return isAssigned && matchesCategory && matchesQuery;
     });
   }, [settings, activeTab, searchQuery, assignedIds]);
@@ -451,7 +468,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
               ))}
             </select>
           ) : key === 'parentId' ? (
-            /* 🎯 隸屬大分區：渲染為地點下拉選單 */
             <select
               value={String(value || '')}
               onChange={(e) => {
@@ -502,7 +518,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   };
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -518,7 +534,10 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
           <div className="flex flex-col h-full animate-in slide-in-from-right duration-200">
             <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <button
-                onClick={() => setDetailItem(null)}
+                onClick={() => {
+                  setDetailItem(null);
+                  setSelectedSettingItem(null);
+                }}
                 className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
               >
                 ← 返回列表

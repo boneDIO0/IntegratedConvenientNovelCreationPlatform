@@ -1,6 +1,7 @@
 import RoleInitializer from "@/components/RoleInitializer";
 import Navbar from "@/components/Navbar";
 import { verifyProjectAccess } from "@/lib/auth-utils";
+import { EditorUIProvider } from "@/contexts/EditorUIContext"; // 🌟 1. 引入全域 Context Provider
 
 export default async function NovelLayout({ 
   children, 
@@ -9,25 +10,25 @@ export default async function NovelLayout({
   children: React.ReactNode;
   params: Promise<{ novelId: string }>
 }) {
-  // 解開 Promise 拿到真實的 novelId 字串
   const resolvedParams = await params;
   const novelId = resolvedParams.novelId;
   
-  // 查詢並取得權限
   const auth = await verifyProjectAccess(novelId, ['OWNER', 'EDITOR', 'VIEWER']);
   const userRole = auth.isAuthorized && auth.role ? auth.role.toLowerCase() : 'viewer';
 
   return (
-    <div className="flex h-screen flex-col">
-      {/* 呼叫隱形注入器，把伺服器查到的權限塞進全域 Context */}
-      <RoleInitializer serverRole={userRole} />
+    // 🌟 2. 將整個作品區塊包進 EditorUIProvider
+    <EditorUIProvider>
+      <div className="flex h-screen flex-col">
+        {/* 注入伺服器權限到 Context */}
+        <RoleInitializer serverRole={userRole} />
 
-      <Navbar projectId={novelId} role={userRole} />
-      
-      {/* 渲染原本的 Client Component (page.tsx) */}
-      <main className="flex-1 overflow-auto bg-slate-50 relative">
-        {children}
-      </main>
-    </div>
+        <Navbar projectId={novelId} role={userRole} />
+        
+        <main className="flex-1 overflow-auto bg-slate-50 relative">
+          {children}
+        </main>
+      </div>
+    </EditorUIProvider>
   );
 }

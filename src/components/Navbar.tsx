@@ -1,7 +1,7 @@
 "use client"
 
 import { useParams } from "next/navigation"
-import { History, ChevronDown, BookOpenCheck, Users, Bell, Check, MessageSquare, ExternalLink } from "lucide-react" // 引入漂亮的圖示
+import { History, ChevronDown, BookOpenCheck, Users, Bell, Check, MessageSquare, ExternalLink } from "lucide-react"
 
 import * as React from "react"
 import { signIn, signOut, useSession } from "next-auth/react"
@@ -11,10 +11,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-import { useOverlay } from "@/contexts/OverlayContext"
 import { useRouter, usePathname } from "next/navigation"
 import { useEditorUI } from "@/contexts/EditorUIContext"
-import { SettingsPopover } from "@/components/SettingsPopover"
 import { DiscussionBoard } from "@/components/DiscussionBoard"
 import ManageMembersModal from "@/components/ManageMembersModal"
 
@@ -28,15 +26,12 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
 
   const { activeOverlay, setActiveOverlay, fetchVersions } = useEditorUI()
 
-  // 🌟 1. 偵測目前在哪個頁面
   const isEditorPage = pathname?.includes('/editor');
-  // 如果網址包含 /novel_list/ 且不是編輯器，且不是首頁(/novel_list)，那就是章節列表頁
   const isChapterListPage = pathname?.startsWith('/novel_list/') && !isEditorPage && pathname !== '/novel_list';
   
   const currentNovelId = (isEditorPage || isChapterListPage) ? pathname.split('/')[2] : null;
 
   const [menuOpen, setMenuOpen] = React.useState(false)
-
   const [discussionOpen, setDiscussionOpen] = React.useState(false)
   const discussionRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -50,7 +45,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const { data: session, status } = useSession()
 
-  // 獲取通知資料
   const fetchNotifications = async () => {
     if (status !== 'authenticated') return;
     try {
@@ -65,7 +59,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
     }
   }
 
-  // 點擊單筆通知：標記已讀並跳轉
   const handleNotificationClick = async (notif: any) => {
     if (!notif.isRead) {
       try {
@@ -74,7 +67,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ notificationId: notif.id })
         });
-        // 樂觀更新 UI
         setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
         setUnreadCount(prev => Math.max(0, prev - 1));
       } catch (e) {
@@ -88,7 +80,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
     }
   }
 
-  // 全部標記為已讀
   const handleMarkAllAsRead = async () => {
     try {
       await fetch('/api/notifications', {
@@ -103,11 +94,11 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
     }
   }
 
-  // 登入後自動抓一次通知
   React.useEffect(() => {
     fetchNotifications();
   }, [status]);
 
+  // 🌟 修正：將 discussionOpen 加入點擊外部監聽的依賴項
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -126,16 +117,15 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [menuOpen, notificationsOpen])
+  }, [menuOpen, notificationsOpen, discussionOpen])
 
   return (
     <>
       <nav className="sticky top-0 z-60 w-full border-b border-border/70 bg-white/95 shadow-sm shadow-slate-200/40 backdrop-blur">
         <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           
-          {/* 左側區塊：Logo + 宇宙切換 + 返回按鈕 */}
+          {/* 左側區塊 */}
           <div className="flex items-center gap-4 md:gap-6">
-            {/* Logo (現在可以點擊回首頁/大廳了) */}
             <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-slate-50 text-slate-900 shadow-sm">
                 <BookOpenCheck className="h-5 w-5" />
@@ -145,7 +135,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
               </div>
             </Link>
             
-            {/* 🌟 宇宙切換樞紐 (探索大廳 vs 創作後台) */}
             <div className="hidden md:flex items-center gap-5 border-l border-slate-200 pl-6 h-8">
               <Link 
                 href="/explore" 
@@ -163,7 +152,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                 className={cn(
                   "text-sm font-medium transition-colors hover:text-slate-900",
                   pathname?.startsWith("/novel_list") 
-                    ? "text-blue-600 border-b-2 border-blue-600 pb-1" // 📍 這裡！把原本的 purple 統一換成 blue
+                    ? "text-blue-600 border-b-2 border-blue-600 pb-1" 
                     : "text-slate-500"
                 )}
               >
@@ -171,12 +160,11 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
               </Link>
             </div>
             
-            {/* 麵包屑返回按鈕 */}
             <div className="ml-2 flex items-center">
               {isEditorPage && (
                 <button 
                   onClick={() => router.back()}
-                  className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors"
+                  className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors cursor-pointer"
                 >
                   ← 返回章節列表
                 </button>
@@ -184,7 +172,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
               {isChapterListPage && (
                 <button 
                   onClick={() => router.back()}
-                  className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors"
+                  className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors cursor-pointer"
                 >
                   ← 返回作品庫
                 </button>
@@ -192,7 +180,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
             </div>   
           </div>
 
-          {/* 右側區塊：使用者選單與工具列*/}
+          {/* 右側區塊 */}
           <div className="flex items-center gap-3">
             {status !== "authenticated" ? (
               pathname !== '/login' && (
@@ -206,7 +194,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                   <>
                     <button 
                       onClick={() => setIsMemberModalOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                       title={role?.toUpperCase() === 'OWNER' ? "管理專案成員" : "檢視成員名單"}
                     >
                       <Users className="h-4 w-4" />
@@ -224,7 +212,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                           setNotificationsOpen(false);
                         }} 
                         className={cn(
-                          "px-3 py-1 rounded transition-colors duration-200 text-sm flex items-center gap-1",
+                          "px-3 py-1 rounded transition-colors duration-200 text-sm flex items-center gap-1 cursor-pointer",
                           discussionOpen 
                             ? "bg-slate-700 hover:bg-slate-800 text-white" 
                             : "bg-blue-100 hover:bg-blue-200 text-blue-700" 
@@ -237,7 +225,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
 
                       {discussionOpen && (
                         <div className="absolute right-0 top-full mt-2 w-80 md:w-[420px] rounded-2xl border border-border/80 bg-white shadow-xl shadow-slate-200/50 z-[100] flex flex-col overflow-hidden">
-                          {/* 頂部標題 */}
                           <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between shrink-0">
                             <span className="font-bold text-slate-800 flex items-center gap-2">
                               <MessageSquare size={16} className="text-blue-500" />
@@ -274,6 +261,8 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                     </div>
                   </>
                 )}
+
+                {/* 🌟 編輯器專屬：歷史紀錄與設定集 Popover */}
                 {isEditorPage && (
                   <div className="flex items-center gap-2 mr-4 border-r pr-4">
                     <button
@@ -286,7 +275,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                         }
                       }}
                       className={cn(
-                        "px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium",
+                        "px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium cursor-pointer",
                         activeOverlay === 'version'
                           ? "bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
                           : "bg-purple-50 hover:bg-purple-100 text-purple-700"
@@ -297,26 +286,21 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                       <span>歷史紀錄</span>
                     </button>
 
-                    <SettingsPopover 
-                      projectId={(currentNovelId || safeProjectId) as string} 
-                      chapterId={chapterId} 
-                    />
-                    </div>
-                  )}
+                  </div>
+                )}
 
-                  {/* 通知小鈴鐺區塊 */}
+                {/* 通知小鈴鐺 */}
                 <div ref={notifRef} className="relative flex items-center mr-1">
                   <button
                     type="button"
                     onClick={() => {
                       setNotificationsOpen(!notificationsOpen);
-                      if (!notificationsOpen) fetchNotifications(); // 每次打開時刷新一次
-                      setMenuOpen(false); // 確保 User 選單關閉
+                      if (!notificationsOpen) fetchNotifications();
+                      setMenuOpen(false);
                     }}
-                    className="relative p-2 text-slate-500 hover:text-slate-900 transition-colors rounded-full hover:bg-slate-100"
+                    className="relative p-2 text-slate-500 hover:text-slate-900 transition-colors rounded-full hover:bg-slate-100 cursor-pointer"
                   >
                     <Bell size={20} />
-                    {/* 紅點 Badge */}
                     {unreadCount > 0 && (
                       <span className="absolute top-1 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white ring-2 ring-white">
                         {unreadCount > 99 ? '99+' : unreadCount}
@@ -324,7 +308,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                     )}
                   </button>
 
-                  {/* 通知下拉選單 */}
                   {notificationsOpen && (
                     <div className="absolute right-0 top-full mt-2 w-80 md:w-96 overflow-hidden rounded-2xl border border-border/80 bg-white shadow-xl shadow-slate-200/50 z-50">
                       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
@@ -332,7 +315,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                         {unreadCount > 0 && (
                           <button 
                             onClick={handleMarkAllAsRead}
-                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <Check size={14} /> 全部標記已讀
                           </button>
@@ -356,7 +339,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                                   !notif.isRead ? "bg-blue-50/30" : "bg-white"
                                 )}
                               >
-                                {/* 觸發者的頭像 (如果有) */}
                                 {notif.actor?.image ? (
                                   <img src={notif.actor.image} alt="User" className="w-8 h-8 rounded-full border border-slate-200 mt-0.5 object-cover shrink-0" />
                                 ) : (
@@ -379,7 +361,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                                   </p>
                                 </div>
 
-                                {/* 未讀小藍點 */}
                                 {!notif.isRead && (
                                   <div className="shrink-0 mt-2">
                                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
@@ -394,6 +375,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                   )}
                 </div>
                   
+                {/* 使用者個人選單 */}
                 <div ref={menuRef} className="relative">
                   <button
                     type="button"
@@ -401,9 +383,9 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                       setMenuOpen(!menuOpen);
                       setNotificationsOpen(false);
                     }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-3 py-2 text-sm font-medium text-slate-950 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-3 py-2 text-sm font-medium text-slate-950 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer"
                   >
-                    <Avatar size="sm">
+                    <Avatar className="h-6 w-6">
                       <AvatarImage src={session?.user?.image || ""} />
                       <AvatarFallback>{session?.user?.name?.charAt(0) || "你"}</AvatarFallback>
                     </Avatar>
@@ -428,7 +410,7 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
                       <button
                         type="button"
                         onClick={() => signOut()}
-                        className="w-full px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+                        className="w-full px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50 cursor-pointer"
                       >
                         登出
                       </button>
@@ -441,7 +423,6 @@ export default function Navbar({ projectId, role }: { projectId?: string; role?:
         </div>
       </nav>
 
-      {/* 將 Modal 掛載在 Navbar 的最外層，確保 z-index 不被遮擋 */}
       {safeProjectId && (
         <ManageMembersModal 
           projectId={safeProjectId} 

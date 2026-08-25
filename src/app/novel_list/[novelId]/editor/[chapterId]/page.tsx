@@ -3,31 +3,29 @@
 import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Editor from '@/components/Editor'
+import { SettingsPopover } from '@/components/SettingsPopover'
 import { useEditorUI } from '@/contexts/EditorUIContext'
 import { RotateCcw, Trash2, X, History, Search, SearchX } from "lucide-react"
 
 export default function ChapterEditorPage() {
-
   const {
-      activeOverlay,
-      setActiveOverlay,
-      versions,
-      setVersions,
-      setLatestRestoredContent,
-      fetchVersions, // Context 提供的撈取歷史版本函式
-      isLoadingVersions,
-      isEditable,
-      // 🌟 取出預覽相關狀態與方法
-      previewVersion,
-      setPreviewVersion
-    } = useEditorUI();
+    activeOverlay,
+    setActiveOverlay,
+    versions,
+    setVersions,
+    setLatestRestoredContent,
+    fetchVersions,
+    isLoadingVersions,
+    isEditable,
+    previewVersion,
+    setPreviewVersion
+  } = useEditorUI();
 
   const params = useParams()
   const novelId = params.novelId as string
   const chapterId = params.chapterId as string
 
-  // 📍 狀態定義
-  const [initialData, setInitialData] = useState<{title: string, content: any, status: string} | null>(null)
+  const [initialData, setInitialData] = useState<{ title: string; content: any; status: string } | null>(null)
 
   useEffect(() => {
     const fetchChapterData = async () => {
@@ -41,7 +39,7 @@ export default function ChapterEditorPage() {
         setInitialData({
           title: chapter.title,
           content: isEmptyContent ? '<p>開始你的創作...</p>' : chapter.content,
-          status: chapter.status || 'DRAFT' // 📍 撈取資料庫的章節狀態
+          status: chapter.status || 'DRAFT'
         })
       } catch (error) {
         console.error(error)
@@ -53,7 +51,6 @@ export default function ChapterEditorPage() {
       fetchChapterData();
       fetchVersions(novelId, chapterId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [novelId, chapterId])
 
   const handleRestoreVersion = async (versionId: string) => {
@@ -88,7 +85,6 @@ export default function ChapterEditorPage() {
 
       if (res.ok) {
         setVersions(versions.filter((v) => v.id !== versionId));
-        // 如果剛好刪除的是正在預覽的版本，自動退出預覽
         if (previewVersion?.id === versionId) {
           setPreviewVersion(null);
         }
@@ -104,9 +100,14 @@ export default function ChapterEditorPage() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] w-full bg-[#f8f9fa] flex flex-col overflow-hidden relative">
+      {/* 🌟 浮動掛載 SettingsPopover (支援文章選字直接連動開啟設定詳情) */}
+      <div className="absolute top-3.5 right-20 z-40">
+        <SettingsPopover projectId={novelId} chapterId={chapterId} />
+      </div>
+
       <div className="flex-1 flex overflow-hidden relative w-full">
 
-        {/* 🚀 1. 編輯器主要區塊：全面解鎖 100% 寬度，給予作者最沉浸、寬敞的富文本寫作空間 */}
+        {/* 🚀 1. 編輯器主要區塊 */}
         <div className="w-full h-full flex flex-col transition-all duration-300 min-w-0">
           <Editor
             novelId={novelId}
@@ -118,7 +119,7 @@ export default function ChapterEditorPage() {
           />
         </div>
 
-        {/* 🚀 2. 章節內文歷史紀錄側邊欄（保持抽屜式浮層） */}
+        {/* 🚀 2. 章節內文歷史紀錄側邊欄 */}
         {activeOverlay === 'version' && (
           <aside className="fixed right-0 top-14 h-[calc(100vh-56px)] w-80 bg-white border-l border-slate-200 z-50 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
             <header className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -127,7 +128,7 @@ export default function ChapterEditorPage() {
               </h4>
               <button
                 onClick={() => setActiveOverlay('none')}
-                className="p-1 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -189,19 +190,17 @@ export default function ChapterEditorPage() {
                         {ver.commitMsg || "無備註"}
                       </p>
 
-                      {/* 操作按鈕區 */}
                       <div className="mt-3 flex justify-end items-center gap-1.5 pt-2 border-t border-slate-100">
-                        {/* 🔍 閱覽/預覽按鈕 (使用放大鏡圖示) */}
                         <button
                           type="button"
                           onClick={() => {
                             if (isPreviewing) {
-                              setPreviewVersion(null); // 再按一次切回最新草稿
+                              setPreviewVersion(null);
                             } else {
-                              setPreviewVersion(ver);  // 設定 previewVersion 傳給 Editor.tsx 預覽
+                              setPreviewVersion(ver);
                             }
                           }}
-                          className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                          className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                             isPreviewing
                               ? 'bg-purple-600 text-white shadow-sm'
                               : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
@@ -211,20 +210,19 @@ export default function ChapterEditorPage() {
                           {isPreviewing ? '退出預覽' : '閱覽'}
                         </button>
 
-                        {/* 還原與刪除 (僅限擁有編輯權限的使用者) */}
                         {isEditable && (
                           <>
                             <button
                               type="button"
                               onClick={() => handleRestoreVersion(ver.id)}
-                              className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors font-medium"
+                              className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors font-medium cursor-pointer"
                             >
                               <RotateCcw size={12} /> 還原
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteVersion(ver.id)}
-                              className="flex items-center gap-1 text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium"
+                              className="flex items-center gap-1 text-xs bg-red-50 text-red-600 px-2 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium cursor-pointer"
                             >
                               <Trash2 size={12} /> 刪除
                             </button>
@@ -240,5 +238,5 @@ export default function ChapterEditorPage() {
         )}
       </div>
     </div>
-  )
+  );
 }
