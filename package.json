@@ -26,12 +26,13 @@
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-popover": "^1.1.23",
     "@supabase/supabase-js": "^2.108.2",
-    "@tiptap/extension-character-count": "^3.30.2",
-    "@tiptap/extension-underline": "^3.22.4",
-    "@tiptap/html": "^3.30.2",
-    "@tiptap/pm": "^3.22.4",
-    "@tiptap/react": "^3.22.4",
-    "@tiptap/starter-kit": "^3.22.4",
+    "@tiptap/core": "^3.22.4",
+    "@tiptap/extension-character-count": "^3.22.4",
+    "@tiptap/extension-underline": "3.22.4",
+    "@tiptap/html": "^3.22.4",
+    "@tiptap/pm": "3.22.4",
+    "@tiptap/react": "3.22.4",
+    "@tiptap/starter-kit": "3.22.4",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "@vercel/blob": "^2.5.0",
@@ -77,5 +78,13 @@
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "@tiptap/core": "3.22.4",
+      "@tiptap/pm": "3.22.4",
+      "@tiptap/react": "3.22.4",
+      "@tiptap/starter-kit": "3.22.4"
+    }
   }
 }
