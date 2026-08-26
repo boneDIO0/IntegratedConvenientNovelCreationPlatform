@@ -4,6 +4,7 @@ import { put } from '@vercel/blob'
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client' // 🌟 核心修正 1：引入 Prisma 命名空間以使用型別
 import { authOptions } from '@/lib/auth/config' // 🌟 優化點：帶入你們專案的 authOptions 配置
+import { NOVEL_TAGS, MAX_NOVEL_TAGS } from '@/lib/novelTags'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 20
@@ -51,6 +52,7 @@ export async function GET(request: Request) {
         description: true,
         coverUrl: true,
         status: true,
+        tags: true,
         createdAt: true,
         members: {
           where: { userId: user.id },
@@ -117,12 +119,32 @@ export async function POST(request: Request) {
     const title = formData.get('title') as string
     const description = (formData.get('description') as string | null)?.trim() || null
     const coverFile = formData.get('cover') as File | null
+    const tagsValue = formData.get('tags')
 
     if (!title) {
       return NextResponse.json({ error: '缺少小說標題' }, { status: 400 })
     }
 
     let coverUrl = null
+
+    let tags: string[] = []
+    if (typeof tagsValue === 'string') {
+      try {
+        const parsed = JSON.parse(tagsValue)
+        const allowedTags = new Set<string>(NOVEL_TAGS)
+        const validTags = Array.isArray(parsed) && parsed.every((tag) =>
+          typeof tag === 'string' && allowedTags.has(tag)
+        )
+
+        if (!validTags || parsed.length > MAX_NOVEL_TAGS) {
+          return NextResponse.json({ error: `小說標籤最多選擇 ${MAX_NOVEL_TAGS} 個，且只能使用系統提供的標籤` }, { status: 400 })
+        }
+
+        tags = [...new Set(parsed)]
+      } catch {
+        return NextResponse.json({ error: '無效的小說標籤格式' }, { status: 400 })
+      }
+    }
 
     // 若有上傳圖片，則存入 Vercel Blob
     if (coverFile) {
@@ -140,7 +162,8 @@ export async function POST(request: Request) {
           title: title,
           description: description,       
           coverUrl: coverUrl, 
-          ownerId: user.id, 
+          ownerId: user.id,
+          tags,
           members: {
             create: {
               userId: user.id,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
+import { NOVEL_TAGS, MAX_NOVEL_TAGS } from '@/lib/novelTags'
 
 export interface NovelSettingProps {
   isOpen: boolean;
@@ -10,9 +11,10 @@ export interface NovelSettingProps {
   initialCoverUrl?: string;
   initialDescription?: string;
   initialStatus?: string; // 📍 新增：用來接收小說當前的狀態
+  initialTags?: string[];
   onClose: () => void;
-  // 送出小說名稱、封面、作品簡介與狀態
-  onSubmit: (title: string, file: File | null, description: string, status?: string) => Promise<void>; 
+  // 送出小說名稱、封面、作品簡介、狀態與標籤
+  onSubmit: (title: string, file: File | null, description: string, status?: string, tags?: string[]) => Promise<void>; 
 }
 
 export default function NovelSetting({ 
@@ -22,6 +24,7 @@ export default function NovelSetting({
   initialCoverUrl = '', 
   initialDescription = '',
   initialStatus = 'DRAFT',
+  initialTags = [],
   onClose, 
   onSubmit 
 }: NovelSettingProps) {
@@ -30,6 +33,7 @@ export default function NovelSetting({
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState('DRAFT') // 📍 新增內部狀態
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
@@ -39,9 +43,10 @@ export default function NovelSetting({
       setCoverPreview(initialCoverUrl || null)
       setDescription(initialDescription || '')
       setStatus(initialStatus || 'DRAFT')
+      setSelectedTags(initialTags || [])
       setIsSubmitting(false)
     }
-  }, [isOpen, initialTitle, initialCoverUrl, initialDescription, initialStatus])
+  }, [isOpen, initialTitle, initialCoverUrl, initialDescription, initialStatus, initialTags])
 
   if (!isOpen) return null
 
@@ -60,7 +65,7 @@ export default function NovelSetting({
     }
     setIsSubmitting(true)
     try {
-      await onSubmit(title, coverFile, description, status)
+      await onSubmit(title, coverFile, description, status, selectedTags)
       onClose()
     } catch (error) {
       console.error(error)
@@ -110,6 +115,46 @@ export default function NovelSetting({
               placeholder="簡單介紹故事背景、主角或作品特色..."
             />
             <p className="text-xs text-gray-400 mt-1">公開作品頁與作品卡片會顯示這段簡介。</p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">小說標籤</label>
+              <span className="text-xs text-gray-400">最多 {MAX_NOVEL_TAGS} 個（已選 {selectedTags.length}）</span>
+            </div>
+            <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-gray-50">
+              {NOVEL_TAGS.map((tag) => {
+                const isSelected = selectedTags.includes(tag)
+                const isDisabled = !isSelected && selectedTags.length >= MAX_NOVEL_TAGS
+
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTags((current) => {
+                        if (current.includes(tag)) {
+                          return current.filter((item) => item !== tag)
+                        }
+                        if (current.length >= MAX_NOVEL_TAGS) {
+                          return current
+                        }
+                        return [...current, tag]
+                      })
+                    }}
+                    disabled={isDisabled}
+                    className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                      isSelected
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:text-blue-600'
+                    } ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    {tag}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">可以複選最符合小說內容的標籤。</p>
           </div>
 
           <div>

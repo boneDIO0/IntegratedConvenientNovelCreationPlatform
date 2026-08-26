@@ -10,6 +10,7 @@ export interface NovelCardProps {
     coverUrl?: string;
     description?: string | null;
     status?: string; 
+    tags?: string[];
     owner?: {
       name: string | null;
       image?: string | null;
@@ -85,6 +86,24 @@ export default function NovelCard({ project, onClick, onContextMenu, showPublish
           >
             {project.description}
           </p>
+        )}
+
+        {project.tags && project.tags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {project.tags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                className="text-xs px-2 py-0.5 rounded-full border border-blue-100 bg-blue-50 text-blue-600"
+              >
+                {tag}
+              </span>
+            ))}
+            {project.tags.length > 3 && (
+              <span className="text-xs px-2 py-0.5 text-gray-400">
+                +{project.tags.length - 3}
+              </span>
+            )}
+          </div>
         )}
 
         <div className="mt-auto pt-3 flex justify-between items-center">

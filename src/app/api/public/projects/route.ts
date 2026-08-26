@@ -18,9 +18,21 @@ function getPaginationParams(request: Request) {
   }
 }
 
+function getSelectedTags(request: Request) {
+  const { searchParams } = new URL(request.url)
+
+  return [...new Set(
+    searchParams
+      .getAll('tag')
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+  )].slice(0, 10)
+}
+
 export async function GET(request: Request) {
   try {
     const { page, limit } = getPaginationParams(request)
+    const selectedTags = getSelectedTags(request)
     const where: Prisma.ProjectWhereInput = {
       status: {
         in: ['SERIALIZING', 'COMPLETED'],
@@ -33,6 +45,9 @@ export async function GET(request: Request) {
           deletedAt: null,
         },
       },
+      ...(selectedTags.length > 0 && {
+        tags: { hasSome: selectedTags },
+      }),
     }
 
     const getPublicProjects = (targetPage: number) => prisma.project.findMany({
@@ -45,6 +60,7 @@ export async function GET(request: Request) {
         coverUrl: true,
         description: true,
         status: true,
+        tags: true,
         owner: {
           select: {
             name: true,

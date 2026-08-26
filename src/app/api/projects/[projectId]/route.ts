@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { put } from '@vercel/blob'
 import prisma from '@/lib/prisma'
+import { NOVEL_TAGS, MAX_NOVEL_TAGS } from '@/lib/novelTags'
 
 // 🌟 核心修正 1：全面升級 PATCH 規格，將 params 改為 Promise，並統一變數名稱為 projectId
 export async function PATCH(
@@ -26,6 +27,7 @@ export async function PATCH(
     const descriptionValue = formData.get('description')
     const coverFile = formData.get('cover') as File | null
     const status = formData.get('status')
+    const tagsValue = formData.get('tags')
 
     if (!title) {
       return NextResponse.json({ error: '標題不能為空' }, { status: 400 })
@@ -45,6 +47,7 @@ export async function PATCH(
       description?: string | null
       coverUrl?: string
       status?: ProjectStatusValue
+      tags?: string[]
     } = { title }
 
     // 只有前端真的送出 description 時才更新，避免其他 PATCH 呼叫意外把既有簡介清空。
@@ -54,6 +57,24 @@ export async function PATCH(
 
     if (typeof status === 'string') {
       updateData.status = status as ProjectStatusValue
+    }
+
+    if (typeof tagsValue === 'string') {
+      try {
+        const parsed = JSON.parse(tagsValue)
+        const allowedTags = new Set<string>(NOVEL_TAGS)
+        const validTags = Array.isArray(parsed) && parsed.every((tag) =>
+          typeof tag === 'string' && allowedTags.has(tag)
+        )
+
+        if (!validTags || parsed.length > MAX_NOVEL_TAGS) {
+          return NextResponse.json({ error: `小說標籤最多選擇 ${MAX_NOVEL_TAGS} 個，且只能使用系統提供的標籤` }, { status: 400 })
+        }
+
+        updateData.tags = [...new Set(parsed)]
+      } catch {
+        return NextResponse.json({ error: '無效的小說標籤格式' }, { status: 400 })
+      }
     }
 
     // 2. 如果有上傳「新」封面，就存入 Vercel Blob 並更新網址

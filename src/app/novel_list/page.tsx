@@ -16,6 +16,7 @@ export interface ProjectIndexItem {
   coverUrl?: string; 
   description?: string | null;
   status?: string; // 👈 修正 1：加上 status 屬性，讓 TypeScript 認得它
+  tags?: string[];
   role?: ProjectRole;
 }
 
@@ -44,7 +45,8 @@ export default function NovelListPage() {
     initialTitle: '',
     initialCoverUrl: '',
     initialDescription: '',
-    initialStatus: 'DRAFT'
+    initialStatus: 'DRAFT',
+    initialTags: []
   })
 
   const fetchProjects = useCallback(async (page: number) => {
@@ -85,12 +87,13 @@ export default function NovelListPage() {
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
-  const handleModalSubmit = async (title: string, file: File | null, description: string, status?: string) => {
+  const handleModalSubmit = async (title: string, file: File | null, description: string, status?: string, tags?: string[]) => {
     const formData = new FormData()
     formData.append('title', title)
     formData.append('description', description)
     if (file) formData.append('cover', file)
     if (status) formData.append('status', status)
+    if (tags) formData.append('tags', JSON.stringify(tags))
 
     if (formModal.mode === 'create') {
       const res = await fetch('/api/projects', { method: 'POST', body: formData })
@@ -184,6 +187,7 @@ export default function NovelListPage() {
         initialCoverUrl={formModal.initialCoverUrl}
         initialDescription={formModal.initialDescription}
         initialStatus={formModal.initialStatus}
+        initialTags={formModal.initialTags}
         onClose={() => setFormModal({ ...formModal, isOpen: false })}
         onSubmit={handleModalSubmit}
       />
@@ -205,7 +209,8 @@ export default function NovelListPage() {
                 initialTitle: targetNovel?.title || '',
                 initialCoverUrl: targetNovel?.coverUrl || '',
                 initialDescription: targetNovel?.description || '',
-                initialStatus: targetNovel?.status || 'DRAFT'
+                initialStatus: targetNovel?.status || 'DRAFT',
+                initialTags: targetNovel?.tags || []
               })
               setContextMenu({ visible: false, x: 0, y: 0, projectId: null })
             }}
