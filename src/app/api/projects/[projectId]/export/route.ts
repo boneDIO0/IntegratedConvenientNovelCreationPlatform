@@ -6,6 +6,7 @@ import { verifyProjectAccess } from '@/lib/auth-utils';
 import { generateHTML } from '@tiptap/html';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
+import ExportMathNode from '@/lib/ExportMathNode'; 
 import HTMLtoDOCX from 'html-to-docx';
 
 export async function GET(
@@ -51,6 +52,7 @@ export async function GET(
           chapterHtml = generateHTML(chapter.content, [
             StarterKit,
             Underline,
+            ExportMathNode,
           ]);
         } catch (err) {
           console.error(`章節 [${chapter.title}] 解析失敗:`, err);
