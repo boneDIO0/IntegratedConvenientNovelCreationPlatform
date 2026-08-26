@@ -24,6 +24,30 @@ const CATEGORY_TABS = [
   { id: 'custom', label: '⚙️ 通用' },
 ];
 
+// 🌟 各分類專屬白名單欄位定義
+const CATEGORY_ALLOWED_FIELDS: Record<string, string[]> = {
+  character: [
+    'titles', 'aliases', 'gender', 'age', 'identity',
+    'faction', 'alliances', 'appearance', 'personality',
+    'background', 'abilities', 'relations', 'description', 'notes'
+  ],
+  faction: [
+    'leader', 'territory', 'headquarters', 'hierarchy',
+    'goals', 'color', 'relations', 'description', 'notes'
+  ],
+  item: [
+    'itemType', 'owner', 'rarity', 'effect',
+    'resonanceEffect', 'relations', 'description', 'notes'
+  ],
+  location: [
+    'parentId', 'climate', 'geography', 'relations', 'description', 'notes'
+  ],
+  event: [
+    'date', 'location', 'customLocation', 'selectedEraName',
+    'participants', 'impact', 'relations', 'description', 'notes'
+  ]
+};
+
 export function SettingsPopover({ projectId: propProjectId, chapterId: propChapterId }: SettingsPopoverProps) {
   const params = useParams();
   const projectId = propProjectId || (params?.novelId as string) || (params?.projectId as string);
@@ -68,20 +92,24 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       if (!res.ok) throw new Error("無法讀取設定");
       const responseData = await res.json();
 
-      let rawList: any[] = [];
-      if (Array.isArray(responseData)) {
-        rawList = responseData;
-      } else if (responseData && typeof responseData === 'object') {
-        rawList = responseData.groups || responseData.settingGroups || responseData.data || responseData.items || [];
-      }
+      const extractItems = (obj: any): SettingItem[] => {
+        if (!obj) return [];
+        if (Array.isArray(obj)) {
+          return obj.flatMap(item => extractItems(item));
+        }
+        if (typeof obj === 'object') {
+          if (obj.id && (obj.name || obj.title)) {
+            return [obj];
+          }
+          const list = obj.items || obj.entities || obj.settingItems || obj.data || obj.groups || obj.settingGroups;
+          if (Array.isArray(list)) {
+            return list.flatMap(item => extractItems(item));
+          }
+        }
+        return [];
+      };
 
-      let flatItems: SettingItem[] = [];
-      if (rawList.length > 0 && ('items' in rawList[0] || 'entities' in rawList[0] || 'settingItems' in rawList[0])) {
-        flatItems = rawList.flatMap((group: any) => group.items || group.entities || group.settingItems || []);
-      } else {
-        flatItems = rawList;
-      }
-
+      const flatItems = extractItems(responseData);
       setSettings(flatItems);
 
       const initialAssigned = new Set<string>();
@@ -104,7 +132,6 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   }, [projectId, chapterId]);
 
-  // 🌟 2. 只有在手動打開且「不是」由外部指定跳轉詳情時，才重設狀態
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (open) {
@@ -149,6 +176,32 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       setTogglingId(null);
     }
   };
+
+  // 🎯 名稱反查輔助函式
+  const resolveSettingName = useCallback((val: any): string => {
+    if (!val) return '';
+    const str = String(val).trim();
+    if (!str) return '';
+
+    const matched = settings.find(s => {
+      const sAny = s as any;
+      const sContent = sAny.content || {};
+      return (
+        s.id === str ||
+        s.name?.trim().toLowerCase() === str.toLowerCase() ||
+        sAny.title?.trim().toLowerCase() === str.toLowerCase() ||
+        sContent.name?.trim().toLowerCase() === str.toLowerCase() ||
+        sContent.title?.trim().toLowerCase() === str.toLowerCase()
+      );
+    });
+
+    if (matched) {
+      const mAny = matched as any;
+      return matched.name || mAny.title || mAny.content?.name || mAny.content?.title || str;
+    }
+
+    return str;
+  }, [settings]);
 
   const handleSaveField = async (updatedContent: Record<string, any>) => {
     if (!detailItem || isSavingField) return;
@@ -317,6 +370,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     participants: '參與人員',
     impact: '影響與結果',
     titles: '頭銜 / 稱號',
+    aliases: '別名 / 別稱',
     age: '年齡',
     gender: '性別',
     identity: '身分',
@@ -348,17 +402,31 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
   }, [settings]);
 
   const renderDetailFields = (item: SettingItem) => {
-    const content = editingContent;
-    const isLocation = item.category === 'location' || (item as any).type === 'location';
+    const rawContent = editingContent;
+    const category = (item.category || (item as any).type || 'custom').toLowerCase();
+    const allowedKeys = CATEGORY_ALLOWED_FIELDS[category];
+
+    // 🌟 合併 root 與 content 屬性
+    const merged: Record<string, any> = {
+      ...(item as any),
+      ...rawContent
+    };
+
     const excludeKeys = [
       'id', 'projectId', 'category', 'formType', 'type', 'versions', 
       'createdAt', 'updatedAt', 'name', 'title', 'deletedAt', 
-      'isChapterAssigned', 'isAssigned', 'chapters',
-      'locationId',
-      ...(isLocation ? ['color', 'territory', 'leader', 'hierarchy'] : [])
+      'isChapterAssigned', 'isAssigned', 'chapters', 'content',
+      'selectedEraName', 'sortWeight'
     ];
 
-    const entries = Object.entries(content).filter(([k]) => !excludeKeys.includes(k));
+    // 🌟 嚴格白名單過濾 + 空值排除
+    const entries = Object.entries(merged).filter(([k, v]) => {
+      if (excludeKeys.includes(k)) return false;
+      if (allowedKeys && !allowedKeys.includes(k)) return false;
+      if (v === undefined || v === null || v === '') return false;
+      if (Array.isArray(v) && v.length === 0) return false;
+      return true;
+    });
 
     if (entries.length === 0) return <p className="text-xs text-slate-400 py-4 text-center">尚無詳細內容</p>;
 
@@ -366,11 +434,10 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
       const label = FIELD_LABEL_MAP[key] || (key.charAt(0).toUpperCase() + key.slice(1));
       
       let displayValue = value;
-      if ((key === 'faction' || key === 'alliances') && typeof value === 'string') {
-        const foundFaction = settings.find(s => s.id === value);
-        if (foundFaction) {
-          displayValue = foundFaction.name;
-        }
+
+      // 🎯 1. 反查組織、陣營、地點名稱
+      if (['faction', 'alliances', 'parentId', 'locationId'].includes(key) && typeof value === 'string') {
+        displayValue = resolveSettingName(value);
       }
 
       let valStr = '';
@@ -378,19 +445,14 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
         valStr = displayValue.map((r: any) => {
           if (typeof r === 'object' && r !== null) {
             const relType = r.type || r.relation || '關聯';
-            const rawTarget = r.targetName || r.name || r.targetId || '';
-            const matchedChar = settings.find(s => s.id === rawTarget || s.name === rawTarget);
-            const target = matchedChar ? matchedChar.name : (r.targetName || r.name || rawTarget || '未知');
-
+            const rawTarget = r.targetId || r.targetName || r.name || '';
+            const target = resolveSettingName(rawTarget) || '未知目標';
             return `• [${relType}] ${target}`;
           }
-          return `• ${r}`;
+          return `• ${resolveSettingName(r)}`;
         }).join('\n');
-      } else if (key === 'parentId' && typeof displayValue === 'string') {
-        const foundParent = allLocations.find(loc => loc.id === displayValue);
-        valStr = foundParent ? foundParent.name || foundParent.title || displayValue : displayValue;
       } else if (Array.isArray(displayValue)) {
-        valStr = displayValue.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
+        valStr = displayValue.map(v => typeof v === 'string' ? resolveSettingName(v) : JSON.stringify(v)).join(', ');
       } else if (typeof displayValue === 'object' && displayValue !== null) {
         valStr = JSON.stringify(displayValue);
       } else {
