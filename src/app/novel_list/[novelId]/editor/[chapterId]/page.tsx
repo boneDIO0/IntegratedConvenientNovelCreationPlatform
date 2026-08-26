@@ -21,37 +21,53 @@ export default function ChapterEditorPage() {
     setPreviewVersion
   } = useEditorUI();
 
-  const params = useParams()
-  const novelId = params.novelId as string
-  const chapterId = params.chapterId as string
+  // 🌟 安全提取路由參數
+  const params = useParams();
+  const novelId = (params?.novelId as string) || '';
+  const chapterId = (params?.chapterId as string) || '';
 
-  const [initialData, setInitialData] = useState<{ title: string; content: any; status: string } | null>(null)
+  const [initialData, setInitialData] = useState<{ title: string; content: any; status: string } | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // 🌟 核心修正：只在 novelId 或 chapterId 實際改變時才發送請求，切斷所有函式參照依賴
   useEffect(() => {
-    const fetchChapterData = async () => {
+    if (!novelId || !chapterId) return;
+
+    let isMounted = true;
+    setLoading(true);
+
+    const loadChapter = async () => {
       try {
-        const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`)
-        if (!res.ok) throw new Error("讀取章節失敗")
+        const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`);
+        if (!res.ok) throw new Error("讀取章節失敗");
 
-        const chapter = await res.json()
-        const isEmptyContent = !chapter.content || Object.keys(chapter.content).length === 0
+        const chapter = await res.json();
+        const isEmptyContent = !chapter.content || (typeof chapter.content === 'object' && Object.keys(chapter.content).length === 0);
 
-        setInitialData({
-          title: chapter.title,
-          content: isEmptyContent ? '<p>開始你的創作...</p>' : chapter.content,
-          status: chapter.status || 'DRAFT'
-        })
+        if (isMounted) {
+          setInitialData({
+            title: chapter.title || '',
+            content: isEmptyContent ? '<p>開始你的創作...</p>' : chapter.content,
+            status: chapter.status || 'DRAFT'
+          });
+          setLoading(false);
+        }
       } catch (error) {
-        console.error(error)
-        alert("無法載入章節資料，請回上一頁重試！")
+        console.error("載入章節出錯:", error);
+        if (isMounted) {
+          setLoading(false);
+          alert("無法載入章節資料，請檢查網路連線或確認章節是否存在！");
+        }
       }
-    }
+    };
 
-    if (novelId && chapterId) {
-      fetchChapterData();
-      fetchVersions(novelId, chapterId);
-    }
-  }, [novelId, chapterId])
+    loadChapter();
+    fetchVersions(novelId, chapterId);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [novelId, chapterId]); // 👈 關鍵：依賴陣列僅放這兩個字串變數！
 
   const handleRestoreVersion = async (versionId: string) => {
     if (!confirm("確定要將內文還原至此版本嗎？現有未存檔的修改將會被覆蓋。")) return;
@@ -96,11 +112,18 @@ export default function ChapterEditorPage() {
     }
   };
 
-  if (!initialData) return <div className="min-h-screen flex items-center justify-center text-slate-500 font-medium">載入中...</div>
+  if (loading || !initialData) {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center text-slate-500 font-medium bg-[#f8f9fa]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-700 mb-3" />
+        載入章節內容中...
+      </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-3.5rem)] w-full bg-[#f8f9fa] flex flex-col overflow-hidden relative">
-      {/* 🌟 浮動掛載 SettingsPopover (支援文章選字直接連動開啟設定詳情) */}
+      {/* 🌟 浮動掛載 SettingsPopover */}
       <div className="absolute top-3.5 right-20 z-40">
         <SettingsPopover projectId={novelId} chapterId={chapterId} />
       </div>
@@ -110,6 +133,7 @@ export default function ChapterEditorPage() {
         {/* 🚀 1. 編輯器主要區塊 */}
         <div className="w-full h-full flex flex-col transition-all duration-300 min-w-0">
           <Editor
+            key={`${novelId}-${chapterId}`}
             novelId={novelId}
             chapterId={chapterId}
             initialTitle={initialData.title}

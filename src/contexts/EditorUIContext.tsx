@@ -58,7 +58,8 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
     setIsSettingsOpen(true);
   }, []);
 
-  const fetchVersions = async (projectId: string, chapterId: string) => {
+  // 🌟 核心修正：加入 useCallback，避免函數參照改變導致無限重繪
+  const fetchVersions = useCallback(async (projectId: string, chapterId: string) => {
     if (!projectId || !chapterId) return;
 
     setIsLoadingVersions(true);
@@ -76,7 +77,7 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoadingVersions(false);
     }
-  };
+  }, []); // 👈 依賴陣列保持為空，確保函數實體永遠唯一
 
   return (
     <EditorUIContext.Provider value={{
