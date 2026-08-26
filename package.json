@@ -26,10 +26,10 @@
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-popover": "^1.1.23",
     "@supabase/supabase-js": "^2.108.2",
-    "@tiptap/core": "^3.30.3",
-    "@tiptap/extension-character-count": "^3.30.3",
+    "@tiptap/core": "3.30.3",
+    "@tiptap/extension-character-count": "3.30.3",
     "@tiptap/extension-underline": "3.30.3",
-    "@tiptap/html": "^3.30.3",
+    "@tiptap/html": "3.30.3",
     "@tiptap/pm": "3.30.3",
     "@tiptap/react": "3.30.3",
     "@tiptap/starter-kit": "3.30.3",
@@ -81,10 +81,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@tiptap/core": "3.22.4",
-      "@tiptap/pm": "3.22.4",
-      "@tiptap/react": "3.22.4",
-      "@tiptap/starter-kit": "3.22.4"
+      "@tiptap/*": "3.30.3"
     }
   }
 }
