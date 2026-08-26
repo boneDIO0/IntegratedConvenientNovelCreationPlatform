@@ -46,7 +46,7 @@ export default function NovelListPage() {
     initialCoverUrl: '',
     initialDescription: '',
     initialStatus: 'DRAFT',
-    initialTags: []
+    initialTags: [] as string[]
   })
 
   const fetchProjects = useCallback(async (page: number) => {
@@ -150,7 +150,7 @@ export default function NovelListPage() {
         </div>
         <button 
           // 👈 修正 2：補上 initialStatus，確保符合 state 定義
-          onClick={() => setFormModal({ isOpen: true, mode: 'create', projectId: null, initialTitle: '', initialCoverUrl: '', initialDescription: '', initialStatus: 'DRAFT' })}
+          onClick={() => setFormModal({ isOpen: true, mode: 'create', projectId: null, initialTitle: '', initialCoverUrl: '', initialDescription: '', initialStatus: 'DRAFT', initialTags: [] })}
           className="bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95 flex items-center gap-2"
         >
           <span className="text-xl leading-none">+</span> 新增小說
