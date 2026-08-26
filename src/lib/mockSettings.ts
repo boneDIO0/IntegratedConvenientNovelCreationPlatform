@@ -1,50 +1,17 @@
 // src/lib/mockSettings.ts
 
-export type Relation = {
-  targetId: string;
-  type: string;
-};
+// 🌟 直接從全域型別庫引入，避免重複定義導致 TypeScript 建置報錯
+import { SettingItem, Relation } from "@/types";
 
-// 🌟 核心擴充：加入雙軌制自訂文字與加權排序欄位，完美收攏數據閉環
-export type SettingItem = {
-  id: string;
-  name: string;
-  category: 'character' | 'faction' | 'item' | 'event' | 'custom' | string;
-  description?: string;
-  relations?: Relation[];
-  
-  // 關係圖專屬色彩
-  color?: string; 
+export type { SettingItem, Relation };
 
-  // (人物專屬欄位)
-  faction?: string;
-  title?: string;
-  
-  // (組織專屬欄位)
-  leader?: string;
-  territory?: string;
-  hierarchy?: string[];
-
-  // (物品專屬欄位)
-  itemType?: "weapon" | "artifact" | "consumable" | "skill";
-  resonanceEffect?: string;
-
-  // 🌐 曆法軌道 A：標準時間模式
-  date?: string; 
-
-  location?: string;
-
-  // ✍️ 曆法軌道 B：純自訂紀元模式（🌟 補上這兩個選填屬性，徹底消滅 TS2339 / TS2353）
-  fantasyDisplay?: string; // 儲存手動填寫的時間字串（如 "聖曆 45 年 暮月 3 日"）
-  selectedEraName?: string;
-  sortWeight?: number;     // 當解除西元綁定時，供時間軸做物理先後排序的權重序號
-
-  // 支援所有類型的無限自訂欄位陣列
-  customFields?: { label: string; value: string }[];
+export type SettingGroup = {
+  category: string;
+  items: SettingItem[];
 };
 
 // 擴充 Mock Data：注入世界觀細節與雙軌制並存欄位
-export const mockSettings: { category: string; items: SettingItem[] }[] = [
+export const mockSettings: SettingGroup[] = [
   {
     category: "人物 (Characters)",
     items: [
@@ -109,6 +76,27 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
     ]
   },
   {
+    category: "地理與地點 (Locations)",
+    items: [
+      {
+        id: "l1",
+        name: "無盡大草原",
+        category: 'location',
+        climate: "溫帶大陸性氣候，晝夜溫差極大",
+        description: "金帳汗國的主要領地，遼闊無邊的草場。",
+        relations: [{ targetId: "f2", type: "所屬勢力" }]
+      },
+      {
+        id: "l2",
+        name: "舊日廢墟",
+        category: 'location',
+        climate: "常年籠罩在奇異的微光與霧氣中",
+        description: "大災變前的文明遺蹟，隱藏著星象塔與無數未解謎團。",
+        relations: [{ targetId: "f1", type: "據點所在地" }]
+      }
+    ]
+  },
+  {
     category: "歷史事件 (Events)",
     items: [
       { 
@@ -116,7 +104,8 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         name: "金帳汗國建立", 
         category: 'event',
         date: "2003-08-15", 
-        location: "無盡大草原",
+        locationId: "l1",
+        customLocation: "無盡大草原",
         selectedEraName: "新紀元",
         fantasyDisplay: "12 年 蒙昧8月 15 日",
         description: "初代大汗統合了草原上的遊牧部落，正式建立金帳汗國，並由薩滿立下血誓。",
@@ -127,10 +116,11 @@ export const mockSettings: { category: string; items: SettingItem[] }[] = [
         name: "星象塔的凝望", 
         category: 'event',
         date: "1995-11-03", 
-        location: "舊日廢墟",
+        locationId: "l2",
+        customLocation: "舊日廢墟",
         selectedEraName: "前網智古曆",
         fantasyDisplay: "4 年 蒙昧11月 3 日",
-        sortWeight: 1, // weight 較小，純手動模式下時間軸會自動排在前方
+        sortWeight: 1,
         description: "觀測者首次記錄到廢墟深處傳來異常的能量波動，隨後引發了後世的大災變。",
         relations: [{ targetId: "f1", type: "觀測" }]
       }

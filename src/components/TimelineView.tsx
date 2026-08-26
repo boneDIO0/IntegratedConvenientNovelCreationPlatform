@@ -125,9 +125,10 @@ export default function TimelineView({ allSettings, calendarConfig, filterTarget
                             📌 當前編輯項目
                           </Badge>
                         )}
-                        {event.location && (
-                          <Badge variant="secondary" className="text-slate-500 font-medium bg-slate-100 border border-slate-200/40">
-                            📍 {event.location}
+                        {/* 📍 地點標籤：優先顯示手動地點 customLocation、相容舊欄位 location，或顯示 locationId */}
+                        {(event.customLocation || event.locationId || (event as any).location) && (
+                          <Badge variant="secondary" className="text-slate-500 font-medium">
+                            📍 {event.customLocation || (event as any).location || event.locationId}
                           </Badge>
                         )}
                       </div>

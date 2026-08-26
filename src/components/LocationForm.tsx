@@ -21,10 +21,8 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
 
   const [name, setName] = useState(item.name || item.title || "");
   const [climate, setClimate] = useState(itemContent.climate || item.climate || "");
-  const [territory, setTerritory] = useState(itemContent.territory || item.territory || "");
   const [description, setDescription] = useState(itemContent.description || item.description || "");
   const [parentId, setParentId] = useState(itemContent.parentId || item.parentId || "");
-  const [color, setColor] = useState(itemContent.color || item.color || "#3b82f6");
   const [isSaving, setIsSaving] = useState(false);
 
   const allLocations = allSettings?.find(
@@ -43,10 +41,8 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
 
     setName(item.name || item.title || "");
     setClimate(content.climate || item.climate || "");
-    setTerritory(content.territory || item.territory || "");
     setDescription(content.description || item.description || "");
     setParentId(content.parentId || item.parentId || "");
-    setColor(content.color || item.color || "#3b82f6");
   }, [item]);
 
   const handleSaveClick = async () => {
@@ -55,10 +51,8 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
     const currentContent = {
       ...(item as any).content,
       climate,
-      territory,
       description,
-      parentId: parentId || undefined,
-      color
+      parentId: parentId || undefined
     };
 
     const updatedItem = {
@@ -67,10 +61,8 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
       title: name,
       category: 'location',
       climate,
-      territory,
       description,
       parentId: parentId || undefined,
-      color,
       content: currentContent
     } as SettingItem;
 
@@ -98,7 +90,6 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
         </Badge>
       </div>
 
-      {/* 主要輸入表單欄位 */}
       <div className="space-y-5 flex-1">
         <div className="grid gap-2">
           <Label htmlFor="loc-name">地點/分區名稱</Label>
@@ -125,12 +116,12 @@ export default function LocationForm({ item, allSettings, onSave, onDirty }: Loc
 
         <div className="grid gap-2">
           <Label htmlFor="loc-climate">風土氣候設定</Label>
-          <Input id="loc-climate" value={climate} onChange={(e) => { setClimate(e.target.value); onDirty?.(); }} />
+          <Input id="loc-climate" placeholder="例如：常年多雨、常夏型海島" value={climate} onChange={(e) => { setClimate(e.target.value); onDirty?.(); }} />
         </div>
 
         <div className="grid gap-2">
           <Label htmlFor="loc-desc">地點概述</Label>
-          <Textarea id="loc-desc" className="min-h-[120px] resize-none" value={description} onChange={(e) => { setDescription(e.target.value); onDirty?.(); }} />
+          <Textarea id="loc-desc" className="min-h-[120px] resize-none leading-relaxed" value={description} onChange={(e) => { setDescription(e.target.value); onDirty?.(); }} />
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 "use client"
-import AssistantChat from '@/components/AssistantChat';
-import { createContext, useContext, useState } from 'react'
+
+import React, { createContext, useContext, useState, useCallback } from 'react'
+import { SettingItem } from '@/types'
 
 type EditorUIContextType = {
   isSettingsOpen: boolean;
@@ -9,21 +10,26 @@ type EditorUIContextType = {
   setActiveOverlay: (val: 'none' | 'version') => void;
 
   // 1. 版本管理相關狀態與方法
-  versions: any[];                                       // 儲存從後端撈出來的 Checkpoint 列表
+  versions: any[];
   setVersions: React.Dispatch<React.SetStateAction<any[]>>;
-  latestRestoredContent: any;                            // 存放剛還原成功的 Tiptap JSON 內容
+  latestRestoredContent: any;
   setLatestRestoredContent: (content: any) => void;
-  fetchVersions: (projectId: string, chapterId: string) => Promise<void>; // 撈取 DB 歷史紀錄的函式
-  isLoadingVersions: boolean;                            // 載入狀態動畫提示用
+  fetchVersions: (projectId: string, chapterId: string) => Promise<void>;
+  isLoadingVersions: boolean;
 
-  // 🌟 新增：閱覽/預覽特定版本的狀態與方法
-  previewVersion: any | null;                           // 存放目前正在預覽的 checkpoint 物件
-  setPreviewVersion: (version: any | null) => void;     // 設定要預覽的版本（傳入 null 即退出預覽）
+  // 🌟 預覽特定版本
+  previewVersion: any | null;
+  setPreviewVersion: (version: any | null) => void;
 
-  // 🛡️ 新增：權限管理相關狀態
-  role: string | null;                                   // 當前使用者在該專案的角色
-  setRole: (role: string | null) => void;                // 設定角色的方法
-  isEditable: boolean;                                   // 是否具備編輯權限 (唯讀模式判斷用)
+  // 🛡️ 權限管理
+  role: string | null;
+  setRole: (role: string | null) => void;
+  isEditable: boolean;
+
+  // ✨ 選取設定即時連動（供 Tooltip 與 Popover 聯動開啟詳情）
+  selectedSettingItem: SettingItem | null;
+  setSelectedSettingItem: (item: SettingItem | null) => void;
+  openSettingDetail: (item: SettingItem) => void;
 }
 
 const EditorUIContext = createContext<EditorUIContextType | undefined>(undefined);
@@ -32,26 +38,31 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [activeOverlay, setActiveOverlay] = useState<'none' | 'version'>('none');
 
-  // 2. 版本管理的 React State
+  // 版本管理的 React State
   const [versions, setVersions] = useState<any[]>([]);
   const [latestRestoredContent, setLatestRestoredContent] = useState<any>(null);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
 
-  // 🌟 新增：閱覽特定版本的 State
+  // 預覽特定版本的 State
   const [previewVersion, setPreviewVersion] = useState<any | null>(null);
 
-  // 🛡️ 新增：權限管理的 React State 與推導變數
+  // 權限管理狀態
   const [role, setRole] = useState<string | null>(null);
-  // 自動推導：只要 role 是 owner 或 editor，isEditable 就會是 true
   const isEditable = role === 'owner' || role === 'editor';
 
-  // 3. 非同步撈取後端 Prisma Checkpoint 列表的函式
+  // 集中管理被點擊選中的設定項目
+  const [selectedSettingItem, setSelectedSettingItem] = useState<SettingItem | null>(null);
+
+  const openSettingDetail = useCallback((item: SettingItem) => {
+    setSelectedSettingItem(item);
+    setIsSettingsOpen(true);
+  }, []);
+
   const fetchVersions = async (projectId: string, chapterId: string) => {
     if (!projectId || !chapterId) return;
 
     setIsLoadingVersions(true);
     try {
-      // 呼叫我們剛剛規劃好的巢狀路由 GET API
       const res = await fetch(`/api/projects/${projectId}/chapters/${chapterId}/versions`);
 
       if (res.ok) {
@@ -68,14 +79,12 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-
     <EditorUIContext.Provider value={{
       isSettingsOpen,
-      toggleSettings: () => setIsSettingsOpen(!isSettingsOpen),
+      toggleSettings: () => setIsSettingsOpen(prev => !prev),
       activeOverlay,
       setActiveOverlay,
 
-      // 4. 將新增的狀態與方法注入 Provider 傳遞給全專案
       versions,
       setVersions,
       latestRestoredContent,
@@ -83,24 +92,24 @@ export function EditorUIProvider({ children }: { children: React.ReactNode }) {
       fetchVersions,
       isLoadingVersions,
 
-      // 🌟 注入預覽狀態與設定方法
       previewVersion,
       setPreviewVersion,
 
-      // 權限狀態
       role,
       setRole,
-      isEditable
+      isEditable,
+
+      selectedSettingItem,
+      setSelectedSettingItem,
+      openSettingDetail
     }}>
       {children}
-      
     </EditorUIContext.Provider>
-    
-  )
+  );
 }
 
 export const useEditorUI = () => {
   const context = useContext(EditorUIContext);
   if (!context) throw new Error("useEditorUI 必須在 EditorUIProvider 內使用");
   return context;
-}
+};
