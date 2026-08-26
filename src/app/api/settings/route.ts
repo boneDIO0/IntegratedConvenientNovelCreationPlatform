@@ -30,7 +30,6 @@ export async function GET(request: NextRequest) {
     ]);
     if (!auth.isAuthorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    // 🌟 完整拉出所有關聯的 chapters id，不做巢狀過濾，徹底避免 Prisma 條件失效
     const categories = await prisma.settingCategory.findMany({
       where: { 
         projectId: projectId, 
@@ -50,7 +49,7 @@ export async function GET(request: NextRequest) {
       orderBy: { orderIndex: 'asc' }
     }) as CategoryWithEntities[];
 
-    // 轉換成前端格式，並精確比對 chapterId
+    // 轉換成前端格式
     const formattedData = categories.map((cat: CategoryWithEntities) => ({
       category: cat.name,
       items: cat.entities.map((entity: EntityWithChapters) => {
@@ -63,14 +62,28 @@ export async function GET(request: NextRequest) {
           entity.chapters.some(c => c.id === chapterId)
         );
 
+        // 🌟 確保 titles 為乾淨的字串陣列，排除等於本名的污染值
+        let realTitles: string[] = [];
+        if (Array.isArray(contentObj.titles)) {
+          realTitles = contentObj.titles.filter((t: any) => typeof t === 'string' && t.trim() !== '' && t.trim() !== entity.title);
+        }
+
+        const safeContent = {
+          ...contentObj,
+          titles: realTitles,
+          category: contentObj.category || contentObj.formType || cat.type || 'custom'
+        };
+
         return {
           id: entity.id,
           name: entity.title, 
-          category: contentObj.category || contentObj.formType || cat.type || 'custom', 
-          chapters: entity.chapters || [], // 🌟 把 chapters 陣列回傳給前端作為雙重防禦
+          category: safeContent.category, 
+          chapters: entity.chapters || [],
           isChapterAssigned: isAssignedToChapter,
           isAssigned: isAssignedToChapter,
-          ...contentObj
+          titles: realTitles,
+          content: safeContent, // 🌟 1. 務必回傳完整的 content 物件供前端表單讀取
+          ...safeContent        // 🌟 2. 同步攤平屬性方便全域反查
         };
       })
     }));
@@ -124,26 +137,31 @@ export async function POST(request: NextRequest) {
     if (!parentCategory) {
       const targetCategoryName = body.categoryName || body.name || "未命名目錄";
 
-        parentCategory = await prisma.settingCategory.create({
-          data: {
-            name: targetCategoryName,
-            projectId: projectId,
-            type: body.type && body.type !== 'new_category' ? body.type : "custom" 
-          }
-        });
-        
-        // 如果只是一個新增空目錄的請求，建完目錄就可以提早返回
-        if (body.type === 'new_category' || body.action === 'new_category') {
-          return NextResponse.json(parentCategory, { status: 201 });
+      parentCategory = await prisma.settingCategory.create({
+        data: {
+          name: targetCategoryName,
+          projectId: projectId,
+          type: body.type && body.type !== 'new_category' ? body.type : "custom" 
         }
+      });
+      
+      if (body.type === 'new_category' || body.action === 'new_category') {
+        return NextResponse.json(parentCategory, { status: 201 });
       }
+    }
 
+    const itemData = body.item || {};
+    const itemTitle = itemData.name || itemData.title || body.name || "未命名設定";
+    const itemContent = itemData.content && typeof itemData.content === 'object' ? itemData.content : itemData;
+
+    // 🌟 3. 完整保存前端傳入的 content 屬性（包含 titles 等）
     const newEntity = await prisma.settingEntity.create({
       data: {
-        title: body.item.name, 
+        title: itemTitle, 
         categoryId: parentCategory.id,
         projectId: projectId, 
         content: {
+          ...itemContent,
           category: parentCategory.type || body.type || 'custom'
         }
       }
@@ -153,6 +171,8 @@ export async function POST(request: NextRequest) {
       id: newEntity.id,
       name: newEntity.title,
       category: parentCategory.type || body.type || 'custom',
+      content: newEntity.content,
+      ...((newEntity.content as any) || {})
     };
 
     return NextResponse.json(formattedEntity, { status: 201 });
@@ -239,7 +259,7 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// 🔀 PATCH: 同步本章登場關聯（使用 Prisma 原生型別安全 connect/disconnect）
+// 🔀 PATCH: 同步本章登場關聯
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
@@ -271,7 +291,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '該設定項目不存在或已被刪除' }, { status: 404 });
     }
 
-    // 🎯 核心修復：改用 Prisma 原生關聯操作，徹底杜絕 raw SQL 中 A/B 顛倒或表名錯誤問題
     if (action === 'connect_chapter') {
       await prisma.chapter.update({
         where: { id: chapterId },

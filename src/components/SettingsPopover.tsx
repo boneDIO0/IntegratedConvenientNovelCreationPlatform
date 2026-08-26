@@ -24,7 +24,6 @@ const CATEGORY_TABS = [
   { id: 'custom', label: '⚙️ 通用' },
 ];
 
-// 🌟 各分類專屬白名單欄位定義
 const CATEGORY_ALLOWED_FIELDS: Record<string, string[]> = {
   character: [
     'titles', 'aliases', 'gender', 'age', 'identity',
@@ -177,30 +176,14 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
     }
   };
 
-  // 🎯 名稱反查輔助函式
+  // 🎯 名稱反查函式：僅精確比對 ID 或實體 Name
   const resolveSettingName = useCallback((val: any): string => {
     if (!val) return '';
     const str = String(val).trim();
     if (!str) return '';
 
-    const matched = settings.find(s => {
-      const sAny = s as any;
-      const sContent = sAny.content || {};
-      return (
-        s.id === str ||
-        s.name?.trim().toLowerCase() === str.toLowerCase() ||
-        sAny.title?.trim().toLowerCase() === str.toLowerCase() ||
-        sContent.name?.trim().toLowerCase() === str.toLowerCase() ||
-        sContent.title?.trim().toLowerCase() === str.toLowerCase()
-      );
-    });
-
-    if (matched) {
-      const mAny = matched as any;
-      return matched.name || mAny.title || mAny.content?.name || mAny.content?.title || str;
-    }
-
-    return str;
+    const matched = settings.find(s => s.id === str || s.name?.trim().toLowerCase() === str.toLowerCase());
+    return matched ? (matched.name || (matched as any).title || str) : str;
   }, [settings]);
 
   const handleSaveField = async (updatedContent: Record<string, any>) => {
@@ -228,8 +211,7 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
 
             const matchedTarget = settings.find(s => 
               s.id === targetName || 
-              s.name?.trim().toLowerCase() === targetName.toLowerCase() ||
-              (s as any).title?.trim().toLowerCase() === targetName.toLowerCase()
+              s.name?.trim().toLowerCase() === targetName.toLowerCase()
             );
 
             const realTargetId = matchedTarget ? matchedTarget.id : targetName;
@@ -403,25 +385,31 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
 
   const renderDetailFields = (item: SettingItem) => {
     const rawContent = editingContent;
-    const category = (item.category || (item as any).type || 'custom').toLowerCase();
+    const itemAny = item as any;
+    const category = (item.category || itemAny.type || 'custom').toLowerCase();
     const allowedKeys = CATEGORY_ALLOWED_FIELDS[category];
 
-    // 🌟 合併 root 與 content 屬性
+    // 🌟 正確提取 titles：優先取 content.titles 或 item.titles
+    const rawTitles = rawContent.titles || itemAny.titles || (Array.isArray(itemAny.title) ? itemAny.title : undefined);
+    const realTitles = Array.isArray(rawTitles)
+      ? rawTitles.map(t => String(t).trim()).filter(t => t !== '' && t !== item.name)
+      : (typeof rawTitles === 'string' && rawTitles.trim() !== '' && rawTitles.trim() !== item.name ? [rawTitles.trim()] : []);
+
     const merged: Record<string, any> = {
-      ...(item as any),
-      ...rawContent
+      ...itemAny,
+      ...rawContent,
+      titles: realTitles
     };
 
     const excludeKeys = [
       'id', 'projectId', 'category', 'formType', 'type', 'versions', 
       'createdAt', 'updatedAt', 'name', 'title', 'deletedAt', 
       'isChapterAssigned', 'isAssigned', 'chapters', 'content',
-      'selectedEraName', 'sortWeight'
+      'selectedEraName', 'sortWeight', 'locationId'
     ];
 
-    // 🌟 嚴格白名單過濾 + 空值排除
     const entries = Object.entries(merged).filter(([k, v]) => {
-      if (excludeKeys.includes(k)) return false;
+      if (excludeKeys.includes(k) || k === 'title') return false;
       if (allowedKeys && !allowedKeys.includes(k)) return false;
       if (v === undefined || v === null || v === '') return false;
       if (Array.isArray(v) && v.length === 0) return false;
@@ -452,7 +440,8 @@ export function SettingsPopover({ projectId: propProjectId, chapterId: propChapt
           return `• ${resolveSettingName(r)}`;
         }).join('\n');
       } else if (Array.isArray(displayValue)) {
-        valStr = displayValue.map(v => typeof v === 'string' ? resolveSettingName(v) : JSON.stringify(v)).join(', ');
+        // 🌟 修正：一般陣列（如稱號 titles、階級 hierarchy）直接轉純字串，絕不走 resolveSettingName！
+        valStr = displayValue.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
       } else if (typeof displayValue === 'object' && displayValue !== null) {
         valStr = JSON.stringify(displayValue);
       } else {

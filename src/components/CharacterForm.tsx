@@ -30,14 +30,16 @@ export default function CharacterForm({
     ? (item as any).content 
     : {};
 
-  // 1. 初始化欄位狀態
+  // 1. 初始化欄位狀態（🌟 修正：只有在 content.titles 或 item.titles 是陣列時才讀取，絕不拿本名 fallback）
   const [name, setName] = useState(item.name || item.title || "");
   const [faction, setFaction] = useState(itemContent.faction || item.faction || "independent");
   const [description, setDescription] = useState(itemContent.description || item.description || "");
 
-  const [titles, setTitles] = useState<string[]>(
-    itemContent.titles || item.titles || (item.title ? [item.title] : [])
-  );
+  const [titles, setTitles] = useState<string[]>(() => {
+    if (Array.isArray(itemContent.titles)) return itemContent.titles;
+    if (Array.isArray(item.titles)) return item.titles;
+    return [];
+  });
 
   const [customFields, setCustomFields] = useState<{ label: string; value: string }[]>(
     itemContent.customFields || item.customFields || []
@@ -65,7 +67,15 @@ export default function CharacterForm({
     setName(item.name || item.title || "");
     setFaction(content.faction || item.faction || "independent");
     setDescription(content.description || item.description || "");
-    setTitles(content.titles || item.titles || (item.title ? [item.title] : []));
+    
+    // 🌟 修正：徹底杜絕拿 item.title（本名）作為稱號的錯誤
+    const validTitles = Array.isArray(content.titles)
+      ? content.titles
+      : Array.isArray(item.titles)
+      ? item.titles
+      : [];
+    setTitles(validTitles);
+
     setCustomFields(content.customFields || item.customFields || []);
     setRelations(
       (content.relations || item.relations || []).map((r: any) => {
@@ -131,23 +141,26 @@ export default function CharacterForm({
   const handleSaveClick = async () => {
     if (isSaving) return;
 
+    // 🌟 1. 過濾稱號陣列（去除空白與空字串）
+    const cleanTitles = titles.map(t => t.trim()).filter(Boolean);
+
     const currentContent = {
       ...(item as any).content,
       faction,
       description,
-      title: titles[0] || "",
-      titles,
+      titles: cleanTitles,
       customFields,
       relations
     };
 
+    // 🌟 2. 避免把本名寫入 title 欄位造成稱號污染
     const updatedItem = {
       ...item,
       name,
-      title: titles[0] || name,
+      title: cleanTitles[0] || name, // 後端若需要 title 則給首個稱號，若無才給 name
       faction,
       description,
-      titles,
+      titles: cleanTitles,
       customFields,
       relations,
       content: currentContent
@@ -182,7 +195,7 @@ export default function CharacterForm({
               {availableFactions.find(f => f.id === faction)?.name || '無所屬'}
             </Badge>
 
-            {titles.filter(t => t.trim() !== "").map((title, index) => (
+            {titles.filter(t => t && t.trim() !== "").map((title, index) => (
               <Badge key={index} variant="outline">{title}</Badge>
             ))}
           </div>
@@ -231,7 +244,7 @@ export default function CharacterForm({
 
         <div className="grid gap-2">
           <Label htmlFor="description">詳細背景設定</Label>
-          <Textarea id="description" className="min-h-[160px] resize-none leading-relaxed" value={description} onChange={(e) => { setDescription(e.target.value); onDirty?.(); }} />
+          <Textarea id="description" className="min-h-[160px] resize-none leading-relaxed" value={description} onChange={(e) => { setDescription(e.target.value); onDirty?.(); }} /> 
         </div>
 
         {/* 自訂屬性區塊 */}

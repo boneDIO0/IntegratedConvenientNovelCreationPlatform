@@ -25,6 +25,30 @@ interface EditorProps {
   initialStatus?: string;
 }
 
+// 🌟 各分類專屬白名單欄位定義
+const CATEGORY_ALLOWED_FIELDS: Record<string, string[]> = {
+  character: [
+    'titles', 'aliases', 'gender', 'age', 'identity',
+    'faction', 'alliances', 'appearance', 'personality',
+    'background', 'abilities', 'relations', 'description', 'notes'
+  ],
+  faction: [
+    'leader', 'territory', 'headquarters', 'hierarchy',
+    'goals', 'color', 'relations', 'description', 'notes'
+  ],
+  item: [
+    'itemType', 'owner', 'rarity', 'effect',
+    'resonanceEffect', 'relations', 'description', 'notes'
+  ],
+  location: [
+    'parentId', 'climate', 'geography', 'relations', 'description', 'notes'
+  ],
+  event: [
+    'date', 'location', 'customLocation', 'selectedEraName',
+    'participants', 'impact', 'relations', 'description', 'notes'
+  ]
+};
+
 export default function Editor({ novelId, chapterId, initialTitle, initialContent, isEditable = true, initialStatus = 'DRAFT' }: EditorProps) {
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
@@ -70,11 +94,9 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             return obj.flatMap(item => extractItems(item));
           }
           if (typeof obj === 'object') {
-            // 如果物件本身就是 SettingItem (具備 id 與 name)
             if (obj.id && (obj.name || obj.title)) {
               return [obj];
             }
-            // 若為包含清單的容器群組
             const list = obj.items || obj.entities || obj.settingItems || obj.data || obj.groups || obj.settingGroups;
             if (Array.isArray(list)) {
               return list.flatMap(item => extractItems(item));
@@ -690,20 +712,30 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           />
         </div>
 
-        {/* 🌟 編輯器內部直連抽屜：自動整合 root 屬性與 content 物件，並將 UUID 智慧轉為中文名稱 */}
+        {/* 🌟 編輯器內部直連抽屜 */}
         {selectedSettingItem && (() => {
           const item = selectedSettingItem as any;
-          
+          const rawContent = item.content && typeof item.content === 'object' ? item.content : {};
+          const category = (item.category || item.type || 'custom').toLowerCase();
+          const allowedKeys = CATEGORY_ALLOWED_FIELDS[category];
+
+          // 🌟 正確提取 titles
+          const rawTitles = rawContent.titles || item.titles || (Array.isArray(item.title) ? item.title : undefined);
+          const realTitles = Array.isArray(rawTitles)
+            ? rawTitles.map((t: any) => String(t).trim()).filter((t: string) => t !== '' && t !== item.name)
+            : (typeof rawTitles === 'string' && rawTitles.trim() !== '' && rawTitles.trim() !== item.name ? [rawTitles.trim()] : []);
+
           const mergedContent: Record<string, any> = {
-            ...(item.content && typeof item.content === 'object' ? item.content : {}),
-            ...item
+            ...item,
+            ...rawContent,
+            titles: realTitles
           };
 
           const excludeKeys = [
             'id', 'projectId', 'category', 'formType', 'type', 'versions',
             'createdAt', 'updatedAt', 'name', 'title', 'deletedAt',
             'isChapterAssigned', 'isAssigned', 'chapters', 'content',
-            'selectedEraName', 'sortWeight', 'matchScore'
+            'selectedEraName', 'sortWeight', 'matchScore', 'locationId'
           ];
 
           const FIELD_LABEL_MAP: Record<string, string> = {
@@ -742,35 +774,19 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
             parentId: '隸屬大分區',
           };
 
-          // 🎯 通用名稱反查函式
+          // 🎯 名稱反查函式：僅比對 ID 與 Name
           const resolveSettingName = (val: any): string => {
             if (!val) return '';
             const str = String(val).trim();
             if (!str) return '';
 
-            // 1. 比對 ID 或 Name
-            const matched = allSettings.find(s => {
-              const sAny = s as any;
-              const sContent = sAny.content || {};
-              return (
-                s.id === str ||
-                s.name?.trim().toLowerCase() === str.toLowerCase() ||
-                sAny.title?.trim().toLowerCase() === str.toLowerCase() ||
-                sContent.name?.trim().toLowerCase() === str.toLowerCase() ||
-                sContent.title?.trim().toLowerCase() === str.toLowerCase()
-              );
-            });
-
-            if (matched) {
-              const mAny = matched as any;
-              return matched.name || mAny.title || mAny.content?.name || mAny.content?.title || str;
-            }
-
-            return str;
+            const matched = allSettings.find(s => s.id === str || s.name?.trim().toLowerCase() === str.toLowerCase());
+            return matched ? (matched.name || (matched as any).title || str) : str;
           };
 
           const validEntries = Object.entries(mergedContent).filter(([k, v]) => {
-            if (excludeKeys.includes(k)) return false;
+            if (excludeKeys.includes(k) || k === 'title') return false;
+            if (allowedKeys && !allowedKeys.includes(k)) return false;
             if (v === undefined || v === null || v === '') return false;
             if (Array.isArray(v) && v.length === 0) return false;
             return true;
@@ -822,7 +838,8 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
                         return `• ${resolveSettingName(r)}`;
                       }).join('\n');
                     } else if (Array.isArray(value)) {
-                      displayVal = value.map(v => typeof v === 'string' ? resolveSettingName(v) : JSON.stringify(v)).join(', ');
+                      // 🌟 修正：一般陣列直接轉純字串，絕不走 resolveSettingName
+                      displayVal = value.map((v: any) => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
                     } else if (typeof value === 'object' && value !== null) {
                       displayVal = JSON.stringify(value, null, 2);
                     }

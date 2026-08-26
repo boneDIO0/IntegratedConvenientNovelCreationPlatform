@@ -1,5 +1,3 @@
-// src/app/api/settings/[id]/route.ts
-
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { generateEmbedding, buildEmbeddingText } from '@/lib/embedding'; 
@@ -77,29 +75,44 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const body = await request.json();
     console.log("📥 [時光機後端] 收到前端原始 Body 欄位:", Object.keys(body));
 
-    // 2. 基礎解構
-    const { id: _frontendId, name, category, saveVersion, versionName, ...restData } = body;
+    // 2. 基礎解構（🌟 修正：明確將 title 抽離排除，避免殘留進 content）
+    const { id: _frontendId, name, title: _passedTitle, category, saveVersion, versionName, ...restData } = body;
 
     // 🌟 撈出真正的自訂屬性表單資料
-    let pureFormFields = {};
+    let pureFormFields: Record<string, any> = {};
     if (restData.content && typeof restData.content === 'object') {
       pureFormFields = restData.content;
     } else {
       pureFormFields = restData;
     }
 
-    // 徹底剝離可能殘留的舊 versions 與歷史節點，防止無限套娃
-    const { versions: _fieldsIv, formType: _, ...cleanFormFields } = pureFormFields as any;
+    // 徹底剝離可能殘留的舊 versions、formType 與單數 title，防止無限套娃與稱號污染
+    const { versions: _fieldsIv, formType: _, title: _contentTitle, ...cleanFormFields } = pureFormFields as any;
 
-    // 封裝成要存入資料庫 content 欄位的終極主體（把自訂區塊原封不動包進來）
+    const targetName = name || oldEntity.title || "未命名設定";
+
+    // 🌟 核心修正：乾淨處理 titles 稱號陣列（排除空值與等於本名的字串）
+    let cleanTitles: string[] = [];
+    const rawTitles = cleanFormFields.titles || (Array.isArray(body.titles) ? body.titles : []);
+    if (Array.isArray(rawTitles)) {
+      cleanTitles = rawTitles
+        .map((t: any) => String(t).trim())
+        .filter(t => t !== '' && t !== targetName);
+    }
+
+    // 封裝成要存入資料庫 content 欄位的終極主體
     const finalContent = {
       ...cleanFormFields,
+      titles: cleanTitles,
       formType: category || (pureFormFields as any).formType || "custom"
     };
 
+    // 確保單數 title 徹底從 content 移除
+    delete (finalContent as any).title;
+
     const oldContent = (oldEntity.content as any) || {};
     
-    // 🎯 修正點 1：從舊的歷史清單中提取時，將每一條歷史紀錄的 versions 屬性剔除，防止 versions 自體無限複製
+    // 從舊的歷史清單中提取乾淨 versions
     let currentVersions = Array.isArray(oldContent.versions) 
       ? oldContent.versions.map((v: any) => {
           if (v.content && v.content.versions) {
@@ -114,12 +127,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const shouldSaveVersion = saveVersion === true || saveVersion === 'true' || currentVersions.length === 0;
 
     if (shouldSaveVersion) {
-      // 歷史快照只留乾淨的 finalContent，絕不附帶 versions 大陣列
       const backupContent = { ...finalContent };
 
       currentVersions.push({
         timestamp: Date.now(),
-        name: name || oldEntity.title || "未命名版本",
+        name: targetName,
         versionName: versionName || null,
         authorId: currentUserId,
         authorName: authorName,
@@ -135,20 +147,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       versions: currentVersions
     };
 
-    // 4. 正式強制更新回資料庫的主體欄位
+    // 4. 正式更新回資料庫
     let updatedEntity = await prisma.settingEntity.update({
       where: { id },
       data: {
-        title: name || oldEntity.title,
+        title: targetName, // 資料庫主實體名稱存本名
         content: JSON.parse(JSON.stringify(contentToSave)), 
         updatedAt: new Date(),
       }
     });
 
-    // 🌟 5. AI 向量化完全隔離防死
+    // 🌟 5. AI 向量化防護
     let vectorUpdated = false;
     try {
-      const embeddingText = buildEmbeddingText(name || oldEntity.title, finalContent);
+      const embeddingText = buildEmbeddingText(targetName, finalContent);
       
       if (embeddingText && embeddingText.length > 5) {
         console.log(`🚀 [AI 向量中心] 正確認估內容中，長度: ${embeddingText.length}，開始生成 1024 維度向量...`);
@@ -158,8 +170,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         if (vector && vector.length === 1024) {
           const vectorJsonString = JSON.stringify(vector);
           
-          // 🎯 修正點 2：兼容 Prisma 預設的駝峰與單數命名，一網打盡 "SettingEntity"、"setting_entities" 
-          // 使用常規大寫表名防禦，如與 schema 不符可改為 "SettingEntity"
           await prisma.$executeRaw`
             UPDATE "setting_entities" 
             SET "embedding" = ${vectorJsonString}::vector
@@ -186,7 +196,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       console.warn("⚠️ AI 向量化管線執行跳過或發生非致命異常，已進行防死隔離:", e);
     }
 
-    // 建立有命名的手動存檔時，發送通知
+    // 發送通知
     if (shouldSaveVersion && versionName) {
       const [project, members] = await Promise.all([
         prisma.project.findUnique({ where: { id: oldEntity.projectId }, select: { title: true, ownerId: true } }),
@@ -194,7 +204,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ]);
 
       const projectName = project?.title || '未知專案';
-      const settingName = name || oldEntity.title || '未知設定';
+      const settingName = targetName;
 
       const recipientIds = new Set(members.map(m => m.userId));
       if (project?.ownerId) recipientIds.add(project.ownerId);

@@ -1,24 +1,60 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CalendarConfig } from "@/types";
 import CalendarConfigForm from "@/components/CalendarConfigForm"; 
-import { useEditorUI } from "@/contexts/EditorUIContext"; // 🎯 修正 1：引入你們專案的權限 Context
+import { useEditorUI } from "@/contexts/EditorUIContext";
 // import EventForm from "@/components/EventForm"; 
 // import TimelineView from "@/components/TimelineView"; 
 
 interface ContainerProps {
   projectId: string;
   initialConfig: CalendarConfig;
+  isEditable?: boolean; // 👈 支援可選傳入，避免完全綁死 Context
 }
 
-export default function SettingsContainer({ projectId, initialConfig }: ContainerProps) {
-  // 🎯 修正 2：從小說編輯器的上下文大腦中，精準拉出目前的 isEditable 唯讀/編輯權限狀態
-  const { isEditable } = useEditorUI();
+export default function SettingsContainer({ 
+  projectId, 
+  initialConfig, 
+  isEditable: propIsEditable 
+}: ContainerProps) {
+  // 🌟 安全取用 Context（若無 Provider 則 fallback 至 prop 或 true）
+  let contextEditable = true;
+  try {
+    const editorUI = useEditorUI();
+    if (editorUI && typeof editorUI.isEditable === 'boolean') {
+      contextEditable = editorUI.isEditable;
+    }
+  } catch {
+    contextEditable = true;
+  }
 
-  // 🏆 核心：在父層維護單一真理源（Single Source of Truth）
-  // 當左側曆法被拖曳改變時，更新此狀態會同步迫使右側的時間軸視圖重新渲染 (Re-render)
+  const isEditable = propIsEditable !== undefined ? propIsEditable : contextEditable;
+
+  // 🏆 維護單一真理源
   const [calendarConfig, setCalendarConfig] = useState<CalendarConfig>(initialConfig);
+
+  // 🌟 當 props 傳入的 initialConfig 發生改變時同步更新
+  useEffect(() => {
+    if (initialConfig) {
+      setCalendarConfig(initialConfig);
+    }
+  }, [initialConfig]);
+
+  const handleSaveSuccess = async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/calendar`);
+      if (!res.ok) throw new Error("同步重新整理失敗");
+      
+      const json = await res.json();
+      const updatedData = json.data || json;
+      if (updatedData && typeof updatedData === 'object') {
+        setCalendarConfig(updatedData);
+      }
+    } catch (err) {
+      console.error("狀態調度中心資料刷洗失敗:", err);
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -27,30 +63,12 @@ export default function SettingsContainer({ projectId, initialConfig }: Containe
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h2 className="text-xl font-semibold mb-4 text-slate-800">🗓️ 雙軌制曆法配置</h2>
           
-          {/* 🌟 成功串接：傳入必填的 isEditable 屬性，徹底消滅 TS2741 編譯錯誤 */}
           <CalendarConfigForm 
             projectId={projectId}
             initialConfig={calendarConfig} 
-            isEditable={isEditable} // 🎯 修正 3：死死焊上這個必填 Prop，大綠燈通關！
-            onSaveSuccess={async () => {   
-              // 當寫手點擊大儲存鈕、切換運行模式、或者是放開滑鼠完成紀元拖曳排序時，
-              // 後端 PATCH/PUT API 會執行完畢，然後進來這個區塊。
-              try {
-                // 🎬 核心連動：重新向後端拉取最新洗牌後的曆法 JSONB
-                const res = await fetch(`/api/projects/${projectId}/calendar`);
-                if (!res.ok) throw new Error("同步重新整理失敗");
-                
-                const json = await res.json();
-                if (json.data) {
-                  // 刷新父層狀態，進而全面觸發下方的 EventForm 與 TimelineView 即時重新對齊！
-                  setCalendarConfig(json.data);
-                }
-              } catch (err) {
-                console.error("狀態調度中心資料刷洗失敗:", err);
-              }
-            }}
+            isEditable={isEditable}
+            onSaveSuccess={handleSaveSuccess}
             onDirty={() => {
-              // 供後續偵測表單未儲存、跳出防離頁警告使用 (可選)
               console.log("✍️ 創作者正在修改紀元參數或進行拖曳...");
             }}
           />
@@ -58,9 +76,8 @@ export default function SettingsContainer({ projectId, initialConfig }: Containe
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h2 className="text-xl font-semibold mb-4 text-slate-800">📝 新增/編輯歷史事件</h2>
-          {/* 🌟 成功分發：傳入目前的曆法配置，EventForm 下拉選單就能動態渲染對應的 selectedEraName */}
-          {/* <EventForm calendarConfig={calendarConfig} projectId={projectId} /> */}
-          <p className="text-gray-400 text-xs italic">（此處掛載你的 EventForm 元件，已具備選單咬合能力）</p>
+          {/* <EventForm calendarConfig={calendarConfig} projectId={projectId} isEditable={isEditable} /> */}
+          <p className="text-gray-400 text-xs italic">（此處掛載 EventForm 元件）</p>
         </div>
       </div>
 
@@ -68,9 +85,8 @@ export default function SettingsContainer({ projectId, initialConfig }: Containe
       <div className="lg:col-span-1">
         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 sticky top-6">
           <h2 className="text-xl font-semibold mb-4 text-slate-800">⏳ 斷代時序預覽</h2>
-          {/* 🌟 成功分發：TimelineView 拿到最新的 eras 陣列與 mode，拖曳換序時右側會即時跟著洗牌 */}
           {/* <TimelineView calendarConfig={calendarConfig} projectId={projectId} /> */}
-          <p className="text-gray-400 text-xs italic">（此處掛載你的 TimelineView 元件，會隨拖曳順序即時重組）</p>
+          <p className="text-gray-400 text-xs italic">（此處掛載 TimelineView 元件，會隨拖曳順序即時重組）</p>
         </div>
       </div>
     </div>
