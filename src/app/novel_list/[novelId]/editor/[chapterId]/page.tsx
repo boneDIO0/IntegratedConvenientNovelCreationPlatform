@@ -123,10 +123,6 @@ export default function ChapterEditorPage() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] w-full bg-[#f8f9fa] flex flex-col overflow-hidden relative">
-      {/* 🌟 浮動掛載 SettingsPopover */}
-      <div className="absolute top-3.5 right-20 z-40">
-        <SettingsPopover projectId={novelId} chapterId={chapterId} />
-      </div>
 
       <div className="flex-1 flex overflow-hidden relative w-full">
 

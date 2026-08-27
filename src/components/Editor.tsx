@@ -15,6 +15,7 @@ import 'katex/dist/katex.min.css'
 import { MathExtension } from '@aarkue/tiptap-math-extension'
 import { Eye, EyeOff, RotateCcw, BellRing, Lightbulb, ExternalLink, Download, X } from 'lucide-react'
 import { useSession } from 'next-auth/react'
+import { SettingsPopover } from '@/components/SettingsPopover'
 
 interface EditorProps {
   novelId: string;
@@ -601,6 +602,9 @@ export default function Editor({ novelId, chapterId, initialTitle, initialConten
           </div>
 
           <div className="flex items-center gap-3">
+
+            <SettingsPopover projectId={novelId} chapterId={chapterId} />
+
             {isEditable && !previewVersion && (
               <>
                 <button
