@@ -8,7 +8,7 @@ import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Message } from '@/types/message';
 import { Reply, X } from 'lucide-react';
-import { MentionsInput, Mention, SuggestionDataItem } from 'react-mentions';
+import CommentEditor from '@/components/CommentEditor';
 import { cn } from '@/lib/utils'
 
 interface DiscussionBoardProps {
@@ -17,6 +17,11 @@ interface DiscussionBoardProps {
   mode?: 'private' | 'public';
   currentUserRole?: string; 
   isWidget?: boolean; 
+}
+
+interface MemberItem {
+  id: string;
+  display: string;
 }
 
 export function DiscussionBoard({ 
@@ -40,9 +45,9 @@ export function DiscussionBoard({
   const [titles, setTitles] = useState({ projectTitle: '', chapterTitle: '' });
   const [messages, setMessages] = useState<Message[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [projectMembers, setProjectMembers] = useState<SuggestionDataItem[]>([]);
+  const [projectMembers, setProjectMembers] = useState<MemberItem[]>([]);
   // 用來在點擊回覆時，讓畫面自動捲動到輸入框
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = async () => {
     if (!projectId || projectId === 'undefined') return;
@@ -104,14 +109,13 @@ export function DiscussionBoard({
 
     setIsLoading(true);
 
-    const mentionRegex = /@\[(.*?)\]\((.*?)\)/g;
-    const extractedMentions: string[] = [];
-
-    const cleanContent = content.replace(mentionRegex, (match, display, id) => {
-      extractedMentions.push(id);
-      return `@${display}`; // 還原成純文字
-    });
-
+    const mentionRegex = /data-id="([^"]+)"/g;
+    const extractedMentions = [];
+    let match;
+    // 從 HTML 中萃取所有 data-id
+    while ((match = mentionRegex.exec(content)) !== null) { 
+      extractedMentions.push(match[1]);
+    }
     // 過濾重複的 ID
     const uniqueMentions = Array.from(new Set(extractedMentions));
 
@@ -121,7 +125,7 @@ export function DiscussionBoard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: projectId,
-          content: cleanContent,
+          content: content,
           mentions: uniqueMentions,
           channelId: channelId,
           referencedMessageId: replyingTo ? replyingTo.id : null
@@ -155,18 +159,19 @@ export function DiscussionBoard({
   const handleUpdate = async (id: string) => {
     if (!editContent.trim()) return;
     
-    const mentionRegex = /@\[(.*?)\]\((.*?)\)/g;
-    const extractedMentions: string[] = [];
-    const cleanContent = editContent.replace(mentionRegex, (match, display, userId) => {
-      extractedMentions.push(userId);
-      return `@${display}`;
-    });
+    const mentionRegex = /data-id="([^"]+)"/g;
+    const extractedMentions = [];
+    let match;
+    while ((match = mentionRegex.exec(editContent)) !== null) { 
+      extractedMentions.push(match[1]);
+    }
+    const uniqueMentions = Array.from(new Set(extractedMentions));
     
     try{
       const res = await fetch(`${apiBaseUrl}/${id}`, {
         method: 'PUT', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: cleanContent, mentions: extractedMentions }) 
+        body: JSON.stringify({ content: editContent, mentions: uniqueMentions }), 
       });
       if (res.ok) {
         setEditingId(null); // 關閉留言編輯模式
@@ -193,58 +198,8 @@ export function DiscussionBoard({
 
   const handleReplyClick = (msg: Message) => {
     setReplyingTo(msg);
+    inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-
-  // react-mentions 的客製化樣式
-  const baseSuggestionsStyle = {
-    list: {
-      backgroundColor: 'white',
-      border: '1px solid rgba(0,0,0,0.1)',
-      fontSize: 14,
-      borderRadius: '0.5rem',
-      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-      overflow: 'hidden',
-    },
-    item: {
-      padding: '8px 12px',
-      borderBottom: '1px solid rgba(0,0,0,0.05)',
-      '&focused': {
-        backgroundColor: '#eff6ff', 
-      },
-    },
-  };
-
-  // 發表留言區的樣式 (較高)
-  const defaultStyle = {
-    control: { fontSize: 14, fontWeight: 'normal' },
-    '&multiLine': {
-      control: { minHeight: isWidget ? 60 : 96 },
-      highlighter: { padding: 12, border: '1px solid transparent' },
-      input: {
-        padding: 12,
-        border: '1px solid #e2e8f0',
-        borderRadius: '0.5rem',      
-        outline: 'none',
-      },
-    },
-    suggestions: baseSuggestionsStyle,
-  };
-
-  // 🌟 編輯留言區的樣式 (較矮)
-  const editStyle = {
-    control: { fontSize: 14, fontWeight: 'normal' },
-    '&multiLine': {
-      control: { minHeight: 60 },
-      highlighter: { padding: 8, border: '1px solid transparent' },
-      input: {
-        padding: 8,
-        border: '1px solid #cbd5e1', // 稍微深一點的邊框讓它有編輯中的感覺
-        borderRadius: '0.375rem',      
-        outline: 'none',
-      },
-    },
-    suggestions: baseSuggestionsStyle,
-  };
 
   return (
     <div className={cn(
@@ -263,7 +218,10 @@ export function DiscussionBoard({
         )}
       </div>
       {/* --- 輸入區塊 --- */}
-      <div className={cn("border rounded-lg shadow-sm bg-white shrink-0", isWidget ? "p-3" : "p-6")}>
+      <div
+        ref={inputRef}
+        className={cn("border rounded-lg shadow-sm bg-white shrink-0", isWidget ? "p-3" : "p-6")}
+      >
         {!isWidget && (
           <h2 className="text-xl font-bold mb-4">{mode === 'public' ? '發表評論' : '新增留言'}</h2>
         )}
@@ -284,23 +242,15 @@ export function DiscussionBoard({
           </div>
         )}
 
-        <div className="mb-4 relative z-10 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all">
-          <MentionsInput
+        <div className="mb-4 relative z-10">
+          <CommentEditor
             value={content}
-            onChange={(e, newValue) => setContent(newValue)}
-            style={defaultStyle}
+            onChange={(html: string) => setContent(html)}
+            members={projectMembers.length > 0 ? projectMembers : [{ id: 'loading', display: '載入成員中...' }]}
             placeholder={replyingTo ? "寫下你的回覆... (輸入 @ 可標記成員)" : "在這裡暢所欲言... (輸入 @ 可標記成員)"}
             disabled={isLoading}
-            className="w-full"
-          >
-            <Mention
-              trigger="@"
-              markup="@[__display__](__id__)"
-              data={projectMembers}
-              displayTransform={(id, display) => `@${display}`}
-              style={{ backgroundColor: '#e0e7ff', borderRadius: '4px' }}
-            />
-          </MentionsInput>
+            minHeight={isWidget ? "60px" : "96px"}
+          />
         </div>
 
         <div className="flex justify-end">
@@ -423,21 +373,15 @@ export function DiscussionBoard({
 
                 {editingId === msg.id ? (
                   <div className="mt-2 ml-11">
-                    <div className="mb-2 relative z-10 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 rounded-md transition-all flex">
-                      <MentionsInput
+                    <div className="mb-2 relative z-10">
+                      <CommentEditor
                         value={editContent}
-                        onChange={(e, newValue) => setEditContent(newValue)}
-                        style={editStyle}
-                        className="w-full"
-                      >
-                        <Mention
-                          trigger="@"
-                          markup="@[__display__](__id__)"
-                          data={projectMembers}
-                          displayTransform={(id, display) => `@${display}`}
-                          style={{ backgroundColor: '#e0e7ff', borderRadius: '4px' }}
-                        />
-                      </MentionsInput>
+                        onChange={(html: string) => setEditContent(html)}
+                        members={projectMembers.length > 0 ? projectMembers : [{ id: 'loading', display: '載入成員中...' }]}
+                        placeholder={replyingTo ? "寫下你的回覆... (輸入 @ 可標記成員)" : "在這裡暢所欲言... (輸入 @ 可標記成員)"}
+                        disabled={isLoading}
+                        minHeight={isWidget ? "60px" : "96px"}
+                      />
                     </div>
                     <div className="flex justify-end gap-2">
                       <Button size="xs" variant="ghost" onClick={() => setEditingId(null)}>取消</Button>
@@ -445,7 +389,10 @@ export function DiscussionBoard({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-gray-800 whitespace-pre-wrap ml-11">{msg.content}</p>
+                  <div 
+                    className="text-gray-800 ml-11 prose prose-sm max-w-none" 
+                    dangerouslySetInnerHTML={{ __html: msg.content }} 
+                  />
                 )}
               </div>
             );
