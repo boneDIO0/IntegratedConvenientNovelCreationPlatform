@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '無效的邀請連結，請確認網址是否完整' }, { status: 404 });
     }
 
-    if (invitation.usedAt) {
+    if (invitation.email && invitation.usedAt) {
       return NextResponse.json({ error: '此邀請連結已被使用過了，請請房主重新產生' }, { status: 403 });
     }
 
@@ -76,20 +76,42 @@ export async function POST(request: NextRequest) {
       }, { status: 200 });
     }
 
-    // 核心交易：將使用者加入專案，並同時作廢這張邀請函
-    await prisma.$transaction([
+    if (existingMember) {
+      // 即使他已經是成員，如果是專屬邀請我們就作廢，避免連結外流
+      if (invitation.email) {
+        await prisma.projectInvitation.update({
+          where: { id: invitation.id },
+          data: { usedAt: new Date() }
+        });
+      }
+      return NextResponse.json({ 
+        message: '您已經是此專案的成員了！即將為您導向專案...',
+        projectId: invitation.projectId
+      }, { status: 200 });
+    }
+
+    // 核心交易：將使用者加入專案
+    const transactionOperations = [
       prisma.projectMember.create({
         data: {
           projectId: invitation.projectId,
           userId: user.id,
           role: invitation.role,
         }
-      }),
-      prisma.projectInvitation.update({
-        where: { id: invitation.id },
-        data: { usedAt: new Date() }
       })
-    ]);
+    ];
+
+    // 如果是有指定 Email 的專屬邀請，用完就作廢
+    if (invitation.email) {
+      transactionOperations.push(
+        prisma.projectInvitation.update({
+          where: { id: invitation.id },
+          data: { usedAt: new Date() }
+        }) as any // 如果 Prisma 型別抱怨可以加 as any
+      );
+    }
+
+    await prisma.$transaction(transactionOperations);
 
     console.log(`🎉 [邀請系統] 使用者 ${user.name} 已成功加入專案 ${invitation.project.title}，身分：${invitation.role}`);
 

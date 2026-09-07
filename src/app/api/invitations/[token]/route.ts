@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // 檢查是否已失效，但回傳 200，把失效狀態告訴前端，讓前端顯示「已過期」的 UI 而不是直接報錯崩潰
-    if (invitation.usedAt) {
+    if (invitation.email && invitation.usedAt) {
       return NextResponse.json({ status: 'used', error: '此邀請連結已被使用過' }, { status: 200 });
     }
 
