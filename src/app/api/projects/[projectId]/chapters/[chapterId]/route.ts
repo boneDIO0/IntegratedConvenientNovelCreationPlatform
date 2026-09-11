@@ -174,3 +174,68 @@ export async function PUT(
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }
+
+// 🗑️ 刪除：軟刪除章節，並同步更新專案的發布狀態
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ projectId: string; chapterId: string }> }
+) {
+  try {
+    const { projectId, chapterId } = await context.params
+
+    const authCheck = await verifyProjectAccess(projectId, [
+      PROJECT_ROLES.OWNER,
+      PROJECT_ROLES.EDITOR
+    ])
+
+    if (!authCheck.isAuthorized || !authCheck.userId) {
+      return new NextResponse(authCheck.error, { status: authCheck.status })
+    }
+
+    const currentChapter = await prisma.chapter.findFirst({
+      where: { id: chapterId, projectId, deletedAt: null },
+      select: { status: true }
+    })
+
+    if (!currentChapter) {
+      return new NextResponse("找不到章節或章節已刪除", { status: 404 })
+    }
+
+    await prisma.chapter.update({
+      where: { id: chapterId },
+      data: { deletedAt: new Date() }
+    })
+
+    // 如果刪除的是已公開章節，需要重新檢查作品狀態
+    if (currentChapter.status === 'PUBLISHED') {
+      const firstPublishedChapter = await prisma.chapter.findFirst({
+        where: {
+          projectId,
+          status: 'PUBLISHED',
+          deletedAt: null,
+          publishedAt: { not: null },
+        },
+        orderBy: { publishedAt: 'asc' },
+        select: { publishedAt: true },
+      })
+
+      if (firstPublishedChapter?.publishedAt) {
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { publishedAt: firstPublishedChapter.publishedAt },
+        })
+      } else {
+        // 沒有任何公開章節時，作品退回草稿狀態
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { status: 'DRAFT', publishedAt: null },
+        })
+      }
+    }
+
+    return new NextResponse("章節刪除成功", { status: 200 })
+  } catch (error) {
+    console.error("DELETE Chapter Error:", error)
+    return new NextResponse("Internal Server Error", { status: 500 })
+  }
+}
