@@ -22,6 +22,13 @@ export default function ChapterListPage() {
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
+  // 章節右鍵選單的狀態
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; chapterId: string | null }>({
+    x: 0,
+    y: 0,
+    chapterId: null,
+  })
+  
   // 根據章節狀態回傳對應的 UI 標籤
   const renderStatusBadge = (status?: string) => {
     switch (status) {
@@ -70,6 +77,13 @@ export default function ChapterListPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [novelId])
 
+  // 點擊頁面其他地方時關閉右鍵選單
+  useEffect(() => {
+    const handleClick = () => setContextMenu({ x: 0, y: 0, chapterId: null })
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
+
   // 新增章節的邏輯
   const handleCreateChapter = async () => {
     try {
@@ -82,6 +96,34 @@ export default function ChapterListPage() {
     } catch (error) {
       alert("新增章節失敗")
     }
+  }
+
+  // 刪除章節
+  const handleDeleteChapter = async (chapterId: string) => {
+    if (!confirm("確定要刪除這個章節嗎？此操作會將章節移至垃圾桶。")) return;
+
+    try {
+      const res = await fetch(`/api/projects/${novelId}/chapters/${chapterId}`, { 
+        method: 'DELETE' 
+      })
+      if (!res.ok) throw new Error("刪除失敗")
+      
+      // 刪除後重新抓取資料更新畫面
+      fetchData()
+    } catch (error) {
+      console.error(error)
+      alert("刪除章節失敗，請確認您的權限或稍後再試。")
+    }
+  }
+
+  // 處理右鍵點擊章節事件
+  const handleContextMenu = (e: React.MouseEvent, chapterId: string) => {
+    e.preventDefault() // 阻止瀏覽器預設的右鍵選單
+    setContextMenu({
+      x: e.pageX,
+      y: e.pageY,
+      chapterId: chapterId,
+    })
   }
 
   // 處理章節拖曳結束的邏輯
@@ -230,6 +272,7 @@ export default function ChapterListPage() {
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             style={provided.draggableProps.style as React.CSSProperties}
+                            onContextMenu={(e) => handleContextMenu(e, chapter.id)}
                             className={`p-3 transition-colors flex justify-between items-center group ${
                               snapshot.isDragging ? 'bg-blue-50 shadow-lg ring-1 ring-blue-200' : 'hover:bg-slate-50'
                             }`}
@@ -266,6 +309,28 @@ export default function ChapterListPage() {
           )}
         </div>
       </div>
+
+      {/* 章節右鍵選單 UI */}
+      {contextMenu.chapterId && (
+        <div 
+          className="absolute z-50 bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden min-w-[140px] py-1"
+          style={{ 
+            top: `${contextMenu.y}px`, 
+            left: `${contextMenu.x}px` 
+          }}
+          onClick={(e) => e.stopPropagation()} // 防止點擊選單本體時觸發全域關閉
+        >
+          <button 
+            onClick={() => {
+              handleDeleteChapter(contextMenu.chapterId!);
+              setContextMenu({ x: 0, y: 0, chapterId: null });
+            }}
+            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium flex items-center gap-2 transition-colors"
+          >
+            刪除此章節
+          </button>
+        </div>
+      )}
     </div>
   )
 }
