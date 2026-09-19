@@ -64,6 +64,7 @@ export default function SettingsContainer({
           <h2 className="text-xl font-semibold mb-4 text-slate-800">🗓️ 雙軌制曆法配置</h2>
           
           <CalendarConfigForm 
+            key={JSON.stringify(calendarConfig)} // 👈 或 calendarConfig.updatedAt / calendarConfig.id
             projectId={projectId}
             initialConfig={calendarConfig} 
             isEditable={isEditable}

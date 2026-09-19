@@ -7,10 +7,11 @@ import { Sliders } from "lucide-react";
 export default function SettingsPage() {
   const params = useParams();
   
-  // 🌟 安全定錨：精準抓取當前小說 ID
-  const novelId = params?.novelId as string;
+  // 🌟 安全定錨：支援陣列防呆，精準抓取當前小說 ID
+  const rawNovelId = params?.novelId;
+  const novelId = Array.isArray(rawNovelId) ? rawNovelId[0] : (rawNovelId as string);
 
-  // 🌟 邊界防禦機制：如果網址列解析尚未完成，噴出高質感 Skeleton 骨架屏防止畫面破防
+  // 🌟 邊界防禦機制：若路由解析尚未完成，顯示 Loading 骨架屏
   if (!novelId) {
     return (
       <div className="w-full h-screen flex items-center justify-center bg-slate-50">
@@ -23,8 +24,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="w-full h-screen bg-slate-50/50 flex flex-col">
-      {/* 🌟 頂部控制列：已完全拔除重複的返回按鈕與分隔線，視覺更專注！ */}
+    <div className="w-full h-screen bg-slate-50/50 flex flex-col overflow-hidden">
+      {/* 🌟 頂部控制列 */}
       <header className="w-full bg-white border-b border-slate-200/80 px-6 py-4 flex items-center justify-between shadow-sm shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-slate-900 font-bold text-lg tracking-wide">
@@ -38,9 +39,8 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      {/* 主體畫布區：撐滿剩餘空間並允許內部滾動 */}
+      {/* 主體畫布區：填滿剩餘高度並交由內部組件調度滾動 */}
       <main className="flex-1 w-full overflow-hidden bg-white">
-        {/* 🌟 穩穩餵給你的 SettingsPanel */}
         <SettingsPanel projectId={novelId} />
       </main>
     </div>

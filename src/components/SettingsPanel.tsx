@@ -47,6 +47,31 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [isLocalHistoryOpen, setIsLocalHistoryOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
+  // 🌟 核心工具函式：精準判定當前項目的真實表單型別 (formType)
+  const resolveFormType = (item: SettingItem | null | undefined): string => {
+    if (!item) return "custom";
+    const itemAny = item as any;
+    
+    // 1. 優先看明確標註的 formType
+    if (itemAny.formType) return itemAny.formType;
+    if (itemAny.content?.formType) return itemAny.content.formType;
+
+    // 2. 次優先：若 category 恰好等於標準英文型別
+    const cat = (item.category || "").toLowerCase();
+    if (['character', 'faction', 'item', 'event', 'location'].includes(cat)) {
+      return cat;
+    }
+
+    // 3. 次次優先：依中文目錄名稱智慧推斷
+    if (cat.includes('人物') || cat.includes('角色')) return 'character';
+    if (cat.includes('組織') || cat.includes('陣營') || cat.includes('勢力')) return 'faction';
+    if (cat.includes('物品') || cat.includes('道具') || cat.includes('裝備')) return 'item';
+    if (cat.includes('事件') || cat.includes('歷史')) return 'event';
+    if (cat.includes('地點') || cat.includes('場景') || cat.includes('世界')) return 'location';
+
+    return "custom";
+  };
+
   const handleRestoreVersion = async (timestamp: number) => {
     if (!selectedItem) return;
     try {
@@ -71,6 +96,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         ...dbContent, 
         name: dbEntity.title || dbEntity.name,
         category: dbContent.category || dbEntity.category || 'custom',
+        formType: dbContent.formType || dbEntity.formType || resolveFormType(dbEntity),
         content: dbEntity.content
       };
 
@@ -102,7 +128,8 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         setSelectedItem({
           ...latest,
           ...latestContent,
-          category: latestContent.category || latest.category || 'custom'
+          category: latestContent.category || latest.category || 'custom',
+          formType: latestContent.formType || latest.formType || resolveFormType(latest)
         });
       }
     } catch (error) {
@@ -227,6 +254,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         ...dbContent, 
         name: dbItem.title || dbItem.name,
         category: dbContent.category || dbItem.category || 'custom',
+        formType: dbContent.formType || dbItem.formType || resolveFormType(dbItem),
         content: dbItem.content
       };
 
@@ -279,7 +307,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-  // 🎯 核心修復：精準更新 State，徹底杜絕 setTimeout 閉包覆蓋問題
+  // 🎯 核心修復：存檔時將 formType 完整同步進 content 與本體物件
   const handleUpdateItem = async (updatedItem: SettingItem) => {
     const userInput = window.prompt(
       "請為這次的設定存檔命名 (選填)：\n例如：新增魔法設定、更新外觀描述", 
@@ -288,15 +316,32 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     if (userInput === null) return;
     const versionName = userInput.trim() !== "" ? userInput.trim() : null;
 
+    const currentResolvedType = resolveFormType(updatedItem);
+
+    // 確保 content 內部與最外層的 formType 一致
+    const rawContent = (updatedItem as any).content && typeof (updatedItem as any).content === 'object'
+      ? (updatedItem as any).content
+      : {};
+
+    const consolidatedItem = {
+      ...updatedItem,
+      formType: currentResolvedType,
+      content: {
+        ...rawContent,
+        ...updatedItem,
+        formType: currentResolvedType,
+      }
+    };
+
     // 先行樂觀更新
-    setSelectedItem(updatedItem);
+    setSelectedItem(consolidatedItem);
     setHasChanges(false);
 
     try {
-      const res = await fetch(`/api/settings/${updatedItem.id}`, {
+      const res = await fetch(`/api/settings/${consolidatedItem.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updatedItem, saveVersion: true, versionName: versionName })
+        body: JSON.stringify({ ...consolidatedItem, saveVersion: true, versionName: versionName })
       });
 
       if (!res.ok) throw new Error("後端儲存失敗");
@@ -307,17 +352,18 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const alignedUpdatedItem = {
         ...latestEntityFromDB,
         ...dbContent, 
-        category: updatedItem.category || dbContent.category || 'custom',
-        name: latestEntityFromDB.title || latestEntityFromDB.name || updatedItem.name,
+        category: consolidatedItem.category || dbContent.category || 'custom',
+        formType: consolidatedItem.formType || dbContent.formType || latestEntityFromDB.formType || currentResolvedType,
+        name: latestEntityFromDB.title || latestEntityFromDB.name || consolidatedItem.name,
         content: latestEntityFromDB.content,
-        updatedAt: new Date().toISOString() // 確保生成全新時間戳記更新 key
+        updatedAt: new Date().toISOString()
       };
 
       // 1. 立即設定最新的真理源
       setSelectedItem(alignedUpdatedItem);
       setSaveTick(prev => prev + 1);
 
-      // 2. 本地立即更新側邊欄，無需等待非同步 fetch 回彈
+      // 2. 本地立即更新側邊欄
       setSettingsData(prevData =>
         prevData.map(group => ({
           ...group,
@@ -353,8 +399,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           ...found,
           name: found.name || "未命名項目",
           category: found.category || "custom",
-          description: found.description || ""
-        };
+          description: found.description || "",
+          formType: resolveFormType(found)
+        } as any;
 
         setSelectedItem(alignedItem); 
         setViewMode('form');
@@ -373,13 +420,19 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         body: JSON.stringify({
           categoryName: categoryName,
           type: type, 
-          item: { name: "未命名新項目" },
+          formType: type,
+          item: { name: "未命名新項目", formType: type },
           projectId: projectId 
         })
       });
 
       if (!res.ok) throw new Error('新增至資料庫失敗');
       const realItem = await res.json(); 
+
+      const alignedRealItem = {
+        ...realItem,
+        formType: type || resolveFormType(realItem)
+      };
 
       if (chapterId) {
         await fetch(`/api/settings`, {
@@ -390,7 +443,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       }
 
       await fetchSettings(); 
-      setSelectedItem(realItem);
+      setSelectedItem(alignedRealItem);
       setViewMode('form');
       setHasChanges(false); 
     } catch (error) {
@@ -481,17 +534,8 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     );
   }
 
-  const checkCategoryMatch = (groupName: string, type: string) => {
-    const gName = groupName.toLowerCase();
-    const tName = type.toLowerCase();
-    if (gName.includes(tName)) return true;
-    if (tName === 'character' && gName.includes('人物')) return true;
-    if (tName === 'faction' && gName.includes('組織')) return true;
-    if (tName === 'item' && gName.includes('物品')) return true;
-    if (tName === 'event' && gName.includes('事件')) return true;
-    if (tName === 'location' && gName.includes('地點')) return true;
-    return false;
-  };
+  // 取得當前選取項目的有效表單型別
+  const currentActiveFormType = resolveFormType(selectedItem);
 
   return (
     <div className="flex h-full w-full bg-slate-50 md:flex-row flex-col overflow-hidden">
@@ -500,7 +544,11 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           data={settingsData}
           onSelect={(item) => {
             if (!confirmLeave()) return; 
-            setSelectedItem(item);
+            const aligned = {
+              ...item,
+              formType: resolveFormType(item)
+            };
+            setSelectedItem(aligned);
             setViewMode('form'); 
             setHasChanges(false); 
             setExternalUpdate(null); 
@@ -552,28 +600,37 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
               {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
                 <>
+                  {/* 🌟 核心修復：value 綁定解析後的 currentActiveFormType */}
                   <select
-                    value={selectedItem.category}
+                    value={currentActiveFormType}
                     disabled={!isEditable}
                     onChange={async (e) => {
                       if (!selectedItem) return;
                       const newType = e.target.value;
-                      const updated = { ...selectedItem, category: newType };
+                      
+                      const rawContent = (selectedItem as any).content && typeof (selectedItem as any).content === 'object'
+                        ? (selectedItem as any).content
+                        : {};
+
+                      const updated: any = { 
+                        ...selectedItem, 
+                        formType: newType,
+                        content: {
+                          ...rawContent,
+                          formType: newType
+                        }
+                      };
         
                       setSelectedItem(updated);
+                      setSaveTick(prev => prev + 1);
 
-                      setSettingsData(prevData => {
-                        return prevData.map(group => {
-                          const filteredItems = group.items.filter(i => i.id !== selectedItem.id);
-                          if (checkCategoryMatch(group.category, newType)) {
-                            return {
-                              ...group,
-                              items: [...group.items.filter(i => i.id !== selectedItem.id), updated]
-                            };
-                          }
-                          return { ...group, items: filteredItems };
-                        });
-                      });
+                      // 同步更新側邊欄快取
+                      setSettingsData(prevData =>
+                        prevData.map(group => ({
+                          ...group,
+                          items: group.items.map(i => i.id === selectedItem.id ? updated : i)
+                        }))
+                      );
 
                       try {
                         await fetch(`/api/settings/${selectedItem.id}`, {
@@ -581,8 +638,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(updated),
                         });
-
-                        setSelectedItem(updated);
                       } catch (error) {
                         console.error("轉生表單失敗:", error);
                       }
@@ -689,7 +744,8 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             setSelectedItem(null);
                             const firstItem = settingsData.flatMap(g => g.items)[0];
                             if (firstItem) {
-                              setSelectedItem(firstItem);
+                              const aligned = { ...firstItem, formType: resolveFormType(firstItem) };
+                              setSelectedItem(aligned);
                               setViewMode('form');
                               setHasChanges(false);
                             } else {
@@ -725,9 +781,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                                   >
                                     <div className="flex items-center gap-3 min-w-0 flex-1">
                                       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                        item.category === 'character' ? 'bg-blue-500' : 
-                                        item.category === 'faction' ? 'bg-orange-500' : 
-                                        item.category === 'location' ? 'bg-blue-600' : 
+                                        resolveFormType(item) === 'character' ? 'bg-blue-500' : 
+                                        resolveFormType(item) === 'faction' ? 'bg-orange-500' : 
+                                        resolveFormType(item) === 'location' ? 'bg-blue-600' : 
                                         'bg-emerald-500'
                                       }`} />
                                       <span className="text-sm font-semibold text-slate-800 truncate block">
@@ -777,9 +833,10 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                       />
                     ) : (
                       <>
-                        {selectedItem.category === 'character' && (
+                        {/* 🌟 核心修復：使用 currentActiveFormType 精確渲染對應表單 */}
+                        {currentActiveFormType === 'character' && (
                           <CharacterForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
+                            key={`${selectedItem.id}-${currentActiveFormType}-${saveTick}`}
                             item={selectedItem}
                             onSave={handleUpdateItem}
                             allSettings={globalAllSettings}
@@ -788,9 +845,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           />
                         )}
 
-                        {selectedItem.category === 'faction' && (
+                        {currentActiveFormType === 'faction' && (
                           <FactionForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
+                            key={`${selectedItem.id}-${currentActiveFormType}-${saveTick}`}
                             item={selectedItem}
                             allSettings={globalAllSettings} 
                             onSave={handleUpdateItem}
@@ -798,9 +855,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           />
                         )}
 
-                        {selectedItem.category === 'item' && (
+                        {currentActiveFormType === 'item' && (
                           <ItemForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
+                            key={`${selectedItem.id}-${currentActiveFormType}-${saveTick}`}
                             item={selectedItem}
                             allSettings={globalAllSettings} 
                             onSave={handleUpdateItem}
@@ -808,9 +865,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           />
                         )}
 
-                        {selectedItem.category === 'event' && (
+                        {currentActiveFormType === 'event' && (
                           <EventForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
+                            key={`${selectedItem.id}-${currentActiveFormType}-${saveTick}`}
                             item={selectedItem}
                             calendarConfig={calendarConfig}
                             allSettings={globalAllSettings}
@@ -819,9 +876,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           />
                         )}
 
-                        {selectedItem.category === 'location' && (
+                        {currentActiveFormType === 'location' && (
                           <LocationForm
-                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`}
+                            key={`${selectedItem.id}-${currentActiveFormType}-${saveTick}`}
                             item={selectedItem}
                             allSettings={globalAllSettings}
                             onSave={handleUpdateItem}
@@ -829,9 +886,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           />
                         )}
 
-                        {(selectedItem.category === 'custom' || !['character', 'faction', 'item', 'event', 'location'].includes(selectedItem.category)) && (
+                        {currentActiveFormType === 'custom' && (
                           <DynamicForm 
-                            key={`${selectedItem.id}-${selectedItem.category}-${saveTick}`} 
+                            key={`${selectedItem.id}-${currentActiveFormType}-${saveTick}`} 
                             item={selectedItem} 
                             onSave={handleUpdateItem} 
                           />
