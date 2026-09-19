@@ -75,8 +75,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const body = await request.json();
     console.log("📥 [時光機後端] 收到前端原始 Body 欄位:", Object.keys(body));
 
-    // 2. 基礎解構（🌟 修正：明確將 title 抽離排除，避免殘留進 content）
-    const { id: _frontendId, name, title: _passedTitle, category, saveVersion, versionName, ...restData } = body;
+    // 2. 基礎解構：將不屬於 content 的控制欄位完整抽離
+    const { 
+      id: _frontendId, 
+      name, 
+      title: _passedTitle, 
+      category: passedCategory, 
+      formType: passedFormType,
+      saveVersion, 
+      versionName, 
+      versions: _bodyVersions,
+      ...restData 
+    } = body;
 
     // 🌟 撈出真正的自訂屬性表單資料
     let pureFormFields: Record<string, any> = {};
@@ -86,12 +96,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       pureFormFields = restData;
     }
 
-    // 徹底剝離可能殘留的舊 versions、formType 與單數 title，防止無限套娃與稱號污染
-    const { versions: _fieldsIv, formType: _, title: _contentTitle, ...cleanFormFields } = pureFormFields as any;
+    // 徹底剝離可能殘留的舊 versions、formType 與單數 title
+    const { 
+      versions: _fieldsIv, 
+      formType: _innerFormType, 
+      title: _contentTitle, 
+      ...cleanFormFields 
+    } = pureFormFields as any;
 
-    const targetName = name || oldEntity.title || "未命名設定";
+    const targetName = name || _passedTitle || oldEntity.title || "未命名設定";
 
-    // 🌟 核心修正：乾淨處理 titles 稱號陣列（排除空值與等於本名的字串）
+    // 🌟 核心修正 1：優先取明確的 formType，確保不會被 category: "custom" 覆蓋短路
+    const determinedFormType = 
+      passedFormType || 
+      pureFormFields.formType || 
+      (passedCategory && !['custom'].includes(passedCategory) ? passedCategory : 'custom');
+
+    // 🌟 核心修正 2：乾淨處理 titles 稱號陣列
     let cleanTitles: string[] = [];
     const rawTitles = cleanFormFields.titles || (Array.isArray(body.titles) ? body.titles : []);
     if (Array.isArray(rawTitles)) {
@@ -101,33 +122,42 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // 封裝成要存入資料庫 content 欄位的終極主體
-    const finalContent = {
+    const finalContent: Record<string, any> = {
       ...cleanFormFields,
       titles: cleanTitles,
-      formType: category || (pureFormFields as any).formType || "custom"
+      category: passedCategory || cleanFormFields.category || "custom",
+      formType: determinedFormType,
     };
 
     // 確保單數 title 徹底從 content 移除
-    delete (finalContent as any).title;
+    delete finalContent.title;
+    delete finalContent.versions;
 
+    // 🌟 核心修正 3：深層清洗過往膨脹的歷史快照，並限制保留最近 20 筆
     const oldContent = (oldEntity.content as any) || {};
-    
-    // 從舊的歷史清單中提取乾淨 versions
-    let currentVersions = Array.isArray(oldContent.versions) 
-      ? oldContent.versions.map((v: any) => {
-          if (v.content && v.content.versions) {
-            const { versions: _, ...cleanContent } = v.content;
-            return { ...v, content: cleanContent };
+    let currentVersions: any[] = [];
+
+    if (Array.isArray(oldContent.versions)) {
+      currentVersions = oldContent.versions
+        .map((v: any) => {
+          if (!v || typeof v !== 'object') return null;
+          const cleanV = { ...v };
+          if (cleanV.content && typeof cleanV.content === 'object') {
+            const { versions: _nestedVersions, ...sanitizedContent } = cleanV.content;
+            cleanV.content = sanitizedContent;
           }
-          return v;
+          return cleanV;
         })
-      : [];
+        .filter(Boolean)
+        .slice(-20); // 🔒 保證最多只保留最新 20 個版本，杜絕資料庫無限制膨脹
+    }
 
     // 3. 判斷是否需要建立新歷史版本
     const shouldSaveVersion = saveVersion === true || saveVersion === 'true' || currentVersions.length === 0;
 
     if (shouldSaveVersion) {
-      const backupContent = { ...finalContent };
+      // 深度拷貝當前純淨內容，絕對不能有 versions
+      const backupContent = JSON.parse(JSON.stringify(finalContent));
 
       currentVersions.push({
         timestamp: Date.now(),
@@ -141,7 +171,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       console.log(`✅ [時光機後端] 已將本次最新改動寫入歷史快照。目前版本總數: ${currentVersions.length}`);
     }
 
-    // 打包最新內容與完整的版本鏈
+    // 打包最新內容與完整的版本鏈（只有最外層擁有 versions）
     const contentToSave = {
       ...finalContent,
       versions: currentVersions
@@ -151,8 +181,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     let updatedEntity = await prisma.settingEntity.update({
       where: { id },
       data: {
-        title: targetName, // 資料庫主實體名稱存本名
-        content: JSON.parse(JSON.stringify(contentToSave)), 
+        title: targetName,
+        content: contentToSave,
         updatedAt: new Date(),
       }
     });
@@ -196,7 +226,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       console.warn("⚠️ AI 向量化管線執行跳過或發生非致命異常，已進行防死隔離:", e);
     }
 
-    // 發送通知
+    // 6. 發送協作通知
     if (shouldSaveVersion && versionName) {
       const [project, members] = await Promise.all([
         prisma.project.findUnique({ where: { id: oldEntity.projectId }, select: { title: true, ownerId: true } }),

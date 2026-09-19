@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { verifyProjectAccess } from '@/lib/auth-utils';
 import { PROJECT_ROLES } from '@/lib/roles';
+import { generateEmbedding, buildEmbeddingText } from '@/lib/embedding';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,42 +28,85 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const currentUserId = auth.userId;
 
     const body = await request.json();
-
     const incomingTimestamp = body.timestamp;
     if (!incomingTimestamp) {
       return NextResponse.json({ error: '缺少時間戳記參數' }, { status: 400 });
     }    
 
     const content = (entity.content as any) || {};
-    const versions = Array.isArray(content.versions) ? content.versions : [];
+    const rawVersions = Array.isArray(content.versions) ? content.versions : [];
 
-    // 1. 全字串安全比對
-    const targetVersion = versions.find((v: any) => String(v.timestamp || v.id) === String(incomingTimestamp));
+    // 1. 全字串安全比對找出目標快照
+    const targetVersion = rawVersions.find((v: any) => String(v.timestamp || v.id) === String(incomingTimestamp));
 
     if (!targetVersion || !targetVersion.content) {
       return NextResponse.json({ error: '還原失敗：找不到符合的版本快照' }, { status: 422 });
     }
 
-    // 💡 關鍵修正：確保提取出來的快照是純粹的表單欄位，絕不夾帶舊的 versions
-    const { versions: _, ...pureSnapshotData } = targetVersion.content;
+    // 🌟 2. 關鍵修正：確保提取出來的快照是純粹的表單欄位，絕不夾帶舊的 versions
+    const { versions: _ignore, ...pureSnapshotData } = targetVersion.content;
 
-    // 2. 打包要還原的完整 JSON 欄位（主體變回過去，但珍貴的時光機歷史鏈必須保留）
+    // 🌟 確保還原後的 formType 與 category 明確存在
+    const restoredFormType = 
+      pureSnapshotData.formType || 
+      targetVersion.formType || 
+      content.formType || 
+      "custom";
+
+    // 🌟 3. 對所有歷史版本做一次深度清洗，確保每個快照內部沒有 versions，並保留最新 20 筆
+    const sanitizedVersions = rawVersions
+      .map((v: any) => {
+        if (!v || typeof v !== 'object') return null;
+        const cleanV = { ...v };
+        if (cleanV.content && typeof cleanV.content === 'object') {
+          const { versions: _, ...cleanInnerContent } = cleanV.content;
+          cleanV.content = cleanInnerContent;
+        }
+        return cleanV;
+      })
+      .filter(Boolean)
+      .slice(-20);
+
+    // 4. 打包要還原的完整 JSON 欄位（主體變回過去，並保留乾淨歷史鏈）
     const restoredContent = {
       ...pureSnapshotData,
-      versions: versions
+      formType: restoredFormType,
+      versions: sanitizedVersions
     };
 
-    // 3. 🚀【雙管齊下修正】：同時更新外層的 title 與內部的 content！
-    const updatedEntity = await prisma.settingEntity.update({
+    const targetTitle = targetVersion.name || entity.title;
+
+    // 5. 🚀 同步更新外層 title 與內部的 content
+    let updatedEntity = await prisma.settingEntity.update({
       where: { id },
       data: {
-        title: targetVersion.name || entity.title, // 🌟 讓標題同步回歸當時的版本名稱！
-        content: JSON.parse(JSON.stringify(restoredContent)), // 徹底純化 JSON
+        title: targetTitle,
+        content: JSON.parse(JSON.stringify(restoredContent)),
         updatedAt: new Date()
       }
     });
 
-    // 發送還原通知
+    // 🌟 6. AI 向量化同步（確保還原後 AI 檢索到的世界觀文本一致）
+    try {
+      const embeddingText = buildEmbeddingText(targetTitle, restoredContent);
+      if (embeddingText && embeddingText.length > 5) {
+        const vector = await generateEmbedding(embeddingText);
+        if (vector && vector.length === 1024) {
+          const vectorJsonString = JSON.stringify(vector);
+          await prisma.$executeRaw`
+            UPDATE "setting_entities" 
+            SET "embedding" = ${vectorJsonString}::vector
+            WHERE "id" = ${id}::uuid
+          `;
+          const refreshed = await prisma.settingEntity.findUnique({ where: { id } });
+          if (refreshed) updatedEntity = refreshed;
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ 還原後 AI 向量化更新跳過:", e);
+    }
+
+    // 7. 發送還原通知
     const [project, actor, members] = await Promise.all([
       prisma.project.findUnique({ where: { id: entity.projectId }, select: { title: true, ownerId: true } }),
       prisma.user.findUnique({ where: { id: currentUserId }, select: { name: true } }),

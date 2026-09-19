@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import SettingsSidebar from "@/components/SettingsSidebar";
 import CharacterForm from "@/components/CharacterForm";
 import RelationGraph from "@/components/RelationGraph"; 
@@ -40,6 +40,9 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
   const [highlightedIds, setHighlightedIds] = useState<string[] | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 🌟 核心防護旗標：正在儲存中或剛重載完成時，忽略子組件冒泡上來的 onDirty
+  const isSavingOrResettingRef = useRef(false);
 
   const { data: session } = useSession();
   const [externalUpdate, setExternalUpdate] = useState<{ authorName: string, latestData: any } | null>(null);
@@ -102,8 +105,14 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
       alert("🎉 項目已成功還原至該歷史存檔點！");
 
+      isSavingOrResettingRef.current = true;
       setSelectedItem(alignedItem);
+      setHasChanges(false);
       await fetchSettings();
+      setTimeout(() => {
+        isSavingOrResettingRef.current = false;
+        setHasChanges(false);
+      }, 150);
     } catch (error: any) {
       console.error("🔴 還原執行中斷:", error);
       alert(`⚠️ 還原失敗: ${error.message || "未知錯誤"}`);
@@ -140,8 +149,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
   const fetchSettings = async () => {
     try {
-      setIsLoading(true);
-      
       const calendarRes = await fetch(`/api/projects/${projectId}/calendar`);
       if (calendarRes.ok) {
         const calendarResult = await calendarRes.json();
@@ -258,9 +265,14 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         content: dbItem.content
       };
 
+      isSavingOrResettingRef.current = true;
       setSelectedItem(alignedItem);
       setHasChanges(false);
       setExternalUpdate(null);
+      setTimeout(() => {
+        isSavingOrResettingRef.current = false;
+        setHasChanges(false);
+      }, 150);
     }
   };
 
@@ -307,7 +319,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     }
   };
 
-  // 🎯 核心修復：存檔時將 formType 完整同步進 content 與本體物件
+  // 🎯 核心修復：存檔前徹底剝離 versions 防止自我嵌套，並同步快取與背景靜默 fetch
   const handleUpdateItem = async (updatedItem: SettingItem) => {
     const userInput = window.prompt(
       "請為這次的設定存檔命名 (選填)：\n例如：新增魔法設定、更新外觀描述", 
@@ -318,22 +330,31 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
     const currentResolvedType = resolveFormType(updatedItem);
 
-    // 確保 content 內部與最外層的 formType 一致
-    const rawContent = (updatedItem as any).content && typeof (updatedItem as any).content === 'object'
-      ? (updatedItem as any).content
+    // 🌟 1. 關鍵剝離：絕對不能把 versions 歷史陣列再塞回 content 內部造成無限嵌套膨脹
+    const { 
+      versions: _ignoreVersions, 
+      content: rawContent, 
+      ...cleanItemProps 
+    } = (updatedItem as any);
+
+    const cleanRawContent = typeof rawContent === 'object' && rawContent !== null
+      ? { ...rawContent }
       : {};
+    delete cleanRawContent.versions;
 
     const consolidatedItem = {
-      ...updatedItem,
+      ...cleanItemProps,
       formType: currentResolvedType,
+      category: cleanItemProps.category || 'custom',
       content: {
-        ...rawContent,
-        ...updatedItem,
+        ...cleanRawContent,
+        ...cleanItemProps,
         formType: currentResolvedType,
       }
     };
 
-    // 先行樂觀更新
+    // 🌟 2. 進入存檔狀態，阻斷子元件誤觸 onDirty
+    isSavingOrResettingRef.current = true;
     setSelectedItem(consolidatedItem);
     setHasChanges(false);
 
@@ -341,10 +362,18 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       const res = await fetch(`/api/settings/${consolidatedItem.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...consolidatedItem, saveVersion: true, versionName: versionName })
+        body: JSON.stringify({ 
+          ...consolidatedItem, 
+          saveVersion: true, 
+          versionName: versionName 
+        })
       });
 
-      if (!res.ok) throw new Error("後端儲存失敗");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("🔴 後端詳細錯誤回應:", errorData);
+        throw new Error(errorData.error || errorData.message || `後端儲存失敗 (狀態碼: ${res.status})`);
+      }
 
       const latestEntityFromDB = await res.json();
       const dbContent = latestEntityFromDB.content && typeof latestEntityFromDB.content === 'object' ? latestEntityFromDB.content : {};
@@ -359,11 +388,11 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         updatedAt: new Date().toISOString()
       };
 
-      // 1. 立即設定最新的真理源
+      // 1. 立即設定最新的真理源並更新 tick
       setSelectedItem(alignedUpdatedItem);
       setSaveTick(prev => prev + 1);
 
-      // 2. 本地立即更新側邊欄
+      // 2. 本地立即更新側邊欄與全域快取
       setSettingsData(prevData =>
         prevData.map(group => ({
           ...group,
@@ -378,9 +407,18 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
         }))
       );
 
-    } catch (error) {
+      // 🌟 3. 背景靜默重拉最新資料，確保快取絕對同步
+      fetchSettings();
+
+      setTimeout(() => {
+        setHasChanges(false);
+        isSavingOrResettingRef.current = false;
+      }, 200);
+
+    } catch (error: any) {
+      isSavingOrResettingRef.current = false;
       console.error("雲端同步出錯:", error);
-      alert("⚠️ 雲端同步失敗，請檢查後端連線狀態。");
+      alert(`⚠️ 雲端同步失敗: ${error.message || "請檢查後端連線狀態"}`);
     }
   };
 
@@ -403,9 +441,14 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           formType: resolveFormType(found)
         } as any;
 
+        isSavingOrResettingRef.current = true;
         setSelectedItem(alignedItem); 
         setViewMode('form');
         setHasChanges(false);
+        setTimeout(() => {
+          isSavingOrResettingRef.current = false;
+          setHasChanges(false);
+        }, 150);
         break;
       }
     }
@@ -443,9 +486,14 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
       }
 
       await fetchSettings(); 
+      isSavingOrResettingRef.current = true;
       setSelectedItem(alignedRealItem);
       setViewMode('form');
       setHasChanges(false); 
+      setTimeout(() => {
+        isSavingOrResettingRef.current = false;
+        setHasChanges(false);
+      }, 150);
     } catch (error) {
       console.error(error);
     }
@@ -525,6 +573,13 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
     } catch (error) {}
   };
 
+  // 🌟 安全包裝的 onDirty 觸發器：過濾初始化與存檔重載時的誤觸
+  const handleMarkDirty = () => {
+    if (!isSavingOrResettingRef.current) {
+      setHasChanges(true);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
@@ -544,14 +599,26 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
           data={settingsData}
           onSelect={(item) => {
             if (!confirmLeave()) return; 
+
+            // 🌟 核心修復：從最新的 settingsData 或 globalAllSettings 中取出包含最新 formType 的物件本體
+            const latestItemFromState = settingsData
+              .flatMap(g => g.items)
+              .find(i => i.id === item.id) || item;
+
             const aligned = {
-              ...item,
-              formType: resolveFormType(item)
+              ...latestItemFromState,
+              formType: resolveFormType(latestItemFromState)
             };
+
+            isSavingOrResettingRef.current = true;
             setSelectedItem(aligned);
             setViewMode('form'); 
             setHasChanges(false); 
             setExternalUpdate(null); 
+            setTimeout(() => {
+              isSavingOrResettingRef.current = false;
+              setHasChanges(false);
+            }, 150);
           }} 
           selectedId={selectedItem?.id}
           onAdd={handleAddItem}
@@ -600,7 +667,6 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
 
               {selectedItem && selectedItem.id !== "project-calendar-config" && (viewMode === 'form' || !viewMode) && (
                 <>
-                  {/* 🌟 核心修復：value 綁定解析後的 currentActiveFormType */}
                   <select
                     value={currentActiveFormType}
                     disabled={!isEditable}
@@ -621,12 +687,20 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                         }
                       };
         
+                      isSavingOrResettingRef.current = true;
                       setSelectedItem(updated);
                       setSaveTick(prev => prev + 1);
 
-                      // 同步更新側邊欄快取
+                      // 同步更新側邊欄與全域快取
                       setSettingsData(prevData =>
                         prevData.map(group => ({
+                          ...group,
+                          items: group.items.map(i => i.id === selectedItem.id ? updated : i)
+                        }))
+                      );
+
+                      setGlobalAllSettings(prevGlobal =>
+                        prevGlobal.map(group => ({
                           ...group,
                           items: group.items.map(i => i.id === selectedItem.id ? updated : i)
                         }))
@@ -638,11 +712,16 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(updated),
                         });
+                        // 🌟 切換即時落庫後背景更新
+                        fetchSettings();
                       } catch (error) {
                         console.error("轉生表單失敗:", error);
                       }
         
-                      setHasChanges(true);
+                      setTimeout(() => {
+                        setHasChanges(false);
+                        isSavingOrResettingRef.current = false;
+                      }, 150);
                     }}
                     className="text-sm font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-white text-slate-600 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer shadow-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                   >
@@ -745,9 +824,14 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             const firstItem = settingsData.flatMap(g => g.items)[0];
                             if (firstItem) {
                               const aligned = { ...firstItem, formType: resolveFormType(firstItem) };
+                              isSavingOrResettingRef.current = true;
                               setSelectedItem(aligned);
                               setViewMode('form');
                               setHasChanges(false);
+                              setTimeout(() => {
+                                isSavingOrResettingRef.current = false;
+                                setHasChanges(false);
+                              }, 150);
                             } else {
                               setViewMode('form'); 
                             }
@@ -829,11 +913,10 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                           }
                           setHasChanges(false);
                         }}
-                        onDirty={() => setHasChanges(true)}
+                        onDirty={handleMarkDirty}
                       />
                     ) : (
                       <>
-                        {/* 🌟 核心修復：使用 currentActiveFormType 精確渲染對應表單 */}
                         {currentActiveFormType === 'character' && (
                           <CharacterForm
                             key={`${selectedItem.id}-${currentActiveFormType}-${saveTick}`}
@@ -841,7 +924,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             onSave={handleUpdateItem}
                             allSettings={globalAllSettings}
                             currentChapterSettings={settingsData}
-                            onDirty={() => setHasChanges(true)}
+                            onDirty={handleMarkDirty}
                           />
                         )}
 
@@ -851,7 +934,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             item={selectedItem}
                             allSettings={globalAllSettings} 
                             onSave={handleUpdateItem}
-                            onDirty={() => setHasChanges(true)}
+                            onDirty={handleMarkDirty}
                           />
                         )}
 
@@ -861,7 +944,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             item={selectedItem}
                             allSettings={globalAllSettings} 
                             onSave={handleUpdateItem}
-                            onDirty={() => setHasChanges(true)}
+                            onDirty={handleMarkDirty}
                           />
                         )}
 
@@ -872,7 +955,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             calendarConfig={calendarConfig}
                             allSettings={globalAllSettings}
                             onSave={handleUpdateItem}
-                            onDirty={() => setHasChanges(true)}
+                            onDirty={handleMarkDirty}
                           />
                         )}
 
@@ -882,7 +965,7 @@ export function SettingsPanel({ projectId, chapterId }: SettingsPanelProps) {
                             item={selectedItem}
                             allSettings={globalAllSettings}
                             onSave={handleUpdateItem}
-                            onDirty={() => setHasChanges(true)}
+                            onDirty={handleMarkDirty}
                           />
                         )}
 
