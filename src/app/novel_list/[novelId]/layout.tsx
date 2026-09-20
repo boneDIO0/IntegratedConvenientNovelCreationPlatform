@@ -3,13 +3,15 @@ import Navbar from "@/components/Navbar";
 import { verifyProjectAccess } from "@/lib/auth-utils";
 import { EditorUIProvider } from "@/contexts/EditorUIContext"; // 🌟 1. 引入全域 Context Provider
 
+interface NovelLayoutProps {
+  children: React.ReactNode;
+  params: Promise<{ novelId: string }>;
+}
+
 export default async function NovelLayout({ 
   children, 
   params 
-}: { 
-  children: React.ReactNode;
-  params: Promise<{ novelId: string }>
-}) {
+}: NovelLayoutProps) {
   const resolvedParams = await params;
   const novelId = resolvedParams.novelId;
   
