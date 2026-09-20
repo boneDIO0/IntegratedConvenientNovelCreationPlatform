@@ -76,9 +76,17 @@ const generateDynamicFactionColors = (
 export default function RelationGraph({ highlightedIds, onNodeSelect, allSettings = [] }: RelationGraphProps) {
   
   const { nodes, edges } = useMemo(() => {
-    // 1. 動態抓取全作品的所有角色
     const characters = allSettings.flatMap(group => 
-      group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-') || (i as any).type === 'character')
+      group.items.filter(i => {
+        // 檢查各種可能代表角色的欄位
+        return (
+          i.category === 'character' || 
+          i.id?.startsWith('char-') || 
+          (i as any).type === 'character' ||
+          (i as any).formType === 'character' || 
+          (i as any).content?.formType === 'character'
+        );
+      })
     );
 
     const factionColorMap = generateDynamicFactionColors(allSettings);
