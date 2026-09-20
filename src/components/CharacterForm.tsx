@@ -92,7 +92,12 @@ export default function CharacterForm({
   );
 
   const availableCharacters = allSettings
-    .flatMap(group => group.items.filter(i => i.category === 'character' || i.id?.startsWith('char-'))) 
+    .flatMap(group => group.items.filter(i => 
+      i.category === 'character' || 
+      i.id?.startsWith('char-') || 
+      (i as any).type === 'character' ||
+      (i as any).formType === 'character' || 
+      (i as any).content?.formType === 'character')) 
     .filter(char => char.id !== item.id && char.name !== name); 
 
   const handleAddTitle = () => { setTitles([...titles, ""]); onDirty?.(); };
