@@ -141,7 +141,10 @@ export default function TextNoteForm({ item, onSave, onRefresh, onDirty, isEdita
           <div className="flex items-center gap-1 p-2 border-b border-amber-200 bg-amber-100/50 flex-wrap shrink-0">
             <button
               type="button"
-              onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                editor.chain().focus().toggleHeading({ level: 2 }).run();
+              }}
               className={`p-1.5 rounded transition-colors ${editor.isActive('heading', { level: 2 }) ? 'bg-amber-300 text-amber-900' : 'text-amber-700 hover:bg-amber-200'}`}
               title="大標題"
             >
@@ -150,7 +153,10 @@ export default function TextNoteForm({ item, onSave, onRefresh, onDirty, isEdita
             <div className="w-px h-5 bg-amber-300 mx-1"></div>
             <button
               type="button"
-              onClick={() => editor.chain().focus().toggleBold().run()}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                editor.chain().focus().toggleBold().run();
+              }}
               className={`p-1.5 rounded transition-colors ${editor.isActive('bold') ? 'bg-amber-300 text-amber-900' : 'text-amber-700 hover:bg-amber-200'}`}
               title="粗體"
             >
@@ -158,7 +164,10 @@ export default function TextNoteForm({ item, onSave, onRefresh, onDirty, isEdita
             </button>
             <button
               type="button"
-              onClick={() => editor.chain().focus().toggleItalic().run()}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                editor.chain().focus().toggleItalic().run();
+              }}
               className={`p-1.5 rounded transition-colors ${editor.isActive('italic') ? 'bg-amber-300 text-amber-900' : 'text-amber-700 hover:bg-amber-200'}`}
               title="斜體"
             >
@@ -167,7 +176,10 @@ export default function TextNoteForm({ item, onSave, onRefresh, onDirty, isEdita
             <div className="w-px h-5 bg-amber-300 mx-1"></div>
             <button
               type="button"
-              onClick={() => editor.chain().focus().toggleBulletList().run()}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                editor.chain().focus().toggleBulletList().run();
+              }}
               className={`p-1.5 rounded transition-colors ${editor.isActive('bulletList') ? 'bg-amber-300 text-amber-900' : 'text-amber-700 hover:bg-amber-200'}`}
               title="無序清單"
             >
@@ -175,7 +187,10 @@ export default function TextNoteForm({ item, onSave, onRefresh, onDirty, isEdita
             </button>
             <button
               type="button"
-              onClick={() => editor.chain().focus().toggleOrderedList().run()}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                editor.chain().focus().toggleOrderedList().run();
+              }}
               className={`p-1.5 rounded transition-colors ${editor.isActive('orderedList') ? 'bg-amber-300 text-amber-900' : 'text-amber-700 hover:bg-amber-200'}`}
               title="有序清單"
             >

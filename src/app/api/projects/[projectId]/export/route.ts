@@ -31,6 +31,7 @@ export async function GET(
       where: { id: projectId },
       include: {
         chapters: {
+          where: { deletedAt: null },
           orderBy: { orderIndex: 'asc' } // 依照 orderIndex 排序
         }
       }

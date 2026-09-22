@@ -1,87 +1,113 @@
-# 整合式便捷小說平台
+# 整合式便捷小說創作平台 (Writer's Haven) ✒️
 
-Darren 目前把基礎的專案架構先建好了，以下有幾件注意事項：  
-1. 套件管理工具各位請統一使用 pnpm，安裝指令如下：   
-```bash   
-npm install -g pnpm
-```   
-2. Darren 比較懶，給 app 取名叫 novel-platform 了。   
-3. 以下是 Darren 當時創建整個專案架構的指令：   
-```bash   
-pnpm create next-app@latest novel-platform --yes
-# --yes 代表預設的方式安裝 (Enable TypeScripts, Tailwind CSS, ESLint, App Router, and Turbopack, with import alias @/*, and includes AGENTS.md)
-cd novel-platform
-pnpm dev
-# 這代表啟動伺服器，就會有本地的網址可以點進去。
-```   
-不過這樣導致東西都被包在 novel-platform 資料夾裡，所以我最後把全部的東西都拖出來丟外面了。   
+![Next.js](https://img.shields.io/badge/Next.js-black?style=for-the-badge&logo=next.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-3982CE?style=for-the-badge&logo=Prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini_2.5_Flash-8E75B2?style=for-the-badge&logo=googlebard&logoColor=white)
 
-4. 各位 clone 或 pull 完之後請在終端機輸入：
-```bash   
-pnpm install # 或 pnpm i
-```   
-因為 push 的時候 .gitignore 會把 node_modules 擋掉，所以要輸入上述指令，再把 dependencies 都裝回來。   
+Writer's Haven 是一個專為長篇小說創作者與多人接龍團隊打造的「一站式沉浸創作環境」。本系統將「靈感發想、大綱建構、正文寫作、團隊協作到公開發布」完美揉合，並導入 AI 語意檢索與視覺化圖譜技術，徹底解決世界觀設定混亂、版本管理不易與共編覆蓋等痛點。
 
-## 專案架構
-```plain text   
-novel-platform/
-├── src/
-│   ├── app/                    # [App Router]
-│   │   ├── editor/             # 文字編輯模組網址
-│   │   │   └── page.tsx        # 網頁畫面檔案
-│   │   ├── settings/           # 設定集模組網址
-│   │   │   └── page.tsx        # 網頁畫面檔案
-│   │   └── api/                # [後端 API 伺服器]
-│   │       ├── versions/       # 版本管理 API (POST /api/versions)
-│   │       │   └── route.ts
-│   │       └── discussions/    # 留言區 API (POST /api/discussions)
-│   │           └── route.ts
-│   ├── components/             # [共用 UI 元件]
-│   │   ├── EditorWidget.tsx    # 放 Vditor 編輯器元件的地方
-│   │   └── DiscussionBoard.tsx # 留言板元件
-│   ├── lib/                    # [後端工具庫]
-│   │   └── db.ts               # 放資料庫連線程式碼的地方
-│   └── types/                  # [TypeScript 型別定義]
-│       └── index.ts            # 定義版本和留言的 JSON 格式
-```   
-接著各位就能各自開分支，並在需要的時候到對應的資料夾底下建立新的檔案。   
+[![Writer's Haven 介紹短片](https://www.youtube.com/watch?v=Jw4hGEYvJGQ)](https://www.youtube.com/watch?v=Jw4hGEYvJGQ)
 
-Next.js 的官方文件: [https://nextjs.org/docs](https://nextjs.org/docs)   
+## ✨ 核心特色功能
+
+*   **專屬虛構世界的動態時空引擎**：自訂紀元、曆法與逆向紀年，將事件與角色自動轉化為可追蹤的動態時間線，支援雙模時序防呆。
+*   **設定集視覺化拓撲圖**：系統動態讀取人物關聯與陣營色彩，透過演算法即時渲染「全域人物關係無向圖」，複雜勢力一目了然。
+*   **生成式 AI 創作智庫 (RAG)**：內建 AI 助理，精準讀取該部小說專屬的設定集與大綱脈絡，提供符合世界觀的劇情推演與防衝突建議，不破壞原創性。
+*   **版本時光機與協作防呆**：多階段自動存檔與一鍵還原整章功能。針對多人協作實作非同步輪詢機制，偵測遠端異動並彈出衝突橫幅，確保心血互不覆蓋。
+*   **沉浸式寫作體驗**：基於 Tiptap 生態系的富文本編輯器，提供雙欄介面動態維護「人事時地物」卡片，正文支援關鍵字反查設定。
+
+## 🛠 技術堆疊 (Tech Stack)
+
+### 前端 (Frontend)
+*   **Framework:** Next.js (App Router)
+*   **Language:** TypeScript
+*   **Editor:** Tiptap (Headless Rich Text Editor)
+*   **Styling & UI:** Tailwind CSS, Radix UI
+*   **Visualization:** React Flow, Dagre 演算法
+
+### 後端與資料庫 (Backend & Database)
+*   **Database:** Neon (Serverless PostgreSQL)
+*   **ORM:** Prisma ORM
+*   **Connection Pooling:** PgBouncer
+*   **Vector Search:** pgvector
+*   **Authentication:** NextAuth (OAuth 2.0)
+
+### 人工智慧與部署 (AI & Deployment)
+*   **AI Model:** Google Gemini 2.5 Flash, Gemini Embedding 001
+*   **Deployment:** Vercel (CI/CD)
+*   **Cloud Storage:** Vercel Blob
+
+## 🚀 本地開發與運行指南
+
+### 先決條件
+請確保您的開發環境已安裝以下工具：
+*   Node.js (建議 v18 以上版本)
+*   npm, yarn 或 pnpm
+*   PostgreSQL 資料庫 (或 Neon 雲端資料庫)
+
+### 安裝步驟
+
+1. **複製儲存庫**
+   ```bash
+   git clone [https://github.com/your-username/writers-haven.git](https://github.com/your-username/writers-haven.git)
+   cd writers-haven
+   ```
+
+2. **安裝依賴套件**
+   ```bash
+   npm install
+   # 或使用 pnpm install
+   ```
+
+3. **環境變數設定**
+   複製根目錄下的 `.env.example` 並重新命名為 `.env`，填入必要的 API Keys：
+   ```env
+   DATABASE_URL="您的 PostgreSQL 連線字串"
+   NEXTAUTH_SECRET="您的 NextAuth 密鑰"
+   GEMINI_API_KEY="您的 Google Gemini API Key"
+   # 其他相關雲端儲存或服務金鑰...
+   ```
 
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+4. **資料庫初始化**
+   執行 Prisma 遷移與生成 Client：
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
 
-## Getting Started
 
-First, run the development server:
+5. **啟動開發伺服器**
+   ```bash
+   npm run dev
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+伺服器啟動後，請開啟瀏覽器並前往 `http://localhost:3000`。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🗺 專案狀態與 Roadmap
 
-## Learn More
+本專案依循 Scrum 敏捷開發框架，歷經 13 個 Sprint 迭代完成核心 MVP。
+目前正在進行 **Closed Beta (封閉測試)** 前期準備，近期重點更新包含：
 
-To learn more about Next.js, take a look at the following resources:
+* [ ] 強化 GitHub Actions CI 流程，於 PR 時自動執行 `prisma generate` 型別檢驗。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+* [ ] 修正章節軟刪除 (Soft Delete) 後，匯出 DOCX 檔案仍會包含已刪除章節的問題，以及重整章節編號邏輯。
+* [ ] 於 AI 介面實裝 Good/Bad 即時反饋機制，以收集封測數據優化 Prompt。
 
-## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🤝 貢獻與團隊
+
+* **PO (Product Owner):** [boneDIO0](https://github.com/boneDIO0)，負責需求與優先級規劃。
+
+
+* **SM (Scrum Master):** [Darren-Dev-Repo](https://github.com/Darren-Dev-Repo)，推動儀軌與協作架構。
+
+
+* **Dev / DBA:** [AltinaCS](https://github.com/AltinaCS)、[FrostNori](https://github.com/FrostNori)、[HeRcULes302](https://github.com/HeRcULes302)，主導設定集、版本管理、PostgreSQL 建模與 AI 向量整合。
+
