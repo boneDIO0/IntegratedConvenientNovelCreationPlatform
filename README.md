@@ -8,7 +8,9 @@
 
 Writer's Haven 是一個專為長篇小說創作者與多人接龍團隊打造的「一站式沉浸創作環境」。本系統將「靈感發想、大綱建構、正文寫作、團隊協作到公開發布」完美揉合，並導入 AI 語意檢索與視覺化圖譜技術，徹底解決世界觀設定混亂、版本管理不易與共編覆蓋等痛點。
 
-[![Writer's Haven 介紹短片](https://www.youtube.com/watch?v=Jw4hGEYvJGQ)](https://www.youtube.com/watch?v=Jw4hGEYvJGQ)
+[🎞️ Writer's Haven 介紹短片](https://www.youtube.com/watch?v=Jw4hGEYvJGQ)
+
+[📑 Writer's Haven 網站](https://integrated-convenient-novel-creatio-beta.vercel.app/)
 
 ## ✨ 核心特色功能
 
@@ -38,55 +40,6 @@ Writer's Haven 是一個專為長篇小說創作者與多人接龍團隊打造�
 *   **AI Model:** Google Gemini 2.5 Flash, Gemini Embedding 001
 *   **Deployment:** Vercel (CI/CD)
 *   **Cloud Storage:** Vercel Blob
-
-## 🚀 本地開發與運行指南
-
-### 先決條件
-請確保您的開發環境已安裝以下工具：
-*   Node.js (建議 v18 以上版本)
-*   npm, yarn 或 pnpm
-*   PostgreSQL 資料庫 (或 Neon 雲端資料庫)
-
-### 安裝步驟
-
-1. **複製儲存庫**
-   ```bash
-   git clone [https://github.com/your-username/writers-haven.git](https://github.com/your-username/writers-haven.git)
-   cd writers-haven
-   ```
-
-2. **安裝依賴套件**
-   ```bash
-   npm install
-   # 或使用 pnpm install
-   ```
-
-3. **環境變數設定**
-   複製根目錄下的 `.env.example` 並重新命名為 `.env`，填入必要的 API Keys：
-   ```env
-   DATABASE_URL="您的 PostgreSQL 連線字串"
-   NEXTAUTH_SECRET="您的 NextAuth 密鑰"
-   GEMINI_API_KEY="您的 Google Gemini API Key"
-   # 其他相關雲端儲存或服務金鑰...
-   ```
-
-
-4. **資料庫初始化**
-   執行 Prisma 遷移與生成 Client：
-   ```bash
-   npx prisma generate
-   npx prisma db push
-   ```
-
-
-5. **啟動開發伺服器**
-   ```bash
-   npm run dev
-
-   ```
-
-
-伺服器啟動後，請開啟瀏覽器並前往 `http://localhost:3000`。
 
 ## 🗺 專案狀態與 Roadmap
 
